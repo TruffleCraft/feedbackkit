@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.wrangler/
+# Generated from wrangler.template.toml by `pnpm materialize` (ADR-004: operator-specific
+# bindings never live in the repo). Never commit this file.
+wrangler.toml
+# Local secrets for `wrangler dev`
+.dev.vars
+*.log
+.DS_Store
+# gstack browse daemon scratch (created by tooling, never part of the repo)
+.gstack/
