@@ -263,6 +263,15 @@ describe("test page /t/:key + /api/test-preview (P1.11)", () => {
     expect(body.body).toContain("totally broken");
   });
 
+  it("dry-run coerces non-string input instead of 500ing", async () => {
+    const res = await app.request(
+      "/api/test-preview?project=fk_pub_x",
+      { method: "POST", body: JSON.stringify({ type: "bug", message: 123, fields: { repro: 5 } }) },
+      env(projectRow),
+    );
+    expect(res.status).toBe(200);
+  });
+
   it("test-preview rejects a cross-origin request", async () => {
     const res = await app.request(
       "/api/test-preview?project=fk_pub_x",

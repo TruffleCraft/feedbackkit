@@ -14,7 +14,7 @@ export const TEST_PAGE_CSP = (nonce: string) => `default-src 'self'; script-src 
 export function renderTestPage(key: string, nonce: string): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FeedbackKit test — ${""}</title>
+<title>FeedbackKit test page</title>
 <style nonce="${nonce}">
   body{font:15px/1.5 system-ui,sans-serif;max-width:720px;margin:2rem auto;padding:0 1rem;color:#1f2937}
   @media(prefers-color-scheme:dark){body{background:#111827;color:#e5e7eb}}

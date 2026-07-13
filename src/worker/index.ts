@@ -447,8 +447,16 @@ app.post("/api/test-preview", async (c) => {
   }
   if (!loaded) return c.json({ error: "unknown project" }, 404);
 
-  const input = body.value as { type?: string; message?: string; fields?: Record<string, string> };
-  const preview = dryRunPreview(loaded.config, { type: input.type, message: input.message, fields: input.fields });
+  // Coerce to strings before rendering — a non-string message/field would make
+  // render's .trim()/.replace() throw (500). Keep it a clean 400-safe dry-run.
+  const raw = (body.value ?? {}) as Record<string, unknown>;
+  const type = typeof raw["type"] === "string" ? (raw["type"] as string) : undefined;
+  const message = typeof raw["message"] === "string" ? (raw["message"] as string) : "";
+  const fields: Record<string, string> = {};
+  if (raw["fields"] && typeof raw["fields"] === "object") {
+    for (const [k, v] of Object.entries(raw["fields"] as Record<string, unknown>)) if (typeof v === "string") fields[k] = v;
+  }
+  const preview = dryRunPreview(loaded.config, { type, message, fields });
   if (!preview) return c.json({ error: "unknown feedback type" }, 400);
   return c.json({ v: WIRE_VERSION, ...preview });
 });
