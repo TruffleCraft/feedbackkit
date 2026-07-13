@@ -5,6 +5,7 @@ import { checkSchema } from "./db.js";
 import { loadProject } from "./config.js";
 import { originAllowed } from "./security/origin.js";
 import { hitRateLimit, hourWindow } from "./security/ratelimit.js";
+import { checkRepoAccess } from "./providers/github.js";
 import { ConfigError } from "./errors.js";
 import type { Env } from "./env.js";
 
@@ -20,6 +21,7 @@ app.get("/widget.js", (c) => {
 });
 
 // Self-check (ADR-004 / DX): converts several first-request failures into one command.
+// Pass ?project=<key> to also check that project's PAT repo access + LLM config.
 app.get("/diag", async (c) => {
   const schema = await checkSchema(c.env);
   const bindings = {
@@ -27,7 +29,36 @@ app.get("/diag", async (c) => {
     UPLOADS: typeof c.env.UPLOADS?.get === "function",
     ASSETS: typeof c.env.ASSETS?.fetch === "function",
   };
-  const ok = schema.ok && bindings.DB && bindings.UPLOADS;
+
+  let tracker = "skipped — pass ?project=<key>";
+  let llm = "skipped — pass ?project=<key>";
+  const project = c.req.query("project");
+  if (project) {
+    const loaded = await loadProject(c.env, project).catch((e) => {
+      tracker = llm = `config error: ${(e as Error).message}`;
+      return null;
+    });
+    if (loaded === null && tracker.startsWith("skipped")) {
+      tracker = llm = "unknown project";
+    } else if (loaded) {
+      const pat = c.env[loaded.config.tracker.patSecret] as string | undefined;
+      if (!pat) {
+        tracker = `secret ${loaded.config.tracker.patSecret} not set`;
+      } else {
+        const a = await checkRepoAccess(loaded.config.tracker.defaultRepo, pat);
+        tracker = a.ok ? `ok${a.patExpiry ? ` (PAT expires ${a.patExpiry})` : ""}` : `FAIL: ${a.reason}`;
+      }
+      const key = c.env["LLM_API_KEY"] as string | undefined;
+      llm =
+        loaded.config.llm.provider === "off"
+          ? "disabled for this project"
+          : !key
+            ? "LLM_API_KEY not set (runs in required-field mode)"
+            : `configured (${loaded.config.llm.model || "no model!"}) — live ping via \`pnpm test-issue\``;
+    }
+  }
+
+  const ok = schema.ok && bindings.DB && bindings.UPLOADS && !tracker.startsWith("FAIL");
   return c.json(
     {
       service: "feedbackkit",
@@ -35,12 +66,7 @@ app.get("/diag", async (c) => {
       wireVersion: WIRE_VERSION,
       schema: { expected: SCHEMA_VERSION, ...schema },
       bindings,
-      // Checks wired in later milestones — declared here so /diag enumerates the full set.
-      checks: {
-        llmPing: "not_implemented (P1.6)",
-        patPerProject: "not_implemented (P1.7)",
-        r2Roundtrip: "not_implemented (P1.8)",
-      },
+      checks: { tracker, llm, r2Roundtrip: "not_implemented (P1.8)" },
       ok,
     },
     ok ? 200 : 503,
