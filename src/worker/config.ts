@@ -20,6 +20,18 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 const TTL_MS = 60_000;
 const NEG_TTL_MS = 10_000;
+// Bound the map so spraying distinct (mostly unknown) project keys — e.g. at the
+// public /api/events or /api/config endpoints — can't grow it without limit and
+// exhaust isolate memory. Map preserves insertion order → evict oldest (FIFO).
+const MAX_ENTRIES = 500;
+
+function cacheSet(key: string, entry: CacheEntry): void {
+  if (cache.size >= MAX_ENTRIES && !cache.has(key)) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(key, entry);
+}
 
 /** Load a project's config by its public key. Returns null if unknown. */
 export async function loadProject(
@@ -39,7 +51,7 @@ export async function loadProject(
     .bind(publicKey)
     .first<{ config: string; config_version: number }>();
   if (!row) {
-    cache.set(publicKey, { result: null, at: now }); // negative-cache the miss
+    cacheSet(publicKey, { result: null, at: now }); // negative-cache the miss (bounded)
     return null;
   }
 
@@ -56,7 +68,7 @@ export async function loadProject(
 
   // Freeze the cached object so a future handler can't poison it for other callers.
   const result: LoadedProject = { config: Object.freeze(validated.data), version: Number(row.config_version) };
-  cache.set(publicKey, { result, at: now });
+  cacheSet(publicKey, { result, at: now });
   return result;
 }
 

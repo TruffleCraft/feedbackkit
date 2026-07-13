@@ -197,3 +197,50 @@ describe("DELETE /api/admin/assets", () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ── Feedback + events wiring (P1.9) ─────────────────────────────────────────────
+const fbPayload = (over: Record<string, unknown> = {}) =>
+  JSON.stringify({ v: 1, feedbackId: FID, type: "bug", message: "kaputt", pageUrl: "https://acme.dev", ...over });
+
+describe("POST /api/feedback (route wiring)", () => {
+  beforeEach(() => __clearConfigCache());
+
+  it("400s without ?project", async () => {
+    const res = await app.request("/api/feedback", { method: "POST", body: fbPayload() }, env(projectRow));
+    expect(res.status).toBe(400);
+  });
+
+  it("gives a filled honeypot a plausible fake success (no processing)", async () => {
+    const res = await app.request("/api/feedback?project=fk_pub_x", { method: "POST", body: fbPayload({ hpField: "i am a bot" }) }, env(projectRow));
+    expect(res.status).toBe(200);
+    expect((await res.json() as { status: string }).status).toBe("created");
+  });
+
+  it("400s on a payload that fails the wire contract", async () => {
+    const res = await app.request("/api/feedback?project=fk_pub_x", { method: "POST", body: JSON.stringify({ v: 1, feedbackId: "bad", pageUrl: "x" }) }, env(projectRow));
+    expect(res.status).toBe(400);
+  });
+
+  it("413s an oversized feedback body (bounded read, before Zod)", async () => {
+    const big = JSON.stringify({ v: 1, feedbackId: FID, pageUrl: "https://acme.dev", message: "x".repeat(600_000) });
+    const res = await app.request("/api/feedback?project=fk_pub_x", { method: "POST", body: big }, env(projectRow));
+    expect(res.status).toBe(413);
+  });
+
+  it("with no LLM key, runs required-field mode → need_fields (no network)", async () => {
+    const res = await app.request("/api/feedback?project=fk_pub_x", { method: "POST", body: fbPayload() }, env(projectRow));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string; missing: string[] };
+    expect(body.status).toBe("need_fields");
+    expect(body.missing).toEqual(["repro"]);
+  });
+});
+
+describe("POST /api/events", () => {
+  it("accepts a valid enum event and always 204s", async () => {
+    const ok = await app.request("/api/events", { method: "POST", body: JSON.stringify({ v: 1, project: "fk_pub_x", name: "submitted" }) }, env(projectRow));
+    expect(ok.status).toBe(204);
+    const garbage = await app.request("/api/events", { method: "POST", body: "not json" }, env(projectRow));
+    expect(garbage.status).toBe(204);
+  });
+});

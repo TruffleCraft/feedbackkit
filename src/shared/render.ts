@@ -9,6 +9,7 @@ export interface RenderContext {
   summary?: string;
   pageUrl: string;
   deviceInfo?: { browser?: string; os?: string; viewport?: { w: number; h: number }; language?: string };
+  consoleErrors?: Array<{ level: string; msg: string; ts: number }>;
   attachments?: Array<{ url: string; kind: string }>;
   degraded?: boolean; // LLM unenriched → mark for triage
 }
@@ -92,6 +93,13 @@ export function renderIssueBody(template: TemplateDefinition, ctx: RenderContext
     parts.push(`### Environment\n${rows.join("\n")}`);
   } else {
     parts.push(`### Environment\nURL: ${mdInline(ctx.pageUrl)}`);
+  }
+
+  if (ctx.consoleErrors?.length) {
+    // Auto-collected session context — untrusted, so fence it (code fences render
+    // no markdown, so no mention/ref/link can escape) with each entry neutralized.
+    const lines = ctx.consoleErrors.map((e) => `[${mdInline(e.level)}] ${mdInline(e.msg)}`).join("\n");
+    parts.push(`### Console errors\n\`\`\`\n${lines.replace(/```/g, "ʼʼʼ")}\n\`\`\``);
   }
 
   if (ctx.attachments?.length) {

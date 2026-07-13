@@ -11,7 +11,7 @@ Users love giving feedback but rarely know *what* developers need. The result: i
 3. If required details are missing, the widget shows **pre-filled follow-up fields** ("Almost done — 2 details missing") — the user completes them in seconds, or sends anyway.
 4. A **structured, labeled issue** lands in your GitHub repo. Attachments included, agent-ready.
 
-You host it yourself: **one Cloudflare Worker** (+ D1 + R2, free tiers), one `pnpm deploy`, one snippet. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the request/data flow.
+You host it yourself: **one Cloudflare Worker** (+ D1 + R2, free tiers), one `pnpm deploy`, one snippet. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the request/data flow. You bring your own LLM key — see [docs/MODELS.md](docs/MODELS.md) for a verified, cost-ranked model recommendation (default `gemma-3-27b-it` — open-weights, so the same model runs hosted or fully on-prem; managed and free options included).
 
 ## Why not …?
 

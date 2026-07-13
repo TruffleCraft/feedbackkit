@@ -28,6 +28,14 @@ const SYSTEM_PROMPT = [
   "Return JSON only, matching the requested schema. Leave a field as an empty string if the user did not provide it.",
 ].join(" ");
 
+// Models commonly wrap JSON in a ```json … ``` fence even when asked not to.
+// Strip it before parsing (the fence is never valid JSON on its own).
+function stripFence(raw: string): string {
+  const t = raw.trim();
+  const m = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  return m ? m[1]!.trim() : t;
+}
+
 function labelText(label: unknown, locale: string): string {
   if (typeof label === "string") return label;
   if (label && typeof label === "object") {
@@ -78,7 +86,9 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
   const fieldLines = template.fields
     .map((f) => `- ${f.key} (${labelText(f.label, config.locale)})${f.extractionHint ? `: ${f.extractionHint}` : ""}`)
     .join("\n");
-  const userText = `Feedback type: ${template.type}\nFields to extract:\n${fieldLines}\n\nUser feedback:\n${message}`;
+  // Naming the exact key set helps models that run WITHOUT json_schema (below).
+  const keyList = ["type", "summary", ...template.fields.map((f) => f.key)].join(", ");
+  const userText = `Feedback type: ${template.type}\nFields to extract:\n${fieldLines}\n\nReturn a JSON object with exactly these keys: ${keyList}.\n\nUser feedback:\n${message}`;
 
   const content: unknown = screenshotDataUrl
     ? [
@@ -94,8 +104,12 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content },
     ],
-    response_format: { type: "json_schema", json_schema: buildSchema(template, allTypes) },
   };
+  // Structured output is best-effort (ADR-008). Endpoints that don't support it
+  // return EMPTY content when it's forced, so it's opt-out per project.
+  if (config.llm.structuredOutput !== false) {
+    req["response_format"] = { type: "json_schema", json_schema: buildSchema(template, allTypes) };
+  }
   // OpenRouter-only privacy hint; other endpoints may reject unknown top-level keys.
   if (config.llm.provider === "openrouter") {
     req["provider"] = { data_collection: "deny" };
@@ -128,7 +142,13 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    // Try raw first so valid JSON containing a ``` inside a string value isn't
+    // corrupted by the fence-stripper; only strip fences if raw parse fails.
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = JSON.parse(stripFence(raw));
+    }
   } catch {
     return degraded(template, "llm returned non-JSON");
   }

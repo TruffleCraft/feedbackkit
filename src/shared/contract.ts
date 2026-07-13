@@ -59,6 +59,11 @@ export const FeedbackConfig = z.object({
     model: z.string().default(""),
     baseUrl: z.string().url().optional(),
     dailyBudget: z.number().int().positive().default(200),
+    // Send OpenAI `response_format: json_schema`. Many free/local endpoints
+    // (Ollama, vLLM, free OpenRouter tiers) don't honor strict schema and return
+    // EMPTY content when it's forced — set false there and rely on the prompt +
+    // fence-tolerant parse instead (ADR-007/008).
+    structuredOutput: z.boolean().default(true),
   }),
   tracker: z.object({
     kind: z.literal("github"),
@@ -112,7 +117,7 @@ export const DeviceInfo = z.object({
   viewport: z.object({ w: z.number(), h: z.number() }).optional(),
   language: z.string().optional(),
 });
-export const ConsoleEntry = z.object({ level: z.string(), msg: z.string(), ts: z.number() });
+export const ConsoleEntry = z.object({ level: z.string().max(24), msg: z.string().max(2000), ts: z.number() });
 
 export const FeedbackPayload = z.object({
   v: z.literal(WIRE_VERSION),
@@ -121,7 +126,7 @@ export const FeedbackPayload = z.object({
   message: z.string().max(10_000).optional(),
   pageUrl: z.string().max(2048),
   fields: z.record(z.string().max(4000)).optional(), // 2nd POST: completed fields
-  extracted: z.record(z.string()).optional(), // echoed back on 2nd POST
+  extracted: z.record(z.string().max(4000)).optional(), // echoed back on 2nd POST — capped like fields (no size-bypass)
   attachmentKeys: z.array(z.string()).max(5).default([]),
   deviceInfo: DeviceInfo.optional(),
   consoleErrors: z.array(ConsoleEntry).max(10).default([]),
