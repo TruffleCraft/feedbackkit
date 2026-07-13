@@ -58,6 +58,18 @@ describe("GET /api/config", () => {
     expect((await app.request("/api/config", {}, env(projectRow))).status).toBe(400);
     expect((await app.request("/api/config?project=nope", {}, env(() => null))).status).toBe(404);
   });
+
+  it("answers the CORS preflight so cross-origin If-None-Match works", async () => {
+    const res = await app.request(
+      "/api/config?project=fk_pub_x",
+      { method: "OPTIONS", headers: { Origin: "https://acme.dev" } },
+      env(projectRow),
+    );
+    expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("https://acme.dev");
+    expect(res.headers.get("Access-Control-Allow-Headers")).toContain("If-None-Match");
+    expect(res.headers.get("Access-Control-Allow-Methods")).toContain("GET");
+  });
 });
 
 describe("GET /diag", () => {

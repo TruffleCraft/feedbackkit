@@ -32,6 +32,22 @@ describe("loadProject", () => {
     expect(await loadProject(env, "fk_pub_missing")).toBeNull();
   });
 
+  it("negative-caches misses (no repeated D1 read for a sprayed unknown key)", async () => {
+    let reads = 0;
+    const env = envWith(
+      fakeD1(() => {
+        reads++;
+        return null;
+      }),
+    );
+    const t = 2_000_000;
+    await loadProject(env, "fk_pub_bogus", t);
+    await loadProject(env, "fk_pub_bogus", t + 5_000); // within 10s negative TTL
+    expect(reads).toBe(1);
+    await loadProject(env, "fk_pub_bogus", t + 11_000); // past negative TTL
+    expect(reads).toBe(2);
+  });
+
   it("throws ConfigError on invalid config JSON", async () => {
     const env = envWith(fakeD1(() => ({ config: "{not json", config_version: 1 })));
     await expect(loadProject(env, "fk_pub_x")).rejects.toBeInstanceOf(ConfigError);

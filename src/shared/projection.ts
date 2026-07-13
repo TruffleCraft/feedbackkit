@@ -18,6 +18,8 @@ export function toPublicConfig(config: FeedbackConfig, configVersion: number): P
         label: f.label,
         kind: f.kind,
         required: f.required,
+        // select choices must reach the widget; everything else stays internal.
+        ...(f.options ? { options: f.options } : {}),
       })),
     })),
   };

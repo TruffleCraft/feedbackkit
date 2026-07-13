@@ -4,6 +4,7 @@ import { toPublicConfig } from "../shared/projection.js";
 import { checkSchema } from "./db.js";
 import { loadProject } from "./config.js";
 import { originAllowed } from "./security/origin.js";
+import { hitRateLimit, hourWindow } from "./security/ratelimit.js";
 import { ConfigError } from "./errors.js";
 import type { Env } from "./env.js";
 
@@ -49,11 +50,32 @@ app.get("/diag", async (c) => {
 const notImplemented = (milestone: string) => (c: import("hono").Context) =>
   c.json({ v: WIRE_VERSION, status: "error", error: `not implemented yet (${milestone})` }, 501);
 
+// CORS preflight: the widget is always cross-origin, and If-None-Match is not a
+// safelisted header, so a conditional GET triggers OPTIONS. Reflect the requesting
+// origin here (the actual GET still gates data access via its own ACAO check) and
+// cache the preflight so it isn't re-sent on every open.
+app.options("/api/config", (c) => {
+  const origin = c.req.header("Origin");
+  if (origin) {
+    c.header("Access-Control-Allow-Origin", origin);
+    c.header("Vary", "Origin");
+    c.header("Access-Control-Allow-Methods", "GET, OPTIONS");
+    c.header("Access-Control-Allow-Headers", "If-None-Match, Content-Type");
+    c.header("Access-Control-Max-Age", "3600");
+  }
+  return c.body(null, 204);
+});
+
 // Public config projection (P1.4). CORS is reflected only for allowlisted origins
 // (never `*` on APIs); the widget fetches this on open, so it is revalidated (ETag).
 app.get("/api/config", async (c) => {
   const key = c.req.query("project");
   if (!key) return c.json({ v: WIRE_VERSION, status: "error", error: "missing ?project" }, 400);
+
+  // Per-IP throttle (defense-in-depth; misses are also negative-cached in loadProject).
+  const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
+  const rl = await hitRateLimit(c.env, `cfg:${ip}`, hourWindow(), 600);
+  if (!rl.allowed) return c.json({ v: WIRE_VERSION, status: "error", error: "rate limited" }, 429);
 
   let loaded;
   try {

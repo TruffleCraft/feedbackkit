@@ -40,4 +40,36 @@ describe("toPublicConfig", () => {
     expect(json).not.toContain("acme.dev");
     expect(json).not.toContain("extractionHint");
   });
+
+  it("carries select-field options so the widget can render them", () => {
+    const withSelect = FeedbackConfig.parse({
+      projectId: "demo",
+      templates: [
+        {
+          type: "bug",
+          label: "Bug",
+          fields: [
+            {
+              key: "severity",
+              label: "Severity",
+              kind: "select",
+              required: true,
+              options: [
+                { value: "low", label: "Low" },
+                { value: "high", label: "High" },
+              ],
+            },
+          ],
+        },
+      ],
+      llm: { provider: "openrouter", model: "m" },
+      tracker: { kind: "github", defaultRepo: "acme/site", patSecret: "GITHUB_PAT_default" },
+      auth: { origins: [] },
+    });
+    const field = toPublicConfig(withSelect, 1).types[0]!.fields[0]!;
+    expect(field.options).toEqual([
+      { value: "low", label: "Low" },
+      { value: "high", label: "High" },
+    ]);
+  });
 });

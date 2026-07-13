@@ -7,15 +7,19 @@ export interface LoadedProject {
   version: number;
 }
 
-interface CacheEntry extends LoadedProject {
+interface CacheEntry {
+  result: LoadedProject | null;
   at: number;
 }
 
 // Per-isolate config cache (ADR-008). Bounds staleness to TTL_MS so an admin edit
 // propagates within ~60 s, while the hot /api/feedback origin check reads memory
 // instead of hitting D1 on every request. D1 stays the source of truth.
+// Misses are negative-cached (shorter TTL) so an attacker spraying unknown
+// ?project= keys can't drive one D1 SELECT per request.
 const cache = new Map<string, CacheEntry>();
 const TTL_MS = 60_000;
+const NEG_TTL_MS = 10_000;
 
 /** Load a project's config by its public key. Returns null if unknown. */
 export async function loadProject(
@@ -24,8 +28,9 @@ export async function loadProject(
   now: number = Date.now(),
 ): Promise<LoadedProject | null> {
   const cached = cache.get(publicKey);
-  if (cached && now - cached.at < TTL_MS) {
-    return { config: cached.config, version: cached.version };
+  if (cached) {
+    const ttl = cached.result ? TTL_MS : NEG_TTL_MS;
+    if (now - cached.at < ttl) return cached.result;
   }
 
   const row = await env.DB.prepare(
@@ -33,7 +38,10 @@ export async function loadProject(
   )
     .bind(publicKey)
     .first<{ config: string; config_version: number }>();
-  if (!row) return null;
+  if (!row) {
+    cache.set(publicKey, { result: null, at: now }); // negative-cache the miss
+    return null;
+  }
 
   let parsed: unknown;
   try {
@@ -41,14 +49,15 @@ export async function loadProject(
   } catch {
     throw new ConfigError(`project ${publicKey}: config is not valid JSON`);
   }
-  const result = FeedbackConfig.safeParse(parsed);
-  if (!result.success) {
-    throw new ConfigError(`project ${publicKey}: config failed validation: ${result.error.message}`);
+  const validated = FeedbackConfig.safeParse(parsed);
+  if (!validated.success) {
+    throw new ConfigError(`project ${publicKey}: config failed validation: ${validated.error.message}`);
   }
 
-  const entry: CacheEntry = { config: result.data, version: Number(row.config_version), at: now };
-  cache.set(publicKey, entry);
-  return { config: entry.config, version: entry.version };
+  // Freeze the cached object so a future handler can't poison it for other callers.
+  const result: LoadedProject = { config: Object.freeze(validated.data), version: Number(row.config_version) };
+  cache.set(publicKey, { result, at: now });
+  return result;
 }
 
 /** Test-only: clear the isolate cache. */
