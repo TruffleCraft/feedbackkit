@@ -32,6 +32,14 @@ describe("deriveTitle", () => {
     expect(t.length).toBeLessThanOrEqual(72);
     expect(t.endsWith("…")).toBe(true);
   });
+
+  it("caps by code point and never splits an emoji into lone surrogates", () => {
+    const t = deriveTitle(bug, ctx({ summary: "😀".repeat(100) }));
+    expect(Array.from(t).length).toBeLessThanOrEqual(72);
+    // A split pair would surface a lone high/low surrogate as its own element.
+    expect([...t].every((ch) => ch !== "\uD83D" && ch !== "\uDE00")).toBe(true);
+    expect(t.endsWith("…")).toBe(true);
+  });
 });
 
 describe("renderIssueBody", () => {
@@ -55,5 +63,36 @@ describe("renderIssueBody", () => {
     const body = renderIssueBody(bug, ctx({ attachments: [{ url: "https://r2/x.png", kind: "screenshot" }, { url: "https://r2/log.txt", kind: "upload" }] }));
     expect(body).toContain("![attachment](https://r2/x.png)");
     expect(body).toContain("[attachment](https://r2/log.txt)");
+  });
+
+  it("neutralizes markdown injection from untrusted message + fields (no live mention/ref/link)", () => {
+    const body = renderIssueBody(
+      bug,
+      ctx({
+        message: "ping @maintainer, see #1, [click](https://evil)\n### Fake heading\n> forged",
+        fields: { repro: "@team `code` <b>x</b>", expected: "ok" },
+      }),
+    );
+    expect(body).not.toContain("@maintainer"); // ZWSP inserted → not an autolinked mention
+    expect(body).toContain("@​maintainer");
+    expect(body).toContain("#​1"); // issue cross-ref defanged
+    expect(body).toContain("\\[click\\]"); // link syntax broken
+    expect(body).toContain("&lt;b&gt;x&lt;/b&gt;"); // html escaped
+    expect(body).toContain("\\`code\\`"); // code span/fence broken
+    expect(body).toContain("> &gt; forged"); // their leading `>` escaped; only our prefix quotes
+  });
+
+  it("drops non-https attachments and percent-encodes link delimiters", () => {
+    const body = renderIssueBody(
+      bug,
+      ctx({
+        attachments: [
+          { url: "javascript:alert(1)", kind: "upload" },
+          { url: "https://r2/a(b).png", kind: "screenshot" },
+        ],
+      }),
+    );
+    expect(body).not.toContain("javascript:");
+    expect(body).toContain("![attachment](https://r2/a%28b%29.png)");
   });
 });

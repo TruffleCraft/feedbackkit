@@ -126,21 +126,28 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
     clearTimeout(timer);
   }
 
-  let parsed: Record<string, unknown>;
+  let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as Record<string, unknown>;
+    parsed = JSON.parse(raw);
   } catch {
     return degraded(template, "llm returned non-JSON");
   }
+  // `JSON.parse("null")` / `"[]"` / `"true"` succeed but are not extractable
+  // objects; indexing them (e.g. `null[key]`) would throw and break the
+  // never-blocks contract. A non-conforming shape → degrade, never throw.
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return degraded(template, "llm returned a non-object");
+  }
+  const obj = parsed as Record<string, unknown>;
 
   const extracted: Record<string, string> = {};
   for (const f of template.fields) {
-    const v = parsed[f.key];
+    const v = obj[f.key];
     if (typeof v === "string" && v.trim()) extracted[f.key] = v.trim();
   }
   const missing = template.fields.filter((f) => f.required && f.askIfMissing && !extracted[f.key]).map((f) => f.key);
-  const typeVal = typeof parsed["type"] === "string" && allTypes.includes(parsed["type"] as string) ? (parsed["type"] as string) : undefined;
-  const summary = typeof parsed["summary"] === "string" ? (parsed["summary"] as string).trim() : undefined;
+  const typeVal = typeof obj["type"] === "string" && allTypes.includes(obj["type"] as string) ? (obj["type"] as string) : undefined;
+  const summary = typeof obj["summary"] === "string" ? (obj["summary"] as string).trim() : undefined;
 
   return { type: typeVal, extracted, missing, summary, degraded: false };
 }

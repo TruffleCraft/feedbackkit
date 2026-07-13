@@ -11,6 +11,24 @@ import type { Env } from "./env.js";
 
 export const VERSION = "0.0.0";
 
+// Length-independent compare for the admin token (avoids leaking a match via
+// early-return timing). Length itself is not treated as secret. Full admin-auth
+// hardening (401 rate-limit, CSP) lands with the admin surface in P2.
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let out = 0;
+  for (let i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return out === 0;
+}
+
+function adminAuthed(c: import("hono").Context): boolean {
+  const token = c.env["ADMIN_TOKEN"] as string | undefined;
+  if (!token) return false;
+  const header = c.req.header("Authorization") ?? "";
+  const m = header.match(/^Bearer\s+(.+)$/);
+  return m ? safeEqual(m[1]!, token) : false;
+}
+
 const app = new Hono<{ Bindings: Env }>();
 
 // Widget loader stub (real bundle lands in P1.10; served from ASSETS / built to dist).
@@ -21,7 +39,10 @@ app.get("/widget.js", (c) => {
 });
 
 // Self-check (ADR-004 / DX): converts several first-request failures into one command.
-// Pass ?project=<key> to also check that project's PAT repo access + LLM config.
+// The base health (bindings + schema) is public. The ?project=<key> deep check
+// drives the maintainer's PAT against GitHub and discloses config/secret metadata,
+// so it is gated behind ADMIN_TOKEN and rate-limited (an open endpoint would let
+// anyone burn the shared PAT budget → DoS of issue creation).
 app.get("/diag", async (c) => {
   const schema = await checkSchema(c.env);
   const bindings = {
@@ -33,7 +54,14 @@ app.get("/diag", async (c) => {
   let tracker = "skipped — pass ?project=<key>";
   let llm = "skipped — pass ?project=<key>";
   const project = c.req.query("project");
-  if (project) {
+  if (project && !adminAuthed(c)) {
+    tracker = llm = "unauthorized — deep check requires Authorization: Bearer <ADMIN_TOKEN>";
+  } else if (project) {
+    const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
+    const rl = await hitRateLimit(c.env, `diag:${ip}`, hourWindow(), 60);
+    if (!rl.allowed) {
+      return c.json({ service: "feedbackkit", version: VERSION, error: "rate limited" }, 429);
+    }
     const loaded = await loadProject(c.env, project).catch((e) => {
       tracker = llm = `config error: ${(e as Error).message}`;
       return null;

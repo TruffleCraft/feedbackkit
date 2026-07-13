@@ -68,6 +68,14 @@ describe("classifyAndExtract", () => {
     expect(r.degradeReason).toContain("500");
   });
 
+  it("degrades (never throws) when the LLM returns bare null / array / scalar JSON", async () => {
+    for (const content of ["null", "[]", "true", "42", '"hi"']) {
+      const r = await classifyAndExtract({ config, template: bug, message: "…", apiKey: "k", chat: mockChat(content) });
+      expect(r.degraded).toBe(true);
+      expect(r.missing.sort()).toEqual(["actual", "expected", "repro"]);
+    }
+  });
+
   it("preserves values verbatim — never translates (German stays German)", async () => {
     const german = "Seite bleibt hängen";
     const r = await classifyAndExtract({
