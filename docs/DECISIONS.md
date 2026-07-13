@@ -41,3 +41,21 @@ The spike was skipped on Michel's decision. Validating the core thesis shifts to
 ## ADR-010 · 2026-07-13 · Webhook signing scheme locked (HMAC-SHA256, Stripe-style header)
 
 Concrete signing spec for the P2 webhook sink (full reference: docs/WEBHOOKS.md). **HMAC-SHA256** chosen over SHA-384: ecosystem standard (GitHub/Stripe/GitLab/n8n/Zapier verify it out of the box — zero friction), and SHA-384's 64-bit-word CPU edge is nanoseconds, dwarfed ~10,000× by JSON serialization + network latency in a Worker; 256 bits is ample for webhook signatures. Scheme: sign `` `${timestamp}.${rawBody}` `` over the **raw request body** (never a re-serialized object — key ordering/whitespace would break it), header `X-FeedbackKit-Signature: t=<epoch>,v1=<hex>`, 32-byte hex per-project secret in D1, 300 s replay window, receiver uses constant-time compare with a length guard. Two active secrets during rotation. Rejected: SHA-384 (integration friction), signing parsed JSON (non-deterministic), `===` hash compare (timing attack).
+
+---
+
+# Open questions (not yet decided)
+
+Tracked here, not as separate issues — the tracker + project board are for buildable
+work (epics + tasks); decisions live with their ADRs. Each becomes an ADR above once
+resolved (workflow in CONTRIBUTING.md). Decide at the noted milestone.
+
+| # | Question | Recommendation | Counter-position | Decide by |
+|---|----------|----------------|------------------|-----------|
+| Q1 | Announce timing | after P2 (v0.x, GitHub-only) | Codex: end of P1 — the moat is thin and commoditizes fast; "OSS forgives rough, not invisible" | P2 exit |
+| Q2 | Admin UI stack | Preact SPA (Vite) — theming preview + funnel dashboard need interactivity | server-rendered Hono templates — no frontend build | P2 start |
+| Q3 | P4 provider order | GitLab → Jira → Trello (GitLab cheapest, privacy audience) | Jira first (highest team value) | P4 gate fires |
+| Q4 | VOS auth | generic trusted-submitter hook (signed header) | keep VOS Supabase-JWT as a special case | P3 (VOS migration) |
+| Q5 | LLM default model + budget | OpenRouter gemini-flash class, ~1 call/feedback, 200 calls/day cap | no default — force operator to choose (avoids surprise cost) | P1 (LLM block) |
+| Q6 | Final name | keep "feedbackkit" (rename free until announce, ADR-001) | rename to a free-everywhere name (e.g. feedbridge) before branding sticks | before P2 exit |
+| Q7 | Update-path default | fork + Workers Builds ("Sync fork" = update) | clone + CLI as default if the fork→migration path proves fragile | P1 exit (real test decides) |
