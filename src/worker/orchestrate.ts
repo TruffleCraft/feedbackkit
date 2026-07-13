@@ -35,6 +35,28 @@ function requiredAskable(t: TemplateDefinition) {
   return t.fields.filter((f) => f.required && f.askIfMissing);
 }
 
+// Dry-run preview for the /t/<key> test page: render the issue that WOULD be
+// created, with no LLM call, no tracker call, and no D1 write (so a public test
+// page can't spam the repo or burn budget). Pure.
+export interface PreviewInput {
+  type?: string;
+  message?: string;
+  fields?: Record<string, string>;
+  pageUrl?: string;
+}
+export function dryRunPreview(config: FeedbackConfig, input: PreviewInput): { title: string; body: string } | null {
+  const template = resolveTemplate(config, input.type);
+  if (!template) return null;
+  const ctx: RenderContext = {
+    message: input.message ?? "",
+    fields: input.fields ?? {},
+    pageUrl: input.pageUrl ?? "(test page)",
+    attachments: [],
+    degraded: false,
+  };
+  return { title: deriveTitle(template, ctx), body: renderIssueBody(template, ctx, config.locale) };
+}
+
 /** type → template. A provided-but-unknown type is an error; absent → first. */
 function resolveTemplate(config: FeedbackConfig, type?: string): TemplateDefinition | null {
   if (type) return config.templates.find((t) => t.type === type) ?? null;
