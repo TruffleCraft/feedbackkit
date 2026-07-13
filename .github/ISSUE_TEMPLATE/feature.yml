@@ -1,0 +1,25 @@
+name: "Feature Request"
+description: "Idee oder Verbesserung"
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Welches Problem löst das?
+      description: Kontext zuerst — was nervt heute, wer ist betroffen?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Vorschlag
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativen
+      description: Was wäre der Workaround ohne dieses Feature?
+    validations:
+      required: false

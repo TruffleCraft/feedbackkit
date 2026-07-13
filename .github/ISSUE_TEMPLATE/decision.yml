@@ -1,0 +1,40 @@
+name: "Decision"
+description: "Offene Design-/Produktentscheidung fürs Team — mit Empfehlung, Gegenposition und Frist"
+title: "[Decision] "
+labels: ["decision"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Entscheidungsfrage
+      description: Was ist zu entscheiden und warum jetzt?
+    validations:
+      required: true
+  - type: textarea
+    id: recommendation
+    attributes:
+      label: Empfehlung
+      description: Vorgeschlagene Option mit Begründung.
+    validations:
+      required: true
+  - type: textarea
+    id: counter
+    attributes:
+      label: Gegenposition
+      description: Die stärkste Alternative und ihr bestes Argument.
+    validations:
+      required: true
+  - type: input
+    id: deadline
+    attributes:
+      label: Entscheiden bis
+      description: Meilenstein oder Datum, ab dem Nicht-Entscheiden blockiert.
+    validations:
+      required: true
+  - type: textarea
+    id: consequences
+    attributes:
+      label: Konsequenz bei Fehlentscheidung
+      description: Was kostet es, falsch zu liegen? Reversibel?
+    validations:
+      required: false
