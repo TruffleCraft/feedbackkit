@@ -36,6 +36,9 @@ async function boot() {
     return;
   }
   const base = script.dataset.base ?? new URL(script.src).origin;
+  // Verbose logging for integrators: <script … data-debug> or ?fkdebug=1.
+  const debug: (...a: unknown[]) => void = script.dataset.debug != null || /[?&]fkdebug=1\b/.test(location.search) ? (...a) => console.info("[feedbackkit]", ...a) : () => {};
+  debug("booting", { project, base });
   const api = new Api(base, project);
 
   const cfg = await api.config();
@@ -43,7 +46,11 @@ async function boot() {
     console.warn(`[feedbackkit] widget disabled: could not load config for project "${project}" from ${base}. Check the project key and that its origin is on the allowlist. See ${DOC}`);
     return;
   }
-  if (!cfg.enabled) return; // operator turned this project off
+  if (!cfg.enabled) {
+    debug("project disabled");
+    return; // operator turned this project off
+  }
+  debug("config loaded", { types: cfg.types.length, locale: cfg.locale });
 
   // Auto-context collection.
   const { buffer } = installConsoleBuffer();
@@ -80,6 +87,7 @@ async function boot() {
     const next = reduce(state, event);
     if (next === state) return;
     state = next;
+    debug("state →", state.name);
     ui.render(state);
     after?.();
   }

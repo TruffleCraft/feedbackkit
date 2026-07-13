@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { WIRE_VERSION, SCHEMA_VERSION, FeedbackPayload, EventPayload } from "../shared/contract.js";
 import { toPublicConfig } from "../shared/projection.js";
-import { orchestrateFeedback, realChat } from "./orchestrate.js";
+import { orchestrateFeedback, realChat, dryRunPreview } from "./orchestrate.js";
+import { renderTestPage, TEST_PAGE_CSP } from "./testpage.js";
 import { checkSchema } from "./db.js";
 import { loadProject } from "./config.js";
 import { originAllowed } from "./security/origin.js";
@@ -252,7 +253,8 @@ app.post("/api/upload", async (c) => {
   const config = loaded.config;
 
   const origin = c.req.header("Origin");
-  if (origin && !originAllowed(origin, config.auth.origins)) {
+  const self = new URL(c.req.url).origin; // same-origin is always allowed
+  if (origin && origin !== self && !originAllowed(origin, config.auth.origins)) {
     return c.json({ v: WIRE_VERSION, status: "error", error: "origin not allowed" }, 403);
   }
   if (origin) {
@@ -359,7 +361,8 @@ app.post("/api/feedback", async (c) => {
   if (!rl.allowed) return c.json({ v: WIRE_VERSION, status: "error", error: "rate limited" }, 429);
 
   const origin = c.req.header("Origin");
-  if (origin && !originAllowed(origin, loaded.config.auth.origins)) {
+  const self = new URL(c.req.url).origin; // same-origin (e.g. the /t/<key> page) is always allowed
+  if (origin && origin !== self && !originAllowed(origin, loaded.config.auth.origins)) {
     return c.json({ v: WIRE_VERSION, status: "error", error: "origin not allowed" }, 403);
   }
   if (origin) {
@@ -419,8 +422,46 @@ app.post("/api/events", async (c) => {
   return c.body(null, 204);
 });
 
-// Honest stubs — each names the milestone that builds it.
-app.get("/t/:key", notImplemented("P1.11"));
+// Dry-run preview endpoint for the test page (P1.11): renders the would-be issue
+// with NO LLM call, NO tracker call, NO D1 write — so a public test page can't
+// spam the repo or burn budget. Same-origin only (only the /t/<key> page uses it).
+app.post("/api/test-preview", async (c) => {
+  const origin = c.req.header("Origin");
+  const self = new URL(c.req.url).origin;
+  if (origin && origin !== self) return c.json({ error: "cross-origin not allowed" }, 403);
+  const key = c.req.query("project");
+  if (!key) return c.json({ error: "missing ?project" }, 400);
+
+  const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
+  const rl = await hitRateLimit(c.env, `tp:${ip}`, hourWindow(), 120);
+  if (!rl.allowed) return c.json({ error: "rate limited" }, 429);
+
+  const body = await readJsonBounded(c, MAX_FEEDBACK_BYTES);
+  if (!body.ok) return c.json({ error: body.tooLarge ? "payload too large" : "invalid json" }, body.tooLarge ? 413 : 400);
+
+  let loaded;
+  try {
+    loaded = await loadProject(c.env, key);
+  } catch {
+    return c.json({ error: "project misconfigured" }, 500);
+  }
+  if (!loaded) return c.json({ error: "unknown project" }, 404);
+
+  const input = body.value as { type?: string; message?: string; fields?: Record<string, string> };
+  const preview = dryRunPreview(loaded.config, { type: input.type, message: input.message, fields: input.fields });
+  if (!preview) return c.json({ error: "unknown feedback type" }, 400);
+  return c.json({ v: WIRE_VERSION, ...preview });
+});
+
+// Worker-served test page (P1.11) — dry-run "it works" tool under a strict CSP.
+app.get("/t/:key", (c) => {
+  const key = c.req.param("key");
+  const nonce = crypto.randomUUID().replace(/-/g, "");
+  c.header("Content-Security-Policy", TEST_PAGE_CSP(nonce));
+  c.header("X-Content-Type-Options", "nosniff");
+  return c.html(renderTestPage(key, nonce));
+});
+
 app.all("/api/admin/*", notImplemented("P2"));
 
 app.get("/", (c) => c.text(`FeedbackKit ${VERSION} — see /diag`));

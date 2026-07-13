@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { orchestrateFeedback } from "../src/worker/orchestrate.js";
+import { orchestrateFeedback, dryRunPreview } from "../src/worker/orchestrate.js";
 import { FeedbackConfig, FeedbackPayload } from "../src/shared/contract.js";
 import type { ChatFn } from "../src/worker/llm/client.js";
 import type { FetchFn } from "../src/worker/providers/github.js";
@@ -250,6 +250,19 @@ describe("orchestrateFeedback — create-anyway on tracker/D1 failure", () => {
     });
     expect(["created", "accepted_incomplete"]).toContain(r.body.status);
     expect(gh.calls[0]!.body.labels).toContain("d1-degraded");
+  });
+});
+
+describe("dryRunPreview (test page)", () => {
+  it("renders the would-be issue title + body with no side effects", () => {
+    const p = dryRunPreview(baseConfig(), { type: "bug", message: "save is broken", fields: { repro: "click save" } });
+    expect(p).not.toBeNull();
+    expect(p!.title).toBe("[BUG] save is broken");
+    expect(p!.body).toContain("click save");
+    expect(p!.body).toContain("### Original feedback");
+  });
+  it("returns null for an unknown type", () => {
+    expect(dryRunPreview(baseConfig(), { type: "nope", message: "x" })).toBeNull();
   });
 });
 

@@ -236,6 +236,56 @@ describe("POST /api/feedback (route wiring)", () => {
   });
 });
 
+describe("test page /t/:key + /api/test-preview (P1.11)", () => {
+  beforeEach(() => __clearConfigCache());
+
+  it("serves the test page with a strict CSP and safely-embedded key", async () => {
+    const res = await app.request("/t/fk_pub_x", {}, env(projectRow));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Security-Policy")).toContain("default-src 'self'");
+    const html = await res.text();
+    expect(html).toContain('"project":"fk_pub_x"');
+    // a key trying to inject markup is escaped (< → <), never raw in the HTML
+    const evil = await (await app.request("/t/" + encodeURIComponent('<img src=x onerror=alert(1)>'), {}, env(projectRow))).text();
+    expect(evil).not.toContain("<img src=x");
+    expect(evil).toContain("\\u003cimg src=x");
+  });
+
+  it("dry-run preview returns the rendered issue (no LLM/issue/D1 write)", async () => {
+    const res = await app.request(
+      "/api/test-preview?project=fk_pub_x",
+      { method: "POST", body: JSON.stringify({ type: "bug", message: "totally broken" }) },
+      env(projectRow),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { title: string; body: string };
+    expect(body.title).toContain("[BUG]");
+    expect(body.body).toContain("totally broken");
+  });
+
+  it("test-preview rejects a cross-origin request", async () => {
+    const res = await app.request(
+      "/api/test-preview?project=fk_pub_x",
+      { method: "POST", headers: { Origin: "https://evil.com" }, body: JSON.stringify({ type: "bug", message: "x" }) },
+      env(projectRow),
+    );
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("same-origin auto-allow", () => {
+  beforeEach(() => __clearConfigCache());
+  it("allows a same-origin feedback POST even though the gateway origin isn't in the allowlist", async () => {
+    // Origin equals the request's own origin (the /t/<key> page) → not 403.
+    const res = await app.request(
+      "http://localhost/api/feedback?project=fk_pub_x",
+      { method: "POST", headers: { Origin: "http://localhost" }, body: fbPayload() },
+      env(projectRow),
+    );
+    expect(res.status).not.toBe(403);
+  });
+});
+
 describe("POST /api/events", () => {
   it("accepts a valid enum event and always 204s", async () => {
     const ok = await app.request("/api/events", { method: "POST", body: JSON.stringify({ v: 1, project: "fk_pub_x", name: "submitted" }) }, env(projectRow));

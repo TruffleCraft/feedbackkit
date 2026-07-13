@@ -16,6 +16,7 @@
     "test": "vitest run",
     "e2e": "pnpm build:widget && playwright test",
     "check:bundle": "node scripts/check-bundle.mjs",
+    "test-issue": "node scripts/test-issue.mjs",
     "dev": "pnpm materialize && wrangler dev",
     "migrate:local": "wrangler d1 migrations apply feedbackkit --local",
     "migrate:remote": "wrangler d1 migrations apply feedbackkit --remote",
