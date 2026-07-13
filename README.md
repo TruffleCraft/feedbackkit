@@ -32,7 +32,7 @@ Anonymous, content-free funnel events only (`opened → typed → submitted → 
 
 ## Roadmap & status
 
-The development roadmap (German — team-internal for now) lives at [docs/ROADMAP.md](docs/ROADMAP.md). Progress is tracked via [milestones](../../milestones) (P0–P2 committed) and [epics](../../issues?q=is%3Aissue+label%3Aepic); open design decisions carry the [`decision`](../../issues?q=is%3Aissue+label%3Adecision) label — input welcome.
+The development roadmap lives at [docs/ROADMAP.md](docs/ROADMAP.md). Progress is tracked via [milestones](../../milestones) (P1–P2 committed) and [epics](../../issues?q=is%3Aissue+label%3Aepic); open design decisions carry the [`decision`](../../issues?q=is%3Aissue+label%3Adecision) label — input welcome.
 
 ## License
 

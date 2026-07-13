@@ -1,25 +1,25 @@
 name: "Feature Request"
-description: "Idee oder Verbesserung"
+description: "An idea or improvement"
 title: "[Feature] "
 labels: ["enhancement"]
 body:
   - type: textarea
     id: problem
     attributes:
-      label: Welches Problem löst das?
-      description: Kontext zuerst — was nervt heute, wer ist betroffen?
+      label: What problem does this solve?
+      description: Context first — what's painful today, who is affected?
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
-      label: Vorschlag
+      label: Proposal
     validations:
       required: true
   - type: textarea
     id: alternatives
     attributes:
-      label: Alternativen
-      description: Was wäre der Workaround ohne dieses Feature?
+      label: Alternatives
+      description: What's the workaround without this feature?
     validations:
       required: false

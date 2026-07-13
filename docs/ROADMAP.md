@@ -1,160 +1,161 @@
-# FeedbackKit — Entwicklungs-Fahrplan
+# FeedbackKit — Development Roadmap
 
-> **Status:** Entwurf zur Team-Diskussion · konsolidiert nach 2× /autoplan-Review (Cross-Model, 2026-07-08/13) · Single-Source-Regel: **Epics sind die lebende Wahrheit**, dieses Dokument wird an Phase-Exits aktualisiert.
-> Offene Entscheidungen: siehe Issues mit Label [`decision`](../../issues?q=is%3Aissue+label%3Adecision).
+> **Status:** Draft for team discussion · consolidated after 2× /autoplan review (cross-model, 2026-07-08/13) · Single-source rule: **epics are the living truth**, this document is updated at phase exits only.
+> Open decisions: see issues labeled [`decision`](../../issues?q=is%3Aissue+label%3Adecision).
 
-## Das Problem
+## The problem
 
-User geben gern Feedback — aber sie wissen oft nicht *wie*, nutzen verschiedene Kanäle und liefern unvollständige Meldungen. Gerade Nicht-Techniker sind frustriert, wenn Devs/PMs/Testmanager zurückfragen, weil Details fehlen; Devs verbrennen Zeit damit, Feedback erst zu *verstehen*. **FeedbackKit verkürzt diese Loops:** Betreiber definieren die Projekt-Anforderungen vorab; User geben schnell Feedback; das LLM strukturiert das Unstrukturierte und stellt Rückfragen, wenn etwas fehlt — **bevor** das Issue zum Dev-Team geht.
+Users are happy to give feedback — but they rarely know *what* developers need. The result: incomplete reports across scattered channels. Non-technical users get frustrated when devs/PMs/test managers come back asking for missing details; devs burn time just *understanding* the feedback. **FeedbackKit shortens that loop:** operators define the project's requirements up front; users give feedback fast (with pre-classification); the LLM structures the unstructured text and asks follow-up questions when something is missing — **before** the issue reaches the dev team.
 
-## Positionierung — „Complete at the source"
+## Positioning — "Complete at the source"
 
-Der verteidigbare Kern ist NICHT „LLM formatiert Issues" (kommoditisierbar — BugDrop hat inzwischen Annotationen + GitHub-App, Marker.io hat AI-Features, Copilot bewegt sich Richtung Issue-to-PR). Der Moat ist die **Kombination**:
+The defensible core is NOT "LLM formats issues" (commoditizable — BugDrop now ships annotations + a GitHub App, Marker.io has AI features, Copilot is moving toward issue-to-PR). The moat is the **combination**:
 
-1. **Synchrone LLM-Rückfrage im Moment des Feedbacks** — der User ist noch auf der Seite; Post-hoc-Triage kann fehlende Infos nie rekonstruieren.
-2. **Session-Kontext automatisch** — Browser, OS, Viewport, Console-Errors, URL, Screenshot (mit Vision-Extraktion).
-3. **Privacy-first** — self-hosted, kein Session-Replay, keine Surveillance, local-LLM-fähig, Kill-Switch „LLM aus".
-4. **Agent-ready Issues** — strukturiert genug, dass Coding-Agents direkt damit arbeiten können.
+1. **Synchronous LLM follow-up at the moment of feedback** — the user is still on the page; post-hoc triage can never reconstruct missing info.
+2. **Session context automatically** — browser, OS, viewport, console errors, URL, screenshot (with vision extraction).
+3. **Privacy-first** — self-hosted, no session replay, no surveillance, local-LLM-capable, "LLM off" kill switch.
+4. **Agent-ready issues** — structured enough that coding agents can act on them directly.
 
-**Primärziel:** Konsolidierung der zwei bestehenden Implementierungen (SCTT, VOS) auf eine kanonische Codebasis (Drift = 0). **Sekundärziel:** OSS-Adoption (eigenes Announce-Gate + Kill-Kriterium).
+**Primary goal:** consolidate the two existing implementations (SCTT, VOS) onto one canonical codebase (drift = 0). **Secondary goal:** OSS adoption (own announce gate + kill criterion).
 
-## Ziel-Architektur
+## Target architecture
 
 ```
-  Website des Betreibers                          FeedbackKit Gateway (self-hosted,
-  (beliebiger Stack, auch React/Next)             EIN `pnpm deploy`)
+  Operator's website                              FeedbackKit Gateway (self-hosted,
+  (any stack, incl. React/Next)                   one `pnpm deploy`)
  ┌───────────────────────────────┐               ┌──────────────────────────────────────────┐
  │ <script                       │               │        Cloudflare Worker (Hono)          │
- │   src="https://fb.acme.dev/   │  GET /widget.js──►  Loader (short-TTL) + Hash-Chunks     │
+ │   src="https://fb.acme.dev/   │  GET /widget.js──►  Loader (short-TTL) + hashed chunks   │
  │        widget.js"             │               │     (immutable, dynamic import)          │
  │   data-project="fk_pub_x7q2"> │  GET /api/config (no-store/ETag, public projection)      │
  │  ┌─────────────────────────┐  │◄──────────────┤                                          │
  │  │  Widget (Shadow DOM,    │  │  POST /api/feedback  (wire contract v:1, 2-POST)        │
  │  │  vanilla TS)            ├──┼──────────────►│  validate → rate-limit → dedupe →        │
- │  │  • Type-Picker+Freitext │  │  need_fields  │  LLM-Extract (1 Call) → create           │
- │  │  • Rückfrage-Felder     │◄─┼───────────────┤                                          │
- │  │    (LLM-vorbefüllt)     │  │  POST /api/upload · POST /api/events (Enum-only)         │
- │  │  • Screenshot-Capture   │  │  GET /t/<key> (Testseite, Dry-Run) · GET /diag           │
- │  │  • Console-Buffer (PII) │  │  GET /admin + /api/admin/* (ab P2)                       │
+ │  │  • type picker + text   │  │  need_fields  │  LLM extract (1 call) → create           │
+ │  │  • follow-up fields     │◄─┼───────────────┤                                          │
+ │  │    (LLM pre-filled)     │  │  POST /api/upload · POST /api/events (enum-only)         │
+ │  │  • screenshot capture   │  │  GET /t/<key> (test page, dry-run) · GET /diag           │
+ │  │  • console buffer (PII) │  │  GET /admin + /api/admin/* (from P2)                     │
  │  └─────────────────────────┘  │               └───┬──────────┬──────────┬────────────────┘
  └───────────────────────────────┘                   │          │          │
                                           ┌──────────▼─┐ ┌──────▼──────┐ ┌─▼──────────────────┐
-  Betreiber: P1 Seed-JSON-Config,         │  D1        │ │ LLM-Endpoint│ │ GitHub REST/GraphQL│
-  ab P2 Admin-UI (Wizard, Projekt-CRUD,   │ projects,  │ │ OpenAI-komp.│ │ • Issues (REST),   │
-  Feld-Editor, Feedback-Verlauf+Funnel,   │ counters,  │ │ OpenRouter→ │ │   Anhänge inline   │
-  Theming, Snippet mit Live-Status)       │ events,    │ │ LiteLLM/    │ │   via R2-URL       │
+  Operator: P1 seed-JSON config,          │  D1        │ │ LLM endpoint│ │ GitHub REST/GraphQL│
+  from P2 admin UI (wizard, project CRUD, │ projects,  │ │ OpenAI-comp.│ │ • issues (REST),   │
+  field editor, feedback history+funnel,  │ counters,  │ │ OpenRouter→ │ │   attachments      │
+  theming, snippet with live status)      │ events,    │ │ LiteLLM/    │ │   inline via R2 URL│
                                           │ assets,    │ │ Ollama (P5) │ │ • Projects v2 (P3) │
-                                          │ dedup      │ │ multimodal+ │ │ GitLab/Jira/Trello │
-                                          └────────────┘ │ Budget-Cap  │ │ (P4, gated)        │
+                                          │ dedup      │ │ multimodal +│ │ GitLab/Jira/Trello │
+                                          └────────────┘ │ budget cap  │ │ (P4, gated)        │
                                           ┌────────────┐ └─────────────┘ └────────────────────┘
-                                          │ R2 (free   │  Attachments: unguessbare URLs,
-                                          │ tier)      │  App-Level-Retention + Delete
+                                          │ R2 (free   │  Attachments: unguessable URLs,
+                                          │ tier)      │  app-level retention + delete
                                           └────────────┘
 ```
 
-## Architektur-Invarianten (gelten ab P1)
+## Architecture invariants (apply from P1)
 
-1. **Zero-Touch-Code:** Betreiber editieren nie Repo-Dateien. Repo committet nur `wrangler.template.toml`; die echte `wrangler.toml` ist gitignored und wird von `pnpm deploy` aus Variablen generiert (`CLOUDFLARE_ACCOUNT_ID`, `FK_D1_ID`, `FK_R2_BUCKET` — als Workers-Builds-Build-Variablen). Fork bleibt commit-identisch mit Upstream → **„Sync fork" = konfliktfreies Update**.
-2. **Auto-Migrationen:** `pnpm deploy` = `build:widget && build:admin && wrangler d1 migrations apply --remote && wrangler deploy`. Worker prüft beim Boot `schema_version` (→ `/diag` rot statt kryptisch). Migrationen expand/contract (eine Release-Breite abwärtskompatibel). Rollback = Fork auf Tag pinnen + `pnpm deploy`, nie D1-Rollback.
-3. **LLM-Client = OpenAI-kompatible Chat Completions** mit konfigurierbarer `baseUrl`+`model`+`apiKey` — OpenRouter ist nur der Default; LiteLLM/Ollama/vLLM/lokale Modelle brauchen keinen neuen Client. Kill-Switch „LLM aus" pro Projekt (reine Pflichtfeld-Formulare) ab P1.
-4. **Snippet = exakt 2 Attribute** (`src` + `data-project`) — alle Config kommt aus `/api/config`, das Snippet wird nie stale.
-5. **Create-anyway:** Kein Ausfall (LLM, D1, Provider) darf Feedback verlieren. LLM-Fehler → Issue unangereichert (`ai-failed`); D1-Fehler → Issue trotzdem (`d1-degraded`); Provider-Fehler → Payload persistiert + `issue_failed` + Retry im Admin.
-6. **Privacy:** `data_collection:deny` beim LLM; Funnel-Events sind Enum-only (nie Inhalt, nie IP persistiert); R2-Assets mit App-Level-Retention + Delete-Endpoint (DSGVO Art. 17; camo-Restrisiko dokumentiert); README-Absatz „Was das Widget misst".
-7. **Semver-Releases** + CHANGELOG + Update-Banner im Admin (ab P2); `VERSION` in `/diag`.
+1. **Zero-touch code:** operators never edit repo files. The repo commits only `wrangler.template.toml`; the real `wrangler.toml` is gitignored and generated by `pnpm deploy` from variables (`CLOUDFLARE_ACCOUNT_ID`, `FK_D1_ID`, `FK_R2_BUCKET` — set as Workers Builds build variables). The fork stays commit-identical with upstream → **"Sync fork" = conflict-free update**.
+2. **Auto migrations:** `pnpm deploy` = `build:widget && build:admin && wrangler d1 migrations apply --remote && wrangler deploy`. The worker checks `schema_version` on boot (→ `/diag` goes red instead of failing cryptically). Migrations are expand/contract (backward-compatible for one release). Rollback = pin the fork to a tag + `pnpm deploy`, never a D1 rollback.
+3. **LLM client = OpenAI-compatible chat completions** with configurable `baseUrl`+`model`+`apiKey` — OpenRouter is only the default; LiteLLM/Ollama/vLLM/local models need no new client. "LLM off" kill switch per project (plain required-field forms) from P1.
+4. **Snippet = exactly 2 attributes** (`src` + `data-project`) — all config comes from `/api/config`, the snippet never goes stale.
+5. **Create-anyway:** no failure (LLM, D1, provider) may lose feedback. LLM error → issue unenriched (`ai-failed`); D1 error → issue created anyway (`d1-degraded`); provider error → payload persisted + `issue_failed` + retry in admin.
+6. **Privacy:** `data_collection:deny` on the LLM; funnel events are enum-only (never content, never persisted IP); R2 assets with app-level retention + delete endpoint (GDPR Art. 17; camo residual risk documented); README section "What the widget measures".
+7. **Semver releases** + CHANGELOG + admin update banner (from P2); `VERSION` in `/diag`.
 
-## Phasen
+## Phases
 
-**Committed sind P1–P2.** P3–P5 sind deklarierte Richtung mit Outcome-Gates — sie starten nur, wenn ihr Gate wahr ist (Epics tragen Label `gated`).
+**Committed: P1–P2.** P3–P5 are declared direction with outcome gates — they start only when their gate is true (epics carry the `gated` label).
 
-### P0 — Validierungs-Spike · ~~geplant~~ **ÜBERSPRUNGEN** (Entscheidung 2026-07-13, ADR-009)
+### P0 — Validation spike · ~~planned~~ **SKIPPED** (decision 2026-07-13, ADR-009)
 
-Der vorgeschaltete Spike wurde bewusst übersprungen. Die Kernthese-Validierung („LLM-Rückfragen verkürzen Loops") verschiebt sich auf die **SCTT-Migration am P1-Exit**: echte Feedbacks + Completion-Funnel-KPI liefern dieselbe Evidenz, nur später und auf der echten Instanz statt am Wegwerf-Prototyp. Vertretbar, weil SCTT Michels eigene Low-Risk-Property ist. Die billigen Nebenprodukte wurden nach P1 gezogen: **Eval-Fixtures** (10 anonymisierte SCTT-Feedbacks) und das **p90 < 8 s**-Ziel sind jetzt Teil des P1-LLM-Bausteins; der **BugDrop-Fork-Check** (0,5 PT) läuft als erste P1-Aufgabe zusammen mit dem Screenshot-Fidelity-Spike.
-**Tradeoff (dokumentiert):** P1 baut auf einer erst in P1 validierten Prämisse — der Completion-Funnel muss ab dem ersten SCTT-Tag scharf beobachtet werden; kippt die KPI, ist der Extract-then-Form-Kern (nicht das ganze Produkt) in Frage zu stellen.
+The upfront spike was deliberately skipped. Validating the core thesis ("LLM follow-ups shorten loops") shifts to the **SCTT migration at the P1 exit**: real feedback + the completion-funnel KPI provide the same evidence, just later and on the real instance rather than a throwaway prototype. Acceptable because SCTT is Michel's own low-risk property. The cheap byproducts moved into P1: **eval fixtures** (10 anonymized SCTT feedbacks) and the **p90 < 8 s** target are now part of the P1 LLM building block; the **BugDrop fork check** (0.5 PT) runs as the first P1 task alongside the screenshot fidelity spike.
+**Tradeoff (documented):** P1 builds on a premise not validated until P1 — the completion funnel must be watched closely from the first SCTT day; if the KPI tips, the extract-then-form core (not the whole product) is what to question.
 
-### P1 — MVP „unstrukturiertes Feedback → strukturiertes GitHub Issue" (16–22 PT · AI 6–8 Tage)
+### P1 — MVP "unstructured feedback → structured GitHub issue" (16–22 PT · AI 6–8 days)
 
-**Ziel:** Operator deployt Gateway mit Seed-Config, klebt Snippet in die Seite → User rantet Freitext + Screenshot, LLM strukturiert (inkl. Vision) + fragt Fehlendes nach → vollständiges Issue. **SCTT läuft produktiv drauf (P1-Exit).**
-
-**IN:**
-- Ein-Worker-Deploy (Hono + D1 + Assets); Invarianten 1–6 komplett
-- **Vanilla-Widget** (Shadow DOM): Trigger, Type-Picker (optional, LLM klassifiziert sonst) + Freitext, Screenshot (html-to-image, Fidelity-Spike als ERSTE Aufgabe inkl. Browser-Matrix + Cross-Origin-Bilder), Auto-Kontext (DeviceInfo, URL, Console-Buffer mit PII-Filter)
-- **Vanilla-Invarianten:** `shadowRoot.activeElement`-Focus (Initial-Focus + Restore in P1), persistente aria-live-Region, Host an `document.body` + `100dvh` + Scroll-Lock, **Re-Render-Verbot** für Formular-Subtrees; E2E „feindliche Host-Seite" + „Tippen überlebt Validierung"
-- **LLM-Extract-then-Form:** 1 Call (multimodal, Screenshot ~800px). **Strukturierte Ausgabe erzwungen:** Template-Zod-Schema → JSON-Schema, dem LLM als `response_format: json_schema` bzw. via Function-Calling übergeben (verhindert halluzinierte Felder/ignorierte required-Flags). **Schema-Enforcement ist best-effort** (Ollama/vLLM in P5 können es unterschiedlich gut) — der harte Gate ist die **serverseitige Zod-Validierung** der LLM-Antwort. Bei Invalid-JSON/Refusal greift der Fallback **sofort und nahtlos** (reines Freitext-/Pflichtfeld-Formular, kein Retry-Loop, der den User in der Ladeschleife fängt). Flow: `need_fields` → `extracting` (nach 4 s wird „Jetzt senden" **primärer Button**; 15 s Hard-Timeout) → `completing_fields` (alle Pflichtfelder, Extrahiertes vorbefüllt+editierbar+markiert; „Trotzdem senden"-Textlink; Close = auto-Trotzdem via keepalive; Feld-Ceiling >3 → direkt accepted_incomplete); 2. POST deterministisch, Server re-validiert + re-derived Titel
-- **Create-anyway-Matrix** inkl. D1-degraded-Zeile + `issue_failed`-Terminal-State (Payload persistiert, Retry ab P2 im Admin); LLM-Tagesbudget-Cap; Not-Kill-Switch
-- **Seed-JSON-Config** (Zod-validiert; Schema = P2-Import-Format): Types Bug/Idea/Improvement **vorkonfiguriert** mit Feldern + Hints (`required` vs. `nice-to-extract`), Origins, Theming-Tokens
-- GitHub via **N benannte fine-grained-PAT-Secrets** (`GITHUB_PAT_<name>`; Ein-Owner-Grenze dokumentiert; Projekt-Anlage validiert Repo-Zugriff); Issue-Template + Labels; Anhänge inline (R2-URLs)
-- **R2 ab MVP** mit App-Level-Retention (`assets`-Tabelle + Cron-Delete) + admin-authed Delete-Endpoint
-- **Feedback-Journey-Datenschicht** (Event-Taxonomie `received→…→issue_created|issue_failed|ai-failed`, Correlation-ID, 90-Tage-Rollups) + `/api/events` (Enum-only, Sampling, server-derived `abandoned`) — **Completion-Funnel ist die Kern-KPI**
-- Hardening-Baseline: **anchored Origin-Regex** (`^https://…$`, Punkte escaped, Wildcard-Subdomain `*` auf `[^./]+` begrenzt — VOS-Bug nicht kopieren!) mit **bounded-TTL-Isolate-Cache der Origin-Allowlist (≤60 s, keyed auf config-version-Row)** statt D1-Read pro Feedback-POST (Hot-Path-Durchsatz; 60 s Propagation beim Origin-Add ist unkritisch), Honeypot, Length-Caps, serverseitige Type-Validierung, per-IP-Rate-Limit (atomarer D1-Upsert), Upload-Allowlist + Magic-Byte + Caps, benannte Fehlerklassen, CORS reflektiert (nie `*` auf APIs)
-- **DX:** `pnpm setup` (idempotent, LLM-Key überspringbar → Modus „LLM noch nicht konfiguriert", ADMIN_TOKEN generiert, druckt URLs), `pnpm dev` (lokale D1/R2, Mock-LLM/GitHub, Seed), `pnpm test-issue`, `/diag` (LLM-Ping, PAT je Projekt + Ablaufdatum, D1-Schreibpfad, R2-Roundtrip, schema_version), Testseite `/t/<key>` (**Dry-Run-Default**), wörtliche Fehler-Copy (Top 5), `console.warn` + `?fkdebug=1` im Widget, secret-freie CI, Bundle-Gate ≤10 kB gz (Loader+Trigger)
-- Docs ab Tag 1: README, QUICKSTART (PAT-Rezept, Reihenfolge „erst lokal setup, dann Fork verbinden"), SECURITY.md (Screenshot-PII, camo), CONTRIBUTING
-
-**OUT:** Admin-UI (→ P2), Annotation (→ P2), GitHub-App (→ P2), Theming-Editor (Tokens via Seed-Config), Board-Felder, i18n, Duplikat-Erkennung, alles außer GitHub.
-
-**Exit:** Playwright-E2E grün (happy + need_fields + alle Degrade-Pfade mit Mocks) · `/diag` grün auf frischem Deploy · Fork→Sync→Migration-Realtest (inkl. wrangler.template.toml-Änderung) · **SCTT 1 Woche produktiv** · Funnel-Daten fließen · p90 < 8 s · Security-Checkliste als CI-Gate. **→ Drift = 0 für den ersten Konsumenten.**
-
-### P2 — Admin-UI, Annotation & Onboarding (15–20 PT · AI 6–7 Tage)
-
-**Ziel:** Das Gateway-Backend wird erlebbar; Fremde schaffen die Installation ohne Support; Widget bekommt Annotation.
+**Goal:** operator deploys the gateway with a seed config, pastes the snippet → a user rants free text + screenshot, the LLM structures it (incl. vision) + asks for what's missing → a complete issue. **SCTT runs on it in production (P1 exit).**
 
 **IN:**
-- **Admin-UI komplett:** 3-Screen-IA (Token-Login → Projektliste mit Zero-State-Create-Flow → Projektdetail-Tabs Setup/Snippet · Types & Felder · Theming · Feedback-Verlauf); Instanz-Seite „System" (read-only: /diag, PAT-Status, Budget-Gauge, Version); First-Run-Wizard; **Feld-Editor** (Presets editieren, geführte Hint-Eingaben „beschreibe es wie einem Kollegen", **Probelauf-Button**, Ceiling-Warnung >3, Extraktions-Statistik pro Feld); **Feedback-Verlauf-Ansicht + Funnel-Dashboard** (opened→…→issue_created, Timeout-/Trotzdem-Zähler) + Retry-Button für `issue_failed`; **Snippet-Screen** („Letzter Config-Abruf vor 2 min", Origin-Rejects mit One-Click-Add, CSP-Hinweise); ADMIN_TOKEN-Härtung (Auth-Header, constant-time, 401-Rate-Limit, CSP, Cloudflare-Access-Empfehlung)
-- **Config-Import/Export** (Seed-JSON aus P1 nahtlos einlesen)
-- **Annotation-Overlay** (rect/arrow/text/freehand — VOS-Port nach Canvas im Shadow DOM; SCTT bekommt sein Feature zurück)
-- **GitHub-App via Manifest-Flow** (App-Auth-1-Pager: state-Binding, atomarer Persist + Rollback, PKCS#1→#8-Util, Installation-Token-Cache; Credentials in D1 mit Envelope `keyVersion‖iv‖ciphertext‖tag` + AAD, KEK-Rotation lazy; PAT bleibt Fallback)
-- **Theming-Editor** (8 Tokens, Color-Picker, echtes Widget-Bundle als iframe-Preview mit State-Switcher, Kontrast-Validierung, Default-Theme first)
-- **Webhook-Sink** (~1 PT: normalisierter JSON-POST pro Feedback → n8n/Zapier/Actions binden JEDES Tool an). **HMAC-SHA256-Signatur ab Tag 1** (pro-Projekt-Secret, `X-FeedbackKit-Signature: sha256=…`-Header + Timestamp gegen Replay) — ohne Signatur ist der Sink ein offenes Scheunentor für gefälschte Events.
-- Update-Story komplett (Release-Pipeline, Update-Banner, UPGRADING.md) · Degrade-Canary (+ Board-Skip-Zählung ab P3) · SELF_HOSTING.md · budget-gecappte **Demo-Instanz**
+- One-worker deploy (Hono + D1 + assets); invariants 1–6 complete
+- **Vanilla widget** (Shadow DOM): trigger, type picker (optional, LLM classifies otherwise) + free text, screenshot (html-to-image, fidelity spike as the FIRST task incl. browser matrix + cross-origin images), auto-context (DeviceInfo, URL, console buffer with PII filter)
+- **Vanilla invariants:** `shadowRoot.activeElement` focus (initial focus + restore in P1), persistent aria-live region, host appended to `document.body` + `100dvh` + scroll-lock, **re-render ban** for form subtrees; E2E "hostile host page" + "typing survives validation"
+- **LLM extract-then-form:** 1 call (multimodal, screenshot ~800px). **Structured output enforced:** template Zod schema → JSON schema, passed to the LLM as `response_format: json_schema` or via function calling (prevents hallucinated fields / ignored required flags). **Schema enforcement is best-effort** (Ollama/vLLM in P5 vary) — the hard gate is **server-side Zod validation** of the LLM response. On invalid JSON/refusal the fallback fires **immediately and seamlessly** (plain free-text / required-field form, no retry loop trapping the user in a spinner). Flow: `need_fields` → `extracting` (after 4 s "Send now" becomes the **primary button**; 15 s hard timeout) → `completing_fields` (all required fields, extracted values pre-filled + editable + marked; "send anyway" text link; close = auto-send-anyway via keepalive; field ceiling >3 → straight to accepted_incomplete); 2nd POST deterministic, server re-validates + re-derives title
+- **Create-anyway matrix** incl. D1-degraded row + `issue_failed` terminal state (payload persisted, retry in admin from P2); LLM daily budget cap; emergency kill switch
+- **Seed-JSON config** (Zod-validated; schema = the P2 import format): types Bug/Idea/Improvement **preconfigured** with fields + hints (`required` vs `nice-to-extract`), origins, theming tokens
+- GitHub via **N named fine-grained PAT secrets** (`GITHUB_PAT_<name>`; one-owner limit documented; project creation validates repo access); issue template + labels; attachments inline (R2 URLs)
+- **R2 from the MVP** with app-level retention (`assets` table + cron delete) + admin-authed delete endpoint
+- **Feedback-journey data layer** (event taxonomy `received→…→issue_created|issue_failed|ai-failed`, correlation ID, 90-day rollups) + `/api/events` (enum-only, sampling, server-derived `abandoned`) — **the completion funnel is the core KPI**
+- Hardening baseline: **anchored origin regex** (`^https://…$`, dots escaped, wildcard-subdomain `*` bounded to `[^./]+` — do NOT copy the VOS bug!) with a **bounded-TTL isolate cache of the origin allowlist (≤60 s, keyed on a config-version row)** instead of a D1 read per feedback POST (hot-path throughput; 60 s propagation on origin-add is harmless), honeypot, length caps, server-side type validation, per-IP rate limit (atomic D1 upsert), upload allowlist + magic-byte + caps, named error classes, CORS reflected (never `*` on APIs)
+- **LLM extraction eval fixtures** (10 anonymized real SCTT feedbacks, "never translate" language assertion) — regression gate; folded in from the skipped P0
+- **DX:** `pnpm setup` (idempotent, LLM key skippable → "LLM not configured yet" mode, generates ADMIN_TOKEN, prints URLs), `pnpm dev` (local D1/R2, mock LLM/GitHub, seed), `pnpm test-issue`, `/diag` (LLM ping, PAT per project + expiry, D1 write path, R2 roundtrip, schema_version), test page `/t/<key>` (**dry-run default**), literal error copy (top 5), `console.warn` + `?fkdebug=1` in the widget, secret-free CI, bundle budget ≤10 kB gz (loader+trigger)
+- Docs from day 1: README, QUICKSTART (PAT recipe, order "run setup locally first, then connect the fork"), SECURITY.md (screenshot PII, camo), CONTRIBUTING
 
-**Exit:** TTHW ≤ 15 min (CF-Bestandskunde) / ≤ 45 min (cold) im Fremdtest · Annotation auf iOS Safari · SCTT nutzt Admin statt Seed-File · Canary grün. **→ Announce** („v0.x, GitHub-only") mit Messgröße: ≥ 3 externe Deploys oder ≥ 5 externe Issues/PRs in 4 Wochen, sonst bewusst Maintenance-Modus.
+**OUT:** admin UI (→ P2), annotation (→ P2), GitHub App (→ P2), theming editor (tokens via seed config), board fields, i18n, duplicate detection, everything except GitHub.
 
-### P3 — Widget deluxe + GitHub-Vollausbau (9–13 PT) · `gated`
+**Exit:** Playwright E2E green (happy + need_fields + all degrade paths with mocks) · `/diag` green on a fresh deploy · fork→sync→migration real test (incl. a wrangler.template.toml change) · **SCTT in production for 1 week** · funnel data flowing · p90 < 8 s · security checklist as a CI gate. **→ Drift = 0 for the first consumer.**
 
-**Gate:** SCTT läuft 2+ Wochen UND Completion-KPI zeigt, dass der Rückfrage-Loop trägt.
-**IN:** Datei-Attachments (PDF/Log/Text) · Draft-Persistence · volle a11y (axe) · i18n de/en · **GitHub Projects v2 Board-Felder** (VOS-Port, by-name + Cache, create-anyway) · Trusted-Submitter-Hook · **Migration VOS**.
-**Exit:** VOS produktiv, alter Worker archiviert · axe ohne Criticals.
+### P2 — Admin UI, annotation & onboarding (15–20 PT · AI 6–7 days)
 
-### P4 — Provider-Ökosystem (12–17 PT) · `gated`
+**Goal:** the gateway backend becomes tangible (the product vision); strangers can install it without support; the widget gets annotation.
 
-**Gate:** ≥ 1 externer Operator fragt nach einem zweiten Provider (bis dahin: Webhook-Sink).
-**IN:** ProviderPort härten · **GitLab** (erster Adapter — API nah an GitHub, Privacy-Zielgruppe) · **Jira Cloud** · **Trello** · AssetStore-Strategie pro Provider (native Attachments) · Provider-Wahl pro Projekt im Admin.
-**Exit:** Gleiches Feedback wahlweise in GitHub/GitLab/Jira/Trello, E2E pro Adapter · Adapter-Guide.
+**IN:**
+- **Full admin UI:** 3-screen IA (token login → project list with a guided zero-state create flow → project detail tabs Setup/Snippet · Types & Fields · Theming · Feedback History); instance "System" page (read-only: /diag, PAT status, budget gauge, version); first-run wizard; **field editor** (edit presets, guided hint inputs "describe it like you would to a colleague", **test-run button**, ceiling warning >3, per-field extraction stats); **feedback-history view + funnel dashboard** (opened→…→issue_created, timeout/send-anyway counts) + retry button for `issue_failed`; **snippet screen** ("last config fetch 2 min ago", origin rejects with one-click add, CSP hints); ADMIN_TOKEN hardening (auth header, constant-time, 401 rate limit, CSP, Cloudflare Access recommendation)
+- **Config import/export** (read the P1 seed JSON seamlessly)
+- **Annotation overlay** (rect/arrow/text/freehand — VOS port to Canvas in the Shadow DOM; SCTT gets its feature back)
+- **GitHub App via manifest flow** (app-auth one-pager: state binding, atomic persist + rollback, PKCS#1→#8 util, installation-token cache; credentials in D1 with envelope `keyVersion‖iv‖ciphertext‖tag` + AAD, lazy KEK rotation; PAT stays fallback)
+- **Theming editor** (8 tokens, color pickers, real widget bundle as an iframe preview with a state switcher, contrast validation, default theme first)
+- **Webhook sink** (~1 PT: normalized JSON POST per feedback → n8n/Zapier/Actions can bind ANY tool). **HMAC-SHA256 signature from day 1** (per-project secret, `X-FeedbackKit-Signature: sha256=…` header + timestamp against replay) — an unsigned sink is an open door for forged events.
+- Full update story (release pipeline, update banner, UPGRADING.md) · degrade canary (+ board-skip counting from P3) · SELF_HOSTING.md · budget-capped **demo instance**
 
-### P5 — LLM-Ausbau + lokale Modelle (6–9 PT) · `gated`
+**Exit:** TTHW ≤ 15 min (existing CF account) / ≤ 45 min (cold) in an outside test · annotation verified on iOS Safari · SCTT uses the admin instead of the seed file · canary green. **→ Announce** ("v0.x, GitHub-only") with a metric: ≥ 3 external deploys or ≥ 5 external issues/PRs within 4 weeks, otherwise deliberately maintenance mode.
 
-**Gate:** LLM-Kern-KPIs stabil (Completion-Rate, ai-failed-Rate).
-**IN:** **Custom-LLM-Endpoints im Admin** (LiteLLM-Proxy-Rezept als empfohlener Privacy-Pfad, Ollama/vLLM direkt, Cloudflare-Tunnel-Hinweis, Vision-Degrade-Flag, Connectivity-Test in `/diag`, „Vollständig lokal"-Rezept: self-hosted GitLab + lokales LLM) · Duplikat-Hinweis · annotations-bewusste Extraktion · `promptPreamble` pro Projekt · Eval-Suite als Regression-Gate · Modell-Wahl pro Projekt.
-**Exit:** E2E gegen LiteLLM-Endpoint · Modellwechsel ohne Qualitätsregression nachweisbar.
+### P3 — Widget deluxe + full GitHub (9–13 PT) · `gated`
 
-### Backlog (bewusst ohne Phase)
+**Gate:** SCTT has run 2+ weeks AND the completion KPI shows the follow-up loop works.
+**IN:** file attachments (PDF/log/text) · draft persistence · full a11y (axe) · i18n en/de · **GitHub Projects v2 board fields** (VOS port, by-name + cache, create-anyway) · trusted-submitter hook · **VOS migration**.
+**Exit:** VOS in production, old worker archived · axe with no criticals.
 
-React-Wrapper-Package · Session-Recordings · Slack/E-Mail-Notifications · **Node/SQLite-Runtime** (Docker-Checkpoint: fragen ≥ N Externe nach Docker → zieht vor) · Gitea · Hosted-Angebot · Multi-Turn-Chat-Rückfragen (nur falls Extract-then-Form-Daten Bedarf zeigen) · signierte R2-URLs/private Bucket.
+### P4 — Provider ecosystem (12–17 PT) · `gated`
 
-**Gesamt:** P1–P2 committed ≈ 31–42 PT (AI: ~3–4 Wochen; P0 übersprungen) · P3–P5 gated ≈ +27–39 PT.
+**Gate:** ≥ 1 external operator asks for a second provider (until then: the webhook sink).
+**IN:** harden the ProviderPort · **GitLab** (first adapter — API close to GitHub, privacy audience) · **Jira Cloud** · **Trello** · per-provider AssetStore strategy (native attachments) · provider choice per project in the admin.
+**Exit:** the same feedback lands in GitHub/GitLab/Jira/Trello as chosen, E2E per adapter · adapter guide.
+
+### P5 — LLM expansion + local models (6–9 PT) · `gated`
+
+**Gate:** LLM core KPIs stable (completion rate, ai-failed rate).
+**IN:** **custom LLM endpoints in the admin** (LiteLLM proxy recipe as the recommended privacy path, Ollama/vLLM directly, Cloudflare Tunnel note, vision-degrade flag, `/diag` connectivity test, "fully local" recipe: self-hosted GitLab + local LLM) · duplicate hint · annotation-aware extraction · `promptPreamble` per project · eval suite as a regression gate · model choice per project.
+**Exit:** E2E against a LiteLLM endpoint · model swap without a quality regression.
+
+### Backlog (deliberately unphased)
+
+React wrapper package · session recordings · Slack/email notifications · **Node/SQLite runtime** (Docker checkpoint: if ≥ N externals ask for Docker → pull it forward) · Gitea · hosted offering · multi-turn chat follow-ups (only if extract-then-form data shows demand) · signed R2 URLs / private bucket.
+
+**Total:** P1–P2 committed ≈ 31–42 PT (AI: ~3–4 weeks; P0 skipped) · P3–P5 gated ≈ +27–39 PT.
 
 ## KPIs
 
-- **Completion-Rate** (Rückfrage ausgefüllt vs. „Trotzdem senden" vs. Abbruch) — validiert die Kernthese
-- ai-failed-Rate + degrade-Gründe · p90-Extraktionslatenz (< 8 s) · TTHW pro Persona · Announce-Messgröße (P2-Exit)
+- **Completion rate** (follow-up filled vs "send anyway" vs abandon) — validates the core thesis
+- ai-failed rate + degrade reasons · p90 extraction latency (< 8 s) · TTHW per persona · announce metric (P2 exit)
 
-## Risiken (Top 6)
+## Risks (top 6)
 
-| Risiko | Schwere | Mitigation |
+| Risk | Severity | Mitigation |
 |---|---|---|
-| Rückfragen nerven statt helfen (Loop-UX = DAS Produktrisiko) | hoch | P0-Spike vor Build; Feld-Ceiling; „Jetzt senden" primär im Wartezustand; Completion-Funnel als KPI |
-| LLM-Kosten-Abuse (öffentlicher Endpoint + in-request LLM) | hoch | 1-Call-Design, Tagesbudget-Cap, Rate-Limit, Honeypot, /t-Dry-Run; Provider-Spend-Limit in QUICKSTART |
-| Vanilla-Port unterschätzt (State-Machine, Shadow DOM, iOS) | hoch | 4 Vanilla-Invarianten spezifiziert; Fidelity-Spike zuerst; Annotation strikt P2 |
-| Security-Regression durch Code-Reuse (VOS-Origin-Bug beweist es) | hoch | Hardening als CI-Gate + Testfall pro Finding |
-| Update-Pfad bricht (Sync-fork ohne Migration / wrangler.toml-Konflikt) | hoch → mitigiert | wrangler.template.toml-Invariante; pnpm-deploy-Contract; Realtest in P1 |
-| AI-generierter Code ohne Review-Netz (Solo-Builder) | hoch | Playwright-E2E ab P1, Canary ab P2, /diag, secret-freie CI für Fork-PRs |
+| Follow-ups annoy instead of help (loop UX = THE product risk) | high | Completion funnel as the core KPI from day 1 (replaces the skipped P0 spike); field ceiling; "Send now" primary in the wait state |
+| LLM cost abuse (public endpoint + in-request LLM) | high | 1-call design, daily budget cap, rate limit, honeypot, /t dry-run; provider spend limit in QUICKSTART |
+| Vanilla port underestimated (state machine, Shadow DOM, iOS) | high | 4 vanilla invariants specified; fidelity spike first; annotation strictly P2 |
+| Security regression via code reuse (the VOS origin bug proves it) | high | hardening as a CI gate + a test per finding |
+| Update path breaks (sync-fork without migration / wrangler.toml conflict) | high → mitigated | wrangler.template.toml invariant; pnpm-deploy contract; real test in P1 |
+| AI-generated code without a review net (solo builder) | high | Playwright E2E from P1, canary from P2, /diag, secret-free CI for fork PRs |
 
-## Was existiert schon (Reuse)
+## What already exists (reuse)
 
-| Quelle | Wird zu |
+| Source | Becomes |
 |---|---|
-| `MiMoVentures/vos-bench/workers/feedback/src/github.ts` | GitHub-Provider (Issues P1, Board P3) |
-| `…/llm.ts` | OpenAI-kompatibler LLM-Client + Vision-Muster |
-| `…/templates.ts`, `registry.ts`, `auth.ts` (Origin-Fix!) | Issue-Renderer, D1-Schema-Vorlage, Origin-Check |
-| `vos-bench-zero/lib/feedback-widget/` | State-Machine-Logik + pii-filter/ua-parse/resize (Vanilla-Port) |
-| `sctt-website/src/app/api/feedback/route.js` | Zod-Validierung; erster Migrationskandidat (P1-Exit) |
-| BugDrop (MIT) | Struktur-Referenz; Fork-Check in P0 |
+| `MiMoVentures/vos-bench/workers/feedback/src/github.ts` | GitHub provider (issues P1, board P3) |
+| `…/llm.ts` | OpenAI-compatible LLM client + vision pattern |
+| `…/templates.ts`, `registry.ts`, `auth.ts` (origin fix!) | issue renderer, D1 schema template, origin check |
+| `vos-bench-zero/lib/feedback-widget/` | state-machine logic + pii-filter/ua-parse/resize (vanilla port) |
+| `sctt-website/src/app/api/feedback/route.js` | Zod validation; first migration candidate (P1 exit) |
+| BugDrop (MIT) | structure reference; fork check in P0 (→ folded into P1) |

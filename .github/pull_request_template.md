@@ -1,11 +1,11 @@
-## Was ändert dieser PR?
+## What does this PR change?
 
-<!-- Kurz: Problem → Lösung. Verlinke das Epic/Issue. -->
+<!-- Briefly: problem → solution. Link the epic/issue. -->
 
-## Checkliste
+## Checklist
 
-- [ ] CI grün (läuft secret-frei — Mock-LLM/Mock-GitHub)
-- [ ] Zero-Touch-Code-Invariante eingehalten (nichts Operator-Spezifisches im Repo)
-- [ ] Security-relevante Änderung? → Testfall ergänzt
-- [ ] Neue Strings: de + en Keys
-- [ ] Migration dabei? → expand/contract, eine Release-Breite kompatibel
+- [ ] CI green (runs secret-free — mock LLM / mock GitHub)
+- [ ] Zero-touch-code invariant respected (nothing operator-specific in the repo)
+- [ ] Security-relevant change? → test added
+- [ ] New strings: en + de keys
+- [ ] Migration included? → expand/contract, backward-compatible for one release
