@@ -1,6 +1,10 @@
 import { Hono } from "hono";
 import { WIRE_VERSION, SCHEMA_VERSION } from "../shared/contract.js";
+import { toPublicConfig } from "../shared/projection.js";
 import { checkSchema } from "./db.js";
+import { loadProject } from "./config.js";
+import { originAllowed } from "./security/origin.js";
+import { ConfigError } from "./errors.js";
 import type { Env } from "./env.js";
 
 export const VERSION = "0.0.0";
@@ -45,8 +49,39 @@ app.get("/diag", async (c) => {
 const notImplemented = (milestone: string) => (c: import("hono").Context) =>
   c.json({ v: WIRE_VERSION, status: "error", error: `not implemented yet (${milestone})` }, 501);
 
+// Public config projection (P1.4). CORS is reflected only for allowlisted origins
+// (never `*` on APIs); the widget fetches this on open, so it is revalidated (ETag).
+app.get("/api/config", async (c) => {
+  const key = c.req.query("project");
+  if (!key) return c.json({ v: WIRE_VERSION, status: "error", error: "missing ?project" }, 400);
+
+  let loaded;
+  try {
+    loaded = await loadProject(c.env, key);
+  } catch (e) {
+    if (e instanceof ConfigError) {
+      console.warn(`[feedbackkit] ${e.message}`);
+      return c.json({ v: WIRE_VERSION, status: "error", error: "project misconfigured" }, 500);
+    }
+    throw e;
+  }
+  if (!loaded) return c.json({ v: WIRE_VERSION, status: "error", error: "unknown project" }, 404);
+
+  const origin = c.req.header("Origin");
+  if (origin && originAllowed(origin, loaded.config.auth.origins)) {
+    c.header("Access-Control-Allow-Origin", origin);
+    c.header("Vary", "Origin");
+  }
+
+  const etag = `"cfg-${loaded.version}"`;
+  c.header("ETag", etag);
+  c.header("Cache-Control", "no-cache");
+  if (c.req.header("If-None-Match") === etag) return c.body(null, 304);
+
+  return c.json(toPublicConfig(loaded.config, loaded.version));
+});
+
 // Honest stubs — each names the milestone that builds it.
-app.get("/api/config", notImplemented("P1.4"));
 app.post("/api/feedback", notImplemented("P1.9"));
 app.post("/api/upload", notImplemented("P1.8"));
 app.post("/api/events", notImplemented("P1.9"));
