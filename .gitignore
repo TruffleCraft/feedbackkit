@@ -10,3 +10,6 @@ wrangler.toml
 .DS_Store
 # gstack browse daemon scratch (created by tooling, never part of the repo)
 .gstack/
+# Playwright E2E artifacts
+test-results/
+playwright-report/
