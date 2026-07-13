@@ -1,3 +1,8 @@
+# Single-package project. pnpm 11 still wants a packages list (else `pnpm store
+# path` errors with "packages field missing"); "." declares the repo root as the
+# only package. allowBuilds approves the native postinstall scripts we trust.
+packages:
+  - .
 allowBuilds:
   esbuild: true
   sharp: true
