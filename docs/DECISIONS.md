@@ -29,3 +29,7 @@ Screenshots/Anhänge liegen in R2 (unguessbare Keys, per-Projekt-Prefix, `assets
 ## ADR-007 · 2026-07-13 · OpenAI-kompatibler LLM-Client als Architektur-Invariante
 
 Ein Client (konfigurierbare baseUrl+model+apiKey) deckt OpenRouter (Default), LiteLLM, Ollama, vLLM und lokale Modelle ab. Verworfen: Provider-spezifische LLM-Adapter (unnötige Fläche; OpenAI-kompatibel ist der De-facto-Standard).
+
+## ADR-008 · 2026-07-13 · Team-Feedback-Härtung (Origin-Cache, LLM-Structured-Output, Webhook-HMAC)
+
+Drei aus Team-Feedback angenommene Verschärfungen: **(a) Origin-Check** nutzt anchored Regex (`^https://…$`, Punkte escaped, Wildcard-`*` auf `[^./]+` begrenzt) plus bounded-TTL-Isolate-Cache der Allowlist (≤60 s, keyed auf config-version-Row) statt D1-Read pro Feedback-POST — reconciled die frühere „kein Isolate-Cache in P1"-Position mit dem Hot-Path-Durchsatz (60 s Propagation ist für Origin-Änderungen unkritisch). **(b) LLM-Extraktion** erzwingt strukturierte Ausgabe (Zod→JSON-Schema via response_format/Function-Calling); Schema-Enforcement ist best-effort (lokale Modelle in P5), harter Gate ist serverseitige Zod-Validierung; Invalid-JSON → sofortiger nahtloser Fallback ohne Retry-Loop. **(c) Webhook-Sink** signiert jeden POST mit HMAC-SHA256 (pro-Projekt-Secret + Timestamp gegen Replay) ab Tag 1. Verworfen: unsignierte Webhooks (spoofbar), reine Prompt-Instruktion ohne Schema-Zwang (LLMs halluzinieren Felder), D1-Read pro Request (Flaschenhals bei Traffic).
