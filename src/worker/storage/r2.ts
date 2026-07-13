@@ -66,7 +66,12 @@ export async function storeAttachment(env: Env, opts: StoreOpts): Promise<Stored
       .bind(key, opts.projectId, opts.feedbackId, opts.kind, expiresAt, opts.now)
       .run();
   } catch (e) {
-    await env.UPLOADS.delete(key).catch(() => {}); // best-effort: no orphan without an index row
+    // Compensate: remove the object so there's no orphan without an index row.
+    // If the cleanup ALSO fails, the object is unreachable by sweep/GDPR-delete
+    // (both iterate `assets`) — log the key loudly so an operator can reconcile.
+    await env.UPLOADS.delete(key).catch((delErr) =>
+      console.warn(`[feedbackkit] ORPHANED R2 object ${key} — index insert and cleanup both failed, reconcile the bucket manually: ${(delErr as Error).message}`),
+    );
     throw e;
   }
   return { key, mime: opts.sniff.mime };
@@ -105,9 +110,15 @@ export async function deleteAssetsForFeedback(env: Env, feedbackId: string): Pro
     .all<{ key: string }>();
   let n = 0;
   for (const r of rows.results ?? []) {
-    await env.UPLOADS.delete(r.key);
-    await env.DB.prepare(`UPDATE assets SET deleted = 1 WHERE key = ?1`).bind(r.key).run();
-    n++;
+    // Per-row like the sweep: one bad key must not abort a compliance erasure.
+    // Retry is safe (idempotent: WHERE deleted = 0 + idempotent R2 delete).
+    try {
+      await env.UPLOADS.delete(r.key);
+      await env.DB.prepare(`UPDATE assets SET deleted = 1 WHERE key = ?1`).bind(r.key).run();
+      n++;
+    } catch (e) {
+      console.warn(`[feedbackkit] GDPR delete failed for ${r.key}: ${(e as Error).message}`);
+    }
   }
   return n;
 }

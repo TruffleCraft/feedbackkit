@@ -134,6 +134,23 @@ describe("deleteAssetsForFeedback", () => {
     expect(n).toBe(1);
     expect(r2.calls.del).toEqual(["demo/x.png"]);
   });
+
+  it("keeps going and counts partial success when one key fails to delete", async () => {
+    const d1 = fakeDb(["demo/bad.png", "demo/ok.png"]);
+    const del: string[] = [];
+    const env = {
+      DB: d1.db,
+      UPLOADS: {
+        delete: async (k: string) => {
+          if (k === "demo/bad.png") throw new Error("r2 down");
+          del.push(k);
+        },
+      } as unknown as R2Bucket,
+    } as unknown as Env;
+    const n = await deleteAssetsForFeedback(env, "fid");
+    expect(n).toBe(1); // ok.png deleted; bad.png swallowed, not fatal
+    expect(del).toEqual(["demo/ok.png"]);
+  });
 });
 
 describe("publicUrl", () => {

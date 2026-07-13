@@ -12,6 +12,39 @@ import type { Env } from "./env.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Read a request body with a hard byte ceiling enforced DURING the read, so a
+// client that lies about (or omits) Content-Length can't buffer an oversized
+// body into isolate memory before we reject it. Aborts the stream once the cap
+// is passed → memory is bounded to max + one chunk.
+async function readBounded(stream: ReadableStream<Uint8Array> | null, max: number): Promise<Uint8Array | "too_large"> {
+  if (!stream) return new Uint8Array(0);
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > max) {
+        await reader.cancel().catch(() => {});
+        return "too_large";
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, off);
+    off += chunk.byteLength;
+  }
+  return out;
+}
+
 export const VERSION = "0.0.0";
 
 // Length-independent compare for the admin token (avoids leaking a match via
@@ -225,12 +258,14 @@ app.post("/api/upload", async (c) => {
   }
   const kind = c.req.query("kind") === "screenshot" ? "screenshot" : "upload";
 
-  // Reject oversize early on the declared length, then hard-check the real bytes.
+  // Courtesy early-out for honest clients; the real ceiling is enforced during
+  // the streaming read below (a lying/absent Content-Length can't get past it).
   const declared = Number(c.req.header("Content-Length") ?? "0");
   if (declared > MAX_UPLOAD_BYTES) return c.json({ v: WIRE_VERSION, status: "error", error: "file too large" }, 413);
-  const buf = new Uint8Array(await c.req.arrayBuffer());
+  const read = await readBounded(c.req.raw.body, MAX_UPLOAD_BYTES);
+  if (read === "too_large") return c.json({ v: WIRE_VERSION, status: "error", error: "file too large" }, 413);
+  const buf = read;
   if (buf.byteLength === 0) return c.json({ v: WIRE_VERSION, status: "error", error: "empty body" }, 400);
-  if (buf.byteLength > MAX_UPLOAD_BYTES) return c.json({ v: WIRE_VERSION, status: "error", error: "file too large" }, 413);
 
   // Sniff the actual bytes; the Content-Type header is never trusted.
   const sniff = sniffImage(buf);
