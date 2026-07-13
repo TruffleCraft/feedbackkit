@@ -1,0 +1,42 @@
+graph TD
+    subgraph Site["Operator website (any stack)"]
+        W["Widget -- vanilla TS in Shadow DOM<br/>free text + screenshot + session context"]
+    end
+
+    subgraph GW["FeedbackKit Gateway -- one Cloudflare Worker (Hono)"]
+        WJS["GET /widget.js<br/>loader + hashed chunks"]
+        CFG["GET /api/config<br/>public projection, ETag"]
+        FB["POST /api/feedback<br/>2-POST extract-then-form"]
+        UP["POST /api/upload + POST /api/events"]
+        OPS["GET /t/:key test (dry-run), /diag, /admin (P2)"]
+        GATE{"validate<br/>origin allowlist, rate limit, honeypot"}
+    end
+
+    subgraph Stores["Backing services"]
+        D1[("D1<br/>config, counters, dedup, events, assets")]
+        R2[("R2<br/>attachments + retention")]
+        LLM["OpenAI-compatible LLM<br/>OpenRouter, then LiteLLM/Ollama (P5)"]
+        GH["GitHub REST/GraphQL<br/>issues + Projects board"]
+    end
+
+    Admin["Operator admin browser<br/>P1 seed-JSON, P2 admin UI"]
+
+    W -->|loads| WJS
+    W -->|on open| CFG
+    CFG -.reads.-> D1
+    W -->|"1) free text + screenshot"| FB
+    FB --> GATE
+    GATE -->|"LLM extract: 1 call, structured output"| LLM
+    LLM -->|"required fields missing"| NF["need_fields: pre-filled follow-up form"]
+    NF -->|"2) user completes"| W
+    W -->|"2nd POST: deterministic, no LLM"| FB
+    GATE -->|complete| GH
+    FB -->|attachment| R2
+    R2 -.inline URL.-> GH
+    FB -.journey events.-> D1
+    UP --> R2
+    UP --> D1
+    Admin --> OPS
+    Admin -.config.-> D1
+
+    GATE -.->|"create-anyway: LLM/D1/provider failure,<br/>issue still created, never lost"| GH
