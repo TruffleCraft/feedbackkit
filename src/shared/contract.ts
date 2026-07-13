@@ -83,7 +83,14 @@ export const PublicConfig = z.object({
       type: z.string(),
       label: Label,
       fields: z.array(
-        z.object({ key: z.string(), label: Label, kind: FieldKind, required: z.boolean() }),
+        z.object({
+          key: z.string(),
+          label: Label,
+          kind: FieldKind,
+          required: z.boolean(),
+          // select fields need their choices to render; still no internals.
+          options: z.array(z.object({ value: z.string(), label: Label })).optional(),
+        }),
       ),
     }),
   ),

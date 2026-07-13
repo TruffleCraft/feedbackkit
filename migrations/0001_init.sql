@@ -18,8 +18,12 @@ CREATE TABLE projects (
 );
 
 -- Rate limit + LLM daily budget. Atomic upsert (INSERT … ON CONFLICT … +1).
+-- Key is stable per subject (NO time component); the window lives in window_start
+-- and the upsert resets count when the window rolls over — so rows are bounded to
+-- one per subject, e.g. "rl:cfg:<ip>" | "rl:<project>:<ip>" | "llm:<project>".
+-- (A periodic prune of idle rows lands with the P1.9 cron.)
 CREATE TABLE counters (
-  key          TEXT PRIMARY KEY,   -- e.g. "rl:<project>:<ip>:<hour>" | "llm:<project>:<day>"
+  key          TEXT PRIMARY KEY,
   window_start INTEGER NOT NULL,
   count        INTEGER NOT NULL DEFAULT 0
 );
