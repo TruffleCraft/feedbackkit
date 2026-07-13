@@ -52,6 +52,8 @@ export class WidgetUI {
   private issueLink!: HTMLAnchorElement;
   private doneMsg!: HTMLParagraphElement;
   private scrollLock = "";
+  private locked = false;
+  private hasOpened = false;
   private activeType = "";
 
   constructor(
@@ -194,10 +196,14 @@ export class WidgetUI {
   private lockScroll(lock: boolean) {
     const root = document.documentElement;
     if (lock) {
+      if (this.locked) return; // capture the page's original overflow EXACTLY once
       this.scrollLock = root.style.overflow;
       root.style.overflow = "hidden";
+      this.locked = true;
     } else {
+      if (!this.locked) return; // never write overflow we didn't set (would wipe the host's)
       root.style.overflow = this.scrollLock;
+      this.locked = false;
     }
   }
 
@@ -209,11 +215,17 @@ export class WidgetUI {
   render(state: WidgetState) {
     if (state.name === "closed") {
       this.backdrop.hidden = true;
-      this.lockScroll(false);
       this.trigger.hidden = false;
-      this.trigger.focus(); // restore focus to the trigger
+      // Only on a genuine close (not the initial mount) do we unlock scroll and
+      // restore focus — otherwise we'd steal the host page's initial focus and
+      // wipe its inline overflow on every page load.
+      if (this.hasOpened) {
+        this.lockScroll(false);
+        this.trigger.focus();
+      }
       return;
     }
+    this.hasOpened = true;
     this.trigger.hidden = true;
     this.backdrop.hidden = false;
     this.lockScroll(true);
@@ -245,13 +257,17 @@ export class WidgetUI {
         this.sendNowBtn.className = "fk-btn fk-ghost";
         this.live.textContent = this.tr("analyzing");
         break;
-      case "done":
+      case "done": {
         this.show("done");
         this.doneMsg.textContent = this.tr("doneMsg");
-        this.issueLink.hidden = !state.issueUrl;
-        if (state.issueUrl) this.issueLink.href = state.issueUrl;
+        // Only link an https URL — never trust a server value into href (a
+        // javascript: URL would be click-XSS).
+        const url = state.issueUrl && /^https:\/\//i.test(state.issueUrl) ? state.issueUrl : "";
+        this.issueLink.hidden = !url;
+        if (url) this.issueLink.href = url;
         this.live.textContent = this.tr("doneMsg");
         break;
+      }
       case "failed":
         this.show("failed");
         this.live.textContent = this.tr("failed");

@@ -39,6 +39,10 @@ function fromResponse(res: FeedbackResponse): WidgetState {
       return { name: "done", soft: true };
     case "error":
       return { name: "failed", reason: res.error };
+    default:
+      // A non-conforming server/proxy response must not land us in `undefined`
+      // (which would crash render). Treat anything unknown as a soft failure.
+      return { name: "failed", reason: "unexpected response" };
   }
 }
 

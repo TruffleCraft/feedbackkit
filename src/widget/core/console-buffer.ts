@@ -28,7 +28,10 @@ export function createConsoleBuffer(max = 10): ConsoleBuffer {
   const entries: ConsoleEntryT[] = [];
   return {
     push(level, args, ts) {
-      const msg = redactPII(args.map(stringifyArg).join(" ")).slice(0, 2000);
+      // Bound the raw string before redaction so a megabyte console arg doesn't
+      // run the regex set over the whole thing; then redact, then final cap.
+      const raw = args.map(stringifyArg).join(" ").slice(0, 4000);
+      const msg = redactPII(raw).slice(0, 2000);
       entries.push({ level, msg, ts });
       if (entries.length > max) entries.shift();
     },

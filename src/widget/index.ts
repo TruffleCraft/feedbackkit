@@ -2,6 +2,7 @@ import { reduce, type WidgetState } from "./core/state.js";
 import { installConsoleBuffer } from "./core/console-buffer.js";
 import { collectDeviceInfo } from "./lib/device-info.js";
 import { captureScreenshot } from "./lib/screenshot.js";
+import { uuid } from "./lib/uuid.js";
 import { Api } from "./lib/api.js";
 import { WidgetUI, type UIConfig } from "./ui/panel.js";
 import type { Locale } from "./ui/i18n.js";
@@ -58,16 +59,20 @@ async function boot() {
   let base1: FeedbackPayload | null = null; // POST-1 payload, reused for POST-2
   let bailed = false;
   let slowTimer: ReturnType<typeof setTimeout> | undefined;
+  let gen = 0; // attempt generation: a stale async result (from a closed/superseded attempt) is ignored
 
   const ui = new WidgetUI(shadow, toUIConfig(cfg, script.dataset.label), {
     onOpen: () => dispatch({ t: "open", type: cfg.types[0]?.type ?? "" }, () => api.event("opened")),
-    onClose: () => dispatch({ t: "close" }),
-    onSubmit: (type, text) => submit(type, text),
+    onClose: () => {
+      gen++; // abandon any in-flight attempt
+      dispatch({ t: "close" });
+    },
+    onSubmit: (type, text) => void submit(type, text),
     onSendNow: () => {
       bailed = true;
       dispatch({ t: "sendNow" }, () => api.event("sent_anyway"));
     },
-    onComplete: (_type, values) => complete(values),
+    onComplete: (_type, values) => void complete(values),
     onRetry: () => dispatch({ t: "retry" }),
   });
 
@@ -85,50 +90,60 @@ async function boot() {
   }
 
   async function submit(type: string, text: string) {
+    const myGen = ++gen; // this attempt's token; a later submit/close bumps gen and invalidates us
     bailed = false;
     dispatch({ t: "submit" }, () => api.event("submitted"));
     if (state.name !== "extracting") return;
-    slowTimer = setTimeout(() => dispatch({ t: "slowHint" }), 4000);
+    slowTimer = setTimeout(() => {
+      if (myGen === gen) dispatch({ t: "slowHint" });
+    }, 4000);
 
-    feedbackId = crypto.randomUUID();
-    // Screenshot (best-effort) → upload → key. Vision is a core input.
-    const attachmentKeys: string[] = [];
-    const shot = await captureScreenshot({ skip: host });
-    if (shot) {
-      const key = await api.uploadScreenshot(feedbackId, shot);
-      if (key) attachmentKeys.push(key);
-    }
-    base1 = {
-      v: 1,
-      feedbackId,
-      type,
-      message: text,
-      pageUrl: location.href,
-      attachmentKeys,
-      deviceInfo: collectDeviceInfo(window),
-      consoleErrors: buffer.snapshot(),
-      hpField: "",
-    };
-    const res = await api.submit(base1);
-    clearSlow();
-    if (res.status === "need_fields") {
-      api.event("need_fields");
-      if (bailed) {
-        // User already chose "send now" → complete immediately with what we have.
-        return complete(res.extracted, res.extracted);
+    try {
+      feedbackId = uuid();
+      // Screenshot (best-effort, time-boxed) → upload → key. Vision is a core
+      // input, but a slow/hung capture must never wedge the send.
+      const attachmentKeys: string[] = [];
+      const shot = await Promise.race([captureScreenshot({ skip: host }), new Promise<null>((r) => setTimeout(() => r(null), 3000))]);
+      if (myGen !== gen) return; // superseded/closed while capturing
+      if (shot) {
+        const key = await api.uploadScreenshot(feedbackId, shot);
+        if (myGen !== gen) return;
+        if (key) attachmentKeys.push(key);
+      }
+      base1 = {
+        v: 1,
+        feedbackId,
+        type,
+        message: text,
+        pageUrl: location.href,
+        attachmentKeys,
+        deviceInfo: collectDeviceInfo(window),
+        consoleErrors: buffer.snapshot(),
+        hpField: "",
+      };
+      const res = await api.submit(base1);
+      if (myGen !== gen) return;
+      clearSlow();
+      if (res.status === "need_fields") {
+        api.event("need_fields");
+        if (bailed) return complete(res.extracted, res.extracted); // user pre-chose "send now"
       }
       dispatch({ t: "response", res });
-    } else {
-      dispatch({ t: "response", res });
+    } catch (e) {
+      if (myGen !== gen) return;
+      clearSlow();
+      console.warn(`[feedbackkit] submit failed: ${(e as Error).message}`);
+      dispatch({ t: "response", res: { v: 1, status: "error", error: "submit failed" } });
     }
   }
 
   async function complete(values: Record<string, string>, extracted?: Record<string, string>) {
     if (!base1) return;
+    const myGen = gen; // stay bound to the current attempt (complete() doesn't start a new one)
     dispatch({ t: "completeSubmit" }, () => api.event("completed"));
-    // sendNow path arrives here from extracting (state submitting via sendNow) — allow it.
     const payload: FeedbackPayload = { ...base1, fields: values, extracted: extracted ?? values };
     const res = await api.submit(payload);
+    if (myGen !== gen) return; // closed/superseded while POST-2 in flight
     dispatch({ t: "response", res });
   }
 

@@ -4,7 +4,9 @@ import { redactPII } from "../src/widget/lib/pii-filter.js";
 import { createConsoleBuffer, installConsoleBuffer } from "../src/widget/core/console-buffer.js";
 import { collectDeviceInfo } from "../src/widget/lib/device-info.js";
 import { reduce, type WidgetState } from "../src/widget/core/state.js";
+import { uuid } from "../src/widget/lib/uuid.js";
 import { Api } from "../src/widget/lib/api.js";
+import type { FeedbackResponse } from "../src/shared/contract.js";
 
 describe("parseUA", () => {
   it("identifies common browsers", () => {
@@ -24,12 +26,22 @@ describe("parseUA", () => {
 describe("redactPII", () => {
   it("redacts emails, tokens, jwts, and long hex", () => {
     expect(redactPII("mail me at jane.doe@acme.com")).toContain("[redacted-email]");
-    expect(redactPII("Authorization: Bearer abc123xyz")).toContain("[redacted]");
+    expect(redactPII("Authorization: Bearer sk_live_deadbeef")).not.toContain("sk_live_deadbeef");
+    expect(redactPII("password: hunter2")).not.toContain("hunter2");
     expect(redactPII("session eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0")).toContain("[redacted-jwt]");
     expect(redactPII("hash 0123456789abcdef0123456789abcdef")).toContain("[redacted-hex]");
   });
-  it("leaves ordinary text intact", () => {
+  it("leaves ordinary text intact (incl. prose mentions of 'token')", () => {
     expect(redactPII("the save button does nothing")).toBe("the save button does nothing");
+    expect(redactPII("the token is invalid")).toBe("the token is invalid"); // no separator → not clobbered
+  });
+});
+
+describe("uuid", () => {
+  it("produces a distinct v4-shaped id (works without secure-context randomUUID)", () => {
+    const u = uuid();
+    expect(u).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    expect(uuid()).not.toBe(u);
   });
 });
 
@@ -91,6 +103,8 @@ describe("state machine", () => {
     expect(reduce(ex, { t: "response", res: { v: 1, status: "accepted_incomplete", id: "1", issueUrl: "u" } })).toEqual({ name: "done", issueUrl: "u", soft: true });
     expect(reduce(ex, { t: "response", res: { v: 1, status: "issue_failed", id: "1", reason: "r" } })).toEqual({ name: "done", soft: true });
     expect(reduce(ex, { t: "response", res: { v: 1, status: "error", error: "boom" } })).toEqual({ name: "failed", reason: "boom" });
+    // A non-conforming response must not produce an undefined state (render crash).
+    expect(reduce(ex, { t: "response", res: { v: 1, status: "weird" } as unknown as FeedbackResponse })).toEqual({ name: "failed", reason: "unexpected response" });
   });
   it("ignores a response when no call is in flight; completing → submitting; retry → form", () => {
     const form: WidgetState = { name: "form", type: "bug", text: "" };
@@ -132,7 +146,7 @@ describe("Api", () => {
   });
 
   it("event fires a sendBeacon with the enum payload", () => {
-    const beacon = vi.fn(() => true);
+    const beacon = vi.fn((_url: string, _data: BodyInit) => true);
     const api = new Api("https://fb.dev", "p", { sendBeacon: beacon });
     api.event("submitted");
     expect(beacon).toHaveBeenCalledOnce();
