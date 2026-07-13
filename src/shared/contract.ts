@@ -65,7 +65,15 @@ export const FeedbackConfig = z.object({
     defaultRepo: z.string().min(1),
     patSecret: z.string().min(1), // name of the GITHUB_PAT_<name> worker secret
   }),
-  storage: z.object({ kind: z.enum(["r2", "none"]).default("r2"), publicBaseUrl: z.string().url().optional() }).default({ kind: "r2" }),
+  storage: z
+    .object({
+      kind: z.enum(["r2", "none"]).default("r2"),
+      publicBaseUrl: z.string().url().optional(),
+      // App-level retention (ADR-006): assets get expires_at = now + days; the
+      // daily cron deletes them. Omit = keep until an explicit GDPR delete.
+      retentionDays: z.number().int().positive().optional(),
+    })
+    .default({ kind: "r2" }),
   auth: z.object({ origins: z.array(z.string()).default([]) }),
   rateLimit: z.object({ perHour: z.number().int().positive().default(75) }).default({ perHour: 75 }),
 });

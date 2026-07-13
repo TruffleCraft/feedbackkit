@@ -6,8 +6,44 @@ import { loadProject } from "./config.js";
 import { originAllowed } from "./security/origin.js";
 import { hitRateLimit, hourWindow } from "./security/ratelimit.js";
 import { checkRepoAccess } from "./providers/github.js";
+import { sniffImage, storeAttachment, deleteAssetsForFeedback, sweepExpiredAssets, publicUrl, MAX_UPLOAD_BYTES } from "./storage/r2.js";
 import { ConfigError } from "./errors.js";
 import type { Env } from "./env.js";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Read a request body with a hard byte ceiling enforced DURING the read, so a
+// client that lies about (or omits) Content-Length can't buffer an oversized
+// body into isolate memory before we reject it. Aborts the stream once the cap
+// is passed → memory is bounded to max + one chunk.
+async function readBounded(stream: ReadableStream<Uint8Array> | null, max: number): Promise<Uint8Array | "too_large"> {
+  if (!stream) return new Uint8Array(0);
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > max) {
+        await reader.cancel().catch(() => {});
+        return "too_large";
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, off);
+    off += chunk.byteLength;
+  }
+  return out;
+}
 
 export const VERSION = "0.0.0";
 
@@ -53,6 +89,7 @@ app.get("/diag", async (c) => {
 
   let tracker = "skipped — pass ?project=<key>";
   let llm = "skipped — pass ?project=<key>";
+  let r2 = "skipped — pass ?project=<key> (admin)";
   const project = c.req.query("project");
   if (project && !adminAuthed(c)) {
     tracker = llm = "unauthorized — deep check requires Authorization: Bearer <ADMIN_TOKEN>";
@@ -83,10 +120,21 @@ app.get("/diag", async (c) => {
           : !key
             ? "LLM_API_KEY not set (runs in required-field mode)"
             : `configured (${loaded.config.llm.model || "no model!"}) — live ping via \`pnpm test-issue\``;
+
+      // R2 write/read/delete roundtrip (the object is removed immediately).
+      try {
+        const probe = `_diag/${crypto.randomUUID()}`;
+        await c.env.UPLOADS.put(probe, "ok");
+        const got = await c.env.UPLOADS.get(probe);
+        await c.env.UPLOADS.delete(probe);
+        r2 = got ? "ok (write/read/delete)" : "FAIL: read-after-write empty";
+      } catch (e) {
+        r2 = `FAIL: ${(e as Error).message}`;
+      }
     }
   }
 
-  const ok = schema.ok && bindings.DB && bindings.UPLOADS && !tracker.startsWith("FAIL");
+  const ok = schema.ok && bindings.DB && bindings.UPLOADS && !tracker.startsWith("FAIL") && !r2.startsWith("FAIL");
   return c.json(
     {
       service: "feedbackkit",
@@ -94,7 +142,7 @@ app.get("/diag", async (c) => {
       wireVersion: WIRE_VERSION,
       schema: { expected: SCHEMA_VERSION, ...schema },
       bindings,
-      checks: { tracker, llm, r2Roundtrip: "not_implemented (P1.8)" },
+      checks: { tracker, llm, r2 },
       ok,
     },
     ok ? 200 : 503,
@@ -157,13 +205,116 @@ app.get("/api/config", async (c) => {
   return c.json(toPublicConfig(loaded.config, loaded.version));
 });
 
+// Attachment upload (P1.8). Cross-origin from the widget → preflight + ACAO gate.
+app.options("/api/upload", (c) => {
+  const origin = c.req.header("Origin");
+  if (origin) {
+    c.header("Access-Control-Allow-Origin", origin);
+    c.header("Vary", "Origin");
+    c.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    c.header("Access-Control-Allow-Headers", "Content-Type");
+    c.header("Access-Control-Max-Age", "3600");
+  }
+  return c.body(null, 204);
+});
+
+app.post("/api/upload", async (c) => {
+  const key = c.req.query("project");
+  if (!key) return c.json({ v: WIRE_VERSION, status: "error", error: "missing ?project" }, 400);
+
+  const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
+  const rl = await hitRateLimit(c.env, `up:${ip}`, hourWindow(), 60);
+  if (!rl.allowed) return c.json({ v: WIRE_VERSION, status: "error", error: "rate limited" }, 429);
+
+  let loaded;
+  try {
+    loaded = await loadProject(c.env, key);
+  } catch (e) {
+    if (e instanceof ConfigError) {
+      console.warn(`[feedbackkit] ${e.message}`);
+      return c.json({ v: WIRE_VERSION, status: "error", error: "project misconfigured" }, 500);
+    }
+    throw e;
+  }
+  if (!loaded) return c.json({ v: WIRE_VERSION, status: "error", error: "unknown project" }, 404);
+  const config = loaded.config;
+
+  const origin = c.req.header("Origin");
+  if (origin && !originAllowed(origin, config.auth.origins)) {
+    return c.json({ v: WIRE_VERSION, status: "error", error: "origin not allowed" }, 403);
+  }
+  if (origin) {
+    c.header("Access-Control-Allow-Origin", origin);
+    c.header("Vary", "Origin");
+  }
+
+  if (config.storage.kind !== "r2") {
+    return c.json({ v: WIRE_VERSION, status: "error", error: "uploads disabled for this project" }, 409);
+  }
+
+  const feedbackId = c.req.query("feedbackId") ?? "";
+  if (!UUID_RE.test(feedbackId)) {
+    return c.json({ v: WIRE_VERSION, status: "error", error: "missing or invalid feedbackId" }, 400);
+  }
+  const kind = c.req.query("kind") === "screenshot" ? "screenshot" : "upload";
+
+  // Courtesy early-out for honest clients; the real ceiling is enforced during
+  // the streaming read below (a lying/absent Content-Length can't get past it).
+  const declared = Number(c.req.header("Content-Length") ?? "0");
+  if (declared > MAX_UPLOAD_BYTES) return c.json({ v: WIRE_VERSION, status: "error", error: "file too large" }, 413);
+  const read = await readBounded(c.req.raw.body, MAX_UPLOAD_BYTES);
+  if (read === "too_large") return c.json({ v: WIRE_VERSION, status: "error", error: "file too large" }, 413);
+  const buf = read;
+  if (buf.byteLength === 0) return c.json({ v: WIRE_VERSION, status: "error", error: "empty body" }, 400);
+
+  // Sniff the actual bytes; the Content-Type header is never trusted.
+  const sniff = sniffImage(buf);
+  if (!sniff) return c.json({ v: WIRE_VERSION, status: "error", error: "unsupported file type (png/jpeg/webp/gif only)" }, 415);
+
+  try {
+    const stored = await storeAttachment(c.env, {
+      projectId: config.projectId,
+      feedbackId,
+      kind,
+      bytes: buf,
+      sniff,
+      retentionDays: config.storage.retentionDays,
+      now: Date.now(),
+      keyId: crypto.randomUUID(),
+    });
+    return c.json({ v: WIRE_VERSION, key: stored.key, url: publicUrl(config.storage.publicBaseUrl, stored.key) });
+  } catch (e) {
+    console.warn(`[feedbackkit] upload store failed: ${(e as Error).message}`);
+    return c.json({ v: WIRE_VERSION, status: "error", error: "upload failed" }, 502);
+  }
+});
+
+// GDPR delete (P1.8): remove all attachments for a feedback id. Admin-authed.
+// Registered before the /api/admin/* catch-all so it isn't shadowed by the stub.
+app.delete("/api/admin/assets", async (c) => {
+  if (!adminAuthed(c)) return c.json({ v: WIRE_VERSION, status: "error", error: "unauthorized" }, 401);
+  const feedbackId = c.req.query("feedbackId") ?? "";
+  if (!UUID_RE.test(feedbackId)) return c.json({ v: WIRE_VERSION, status: "error", error: "missing or invalid feedbackId" }, 400);
+  const deleted = await deleteAssetsForFeedback(c.env, feedbackId);
+  return c.json({ v: WIRE_VERSION, deleted });
+});
+
 // Honest stubs — each names the milestone that builds it.
 app.post("/api/feedback", notImplemented("P1.9"));
-app.post("/api/upload", notImplemented("P1.8"));
 app.post("/api/events", notImplemented("P1.9"));
 app.get("/t/:key", notImplemented("P1.11"));
 app.all("/api/admin/*", notImplemented("P2"));
 
 app.get("/", (c) => c.text(`FeedbackKit ${VERSION} — see /diag`));
 
-export default app;
+// Test entrypoint: route tests call app.request().
+export { app };
+
+// Workers module entrypoint: Hono serves fetch; the daily cron sweeps expired R2
+// attachments (events rollup joins this handler in P1.9).
+export default {
+  fetch: app.fetch,
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(sweepExpiredAssets(env));
+  },
+};
