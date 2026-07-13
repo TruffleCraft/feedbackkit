@@ -64,12 +64,12 @@ Der verteidigbare Kern ist NICHT „LLM formatiert Issues" (kommoditisierbar —
 
 ## Phasen
 
-**Committed sind P0–P2.** P3–P5 sind deklarierte Richtung mit Outcome-Gates — sie starten nur, wenn ihr Gate wahr ist (Epics tragen Label `gated`).
+**Committed sind P1–P2.** P3–P5 sind deklarierte Richtung mit Outcome-Gates — sie starten nur, wenn ihr Gate wahr ist (Epics tragen Label `gated`).
 
-### P0 — Validierungs-Spike (1–2 Tage) · [Epic #P0]
+### P0 — Validierungs-Spike · ~~geplant~~ **ÜBERSPRUNGEN** (Entscheidung 2026-07-13, ADR-009)
 
-Kernthese „LLM-Rückfragen verkürzen Loops" mit Daten prüfen, **bevor** gebaut wird: bestehende SCTT-Feedbacks (11+ Issues) + VOS-Alt-Feedbacks durch einen Wegwerf-Extract-Prototyp (1 Datei, OpenRouter). Messen: Extraktionsqualität, welche Felder wirklich fehlen, p90-Latenz (Text vs. multimodal), Kosten/Report. Nebenprodukt = Eval-Fixtures für P1. Plus 0,5 PT **BugDrop-Fork-Check** (was ist als Code importierbar?) → docs/DECISIONS.md.
-**Exit:** Eval-Baseline dokumentiert; p90 < 8 s erreichbar; Go/No-Go für Vision-im-Call.
+Der vorgeschaltete Spike wurde bewusst übersprungen. Die Kernthese-Validierung („LLM-Rückfragen verkürzen Loops") verschiebt sich auf die **SCTT-Migration am P1-Exit**: echte Feedbacks + Completion-Funnel-KPI liefern dieselbe Evidenz, nur später und auf der echten Instanz statt am Wegwerf-Prototyp. Vertretbar, weil SCTT Michels eigene Low-Risk-Property ist. Die billigen Nebenprodukte wurden nach P1 gezogen: **Eval-Fixtures** (10 anonymisierte SCTT-Feedbacks) und das **p90 < 8 s**-Ziel sind jetzt Teil des P1-LLM-Bausteins; der **BugDrop-Fork-Check** (0,5 PT) läuft als erste P1-Aufgabe zusammen mit dem Screenshot-Fidelity-Spike.
+**Tradeoff (dokumentiert):** P1 baut auf einer erst in P1 validierten Prämisse — der Completion-Funnel muss ab dem ersten SCTT-Tag scharf beobachtet werden; kippt die KPI, ist der Extract-then-Form-Kern (nicht das ganze Produkt) in Frage zu stellen.
 
 ### P1 — MVP „unstrukturiertes Feedback → strukturiertes GitHub Issue" (16–22 PT · AI 6–8 Tage)
 
@@ -130,7 +130,7 @@ Kernthese „LLM-Rückfragen verkürzen Loops" mit Daten prüfen, **bevor** geba
 
 React-Wrapper-Package · Session-Recordings · Slack/E-Mail-Notifications · **Node/SQLite-Runtime** (Docker-Checkpoint: fragen ≥ N Externe nach Docker → zieht vor) · Gitea · Hosted-Angebot · Multi-Turn-Chat-Rückfragen (nur falls Extract-then-Form-Daten Bedarf zeigen) · signierte R2-URLs/private Bucket.
 
-**Gesamt:** P0–P2 committed ≈ 33–45 PT (AI: ~3–4 Wochen) · P3–P5 gated ≈ +27–39 PT.
+**Gesamt:** P1–P2 committed ≈ 31–42 PT (AI: ~3–4 Wochen; P0 übersprungen) · P3–P5 gated ≈ +27–39 PT.
 
 ## KPIs
 
