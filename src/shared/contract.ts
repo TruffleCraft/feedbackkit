@@ -118,6 +118,10 @@ export const DeviceInfo = z.object({
   language: z.string().optional(),
 });
 export const ConsoleEntry = z.object({ level: z.string().max(24), msg: z.string().max(2000), ts: z.number() });
+// Type aliases so the widget can `import type` these shapes WITHOUT pulling zod
+// into its browser bundle (verbatimModuleSyntax erases type-only imports).
+export type DeviceInfoT = z.infer<typeof DeviceInfo>;
+export type ConsoleEntryT = z.infer<typeof ConsoleEntry>;
 
 export const FeedbackPayload = z.object({
   v: z.literal(WIRE_VERSION),

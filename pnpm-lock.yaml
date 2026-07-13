@@ -11,6 +11,9 @@ importers:
       hono:
         specifier: ^4.6.14
         version: 4.12.29
+      html-to-image:
+        specifier: ^1.11.13
+        version: 1.11.13
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -943,6 +946,9 @@ packages:
     resolution: {integrity: sha512-1hNiRjawYrLq/4m3DQQjPGFg0VZkk4RjQJDff/excI6Dm9BiL75qxGrd7/c6YOxPdq6AscP3LiXhQ6fKFC1Waw==}
     engines: {node: '>=16.9.0'}
 
+  html-to-image@1.11.13:
+    resolution: {integrity: sha512-cuOPoI7WApyhBElTTb9oqsawRvZ0rHhaHwghRLlTuffoD1B2aDemlCruLeZrUIIdvG7gs9xeELEPm6PhuASqrg==}
+
   is-arrayish@0.3.4:
     resolution: {integrity: sha512-m6UrgzFVUYawGBh1dUsWR5M2Clqic9RVXC/9f8ceNlv2IcO9j9J/z8UoCLPqtsPBFNzEpfR3xftohbfqDx8EQA==}
 
@@ -1822,6 +1828,8 @@ snapshots:
   glob-to-regexp@0.4.1: {}
 
   hono@4.12.29: {}
+
+  html-to-image@1.11.13: {}
 
   is-arrayish@0.3.4:
     optional: true

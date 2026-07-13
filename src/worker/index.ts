@@ -83,12 +83,8 @@ function adminAuthed(c: import("hono").Context): boolean {
 
 const app = new Hono<{ Bindings: Env }>();
 
-// Widget loader stub (real bundle lands in P1.10; served from ASSETS / built to dist).
-app.get("/widget.js", (c) => {
-  c.header("Content-Type", "application/javascript; charset=utf-8");
-  c.header("Cache-Control", "public, max-age=300, stale-while-revalidate=86400");
-  return c.body(`// FeedbackKit widget ${VERSION} — loader stub (P1.10). See docs/ROADMAP.md\n`);
-});
+// GET /widget.js is served as a static asset from ./dist (built by build:widget,
+// P1.10) — the ASSETS binding handles it before the Worker, so no route here.
 
 // Self-check (ADR-004 / DX): converts several first-request failures into one command.
 // The base health (bindings + schema) is public. The ?project=<key> deep check

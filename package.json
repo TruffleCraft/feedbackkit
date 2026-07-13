@@ -12,7 +12,7 @@
   "scripts": {
     "materialize": "node scripts/materialize-wrangler.mjs",
     "build:widget": "node scripts/build-widget.mjs",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.widget.json",
     "test": "vitest run",
     "dev": "pnpm materialize && wrangler dev",
     "migrate:local": "wrangler d1 migrations apply feedbackkit --local",
@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "hono": "^4.6.14",
+    "html-to-image": "^1.11.13",
     "zod": "^3.24.1"
   },
   "devDependencies": {
