@@ -42,6 +42,10 @@ The spike was skipped on Michel's decision. Validating the core thesis shifts to
 
 Concrete signing spec for the P2 webhook sink (full reference: docs/WEBHOOKS.md). **HMAC-SHA256** chosen over SHA-384: ecosystem standard (GitHub/Stripe/GitLab/n8n/Zapier verify it out of the box — zero friction), and SHA-384's 64-bit-word CPU edge is nanoseconds, dwarfed ~10,000× by JSON serialization + network latency in a Worker; 256 bits is ample for webhook signatures. Scheme: sign `` `${timestamp}.${rawBody}` `` over the **raw request body** (never a re-serialized object — key ordering/whitespace would break it), header `X-FeedbackKit-Signature: t=<epoch>,v1=<hex>`, 32-byte hex per-project secret in D1, 300 s replay window, receiver uses constant-time compare with a length guard. Two active secrets during rotation. Rejected: SHA-384 (integration friction), signing parsed JSON (non-deterministic), `===` hash compare (timing attack).
 
+## ADR-011 · 2026-07-13 · Default LLM model + cost frame (resolves Q5)
+
+Default `google/gemini-2.5-flash-lite`, budget 200 calls/day. Chosen from a verified comparison (OpenRouter models API + a live smoke test of FeedbackKit's exact request shape — full table and method in [docs/MODELS.md](MODELS.md)): extraction is not a reasoning task, and flash-lite is the cheapest model that has BOTH vision (screenshots are a core input) and reliable structured output (`json_schema` returns clean JSON, not the empty content free/local tiers produce), at ~750 ms and <$0.001/feedback. Co-recommendation `openai/gpt-5-nano` (effectively tied). Privacy/local default `mistralai/mistral-small-3.2-24b` (vision + structured + open weights, self-hostable). Rejected the counter-position "no default, force operator to choose": a sensible cheap default with a documented budget cap serves the ≤15 min TTHW goal better than a blank field, and the cost is transparent (QUICKSTART + MODELS.md). The model stays operator config — this is only the seed/QUICKSTART default. `structuredOutput` flag (default true; off for endpoints without strict-schema support) added to the LLM client so the local-model story (ADR-007) actually works.
+
 ---
 
 # Open questions (not yet decided)
@@ -56,6 +60,5 @@ resolved (workflow in CONTRIBUTING.md). Decide at the noted milestone.
 | Q2 | Admin UI stack | Preact SPA (Vite) — theming preview + funnel dashboard need interactivity | server-rendered Hono templates — no frontend build | P2 start |
 | Q3 | P4 provider order | GitLab → Jira → Trello (GitLab cheapest, privacy audience) | Jira first (highest team value) | P4 gate fires |
 | Q4 | VOS auth | generic trusted-submitter hook (signed header) | keep VOS Supabase-JWT as a special case | P3 (VOS migration) |
-| Q5 | LLM default model + budget | OpenRouter gemini-flash class, ~1 call/feedback, 200 calls/day cap | no default — force operator to choose (avoids surprise cost) | P1 (LLM block) |
 | Q6 | Final name | keep "feedbackkit" (rename free until announce, ADR-001) | rename to a free-everywhere name (e.g. feedbridge) before branding sticks | before P2 exit |
 | Q7 | Update-path default | fork + Workers Builds ("Sync fork" = update) | clone + CLI as default if the fork→migration path proves fragile | P1 exit (real test decides) |
