@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": []
+  },
+  "include": ["src/widget/**/*.ts", "src/shared/contract.ts", "test/widget.test.ts"],
+  "exclude": ["node_modules", "dist", ".wrangler"]
+}
