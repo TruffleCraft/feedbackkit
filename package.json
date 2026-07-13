@@ -14,6 +14,8 @@
     "build:widget": "node scripts/build-widget.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.widget.json",
     "test": "vitest run",
+    "e2e": "pnpm build:widget && playwright test",
+    "check:bundle": "node scripts/check-bundle.mjs",
     "dev": "pnpm materialize && wrangler dev",
     "migrate:local": "wrangler d1 migrations apply feedbackkit --local",
     "migrate:remote": "wrangler d1 migrations apply feedbackkit --remote",
@@ -27,6 +29,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250110.0",
+    "@playwright/test": "^1.61.1",
     "esbuild": "^0.24.2",
     "typescript": "^5.7.3",
     "vitest": "^2.1.8",
