@@ -1,0 +1,5 @@
+# Copy to .dev.vars for `wrangler dev` (gitignored). Local dev uses mock LLM/GitHub
+# where possible; these are only needed for live-key smoke tests.
+ADMIN_TOKEN="dev-admin-token"
+GITHUB_PAT_default=""
+LLM_API_KEY=""
