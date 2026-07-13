@@ -88,6 +88,31 @@ describe("classifyAndExtract", () => {
     expect(r.extracted.actual).toBe(german);
   });
 
+  it("tolerates a ```json fenced response (common when structured output is off)", async () => {
+    const r = await classifyAndExtract({
+      config,
+      template: bug,
+      message: "…",
+      apiKey: "k",
+      chat: mockChat('```json\n{"type":"bug","summary":"s","repro":"x","expected":"y","actual":"z"}\n```'),
+    });
+    expect(r.degraded).toBe(false);
+    expect(r.extracted.actual).toBe("z");
+    expect(r.missing).toEqual([]);
+  });
+
+  it("omits response_format when structuredOutput is false (for endpoints that don't support it)", async () => {
+    const off = FeedbackConfig.parse({ ...JSON.parse(JSON.stringify(config)), llm: { provider: "custom", model: "local", baseUrl: "http://localhost:11434/v1", structuredOutput: false } });
+    let seenBody = "";
+    const capture: ChatFn = async (req) => {
+      seenBody = (req as { init: { body: string } }).init.body;
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{"type":"bug","summary":"s","repro":"a","expected":"b","actual":"c"}' } }] }), { status: 200 });
+    };
+    const r = await classifyAndExtract({ config: off, template: off.templates[0]!, message: "…", apiKey: "k", chat: capture });
+    expect(JSON.parse(seenBody).response_format).toBeUndefined();
+    expect(r.degraded).toBe(false);
+  });
+
   it("passes provider data_collection:deny only for openrouter", async () => {
     let seenBody = "";
     const capture: ChatFn = async (req) => {

@@ -59,6 +59,11 @@ export const FeedbackConfig = z.object({
     model: z.string().default(""),
     baseUrl: z.string().url().optional(),
     dailyBudget: z.number().int().positive().default(200),
+    // Send OpenAI `response_format: json_schema`. Many free/local endpoints
+    // (Ollama, vLLM, free OpenRouter tiers) don't honor strict schema and return
+    // EMPTY content when it's forced — set false there and rely on the prompt +
+    // fence-tolerant parse instead (ADR-007/008).
+    structuredOutput: z.boolean().default(true),
   }),
   tracker: z.object({
     kind: z.literal("github"),

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
-import { WIRE_VERSION, SCHEMA_VERSION } from "../shared/contract.js";
+import { WIRE_VERSION, SCHEMA_VERSION, FeedbackPayload, EventPayload } from "../shared/contract.js";
 import { toPublicConfig } from "../shared/projection.js";
+import { orchestrateFeedback, realChat } from "./orchestrate.js";
 import { checkSchema } from "./db.js";
 import { loadProject } from "./config.js";
 import { originAllowed } from "./security/origin.js";
@@ -299,9 +300,95 @@ app.delete("/api/admin/assets", async (c) => {
   return c.json({ v: WIRE_VERSION, deleted });
 });
 
+// Feedback orchestration (P1.9) — the core 2-POST loop. Cross-origin (JSON body
+// triggers preflight); gate + reflect like the other public endpoints.
+app.options("/api/feedback", (c) => {
+  const origin = c.req.header("Origin");
+  if (origin) {
+    c.header("Access-Control-Allow-Origin", origin);
+    c.header("Vary", "Origin");
+    c.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    c.header("Access-Control-Allow-Headers", "Content-Type");
+    c.header("Access-Control-Max-Age", "3600");
+  }
+  return c.body(null, 204);
+});
+
+app.post("/api/feedback", async (c) => {
+  const key = c.req.query("project");
+  if (!key) return c.json({ v: WIRE_VERSION, status: "error", error: "missing ?project" }, 400);
+
+  let raw: unknown;
+  try {
+    raw = await c.req.json();
+  } catch {
+    return c.json({ v: WIRE_VERSION, status: "error", error: "invalid json" }, 400);
+  }
+  // Honeypot: a filled trap field gets a plausible fake success — never reveal it.
+  if (raw && typeof raw === "object" && typeof (raw as { hpField?: unknown }).hpField === "string" && (raw as { hpField: string }).hpField.length > 0) {
+    return c.json({ v: WIRE_VERSION, status: "created", id: crypto.randomUUID() });
+  }
+  const parsed = FeedbackPayload.safeParse(raw);
+  if (!parsed.success) return c.json({ v: WIRE_VERSION, status: "error", error: "invalid payload" }, 400);
+
+  let loaded;
+  try {
+    loaded = await loadProject(c.env, key);
+  } catch (e) {
+    if (e instanceof ConfigError) {
+      console.warn(`[feedbackkit] ${e.message}`);
+      return c.json({ v: WIRE_VERSION, status: "error", error: "project misconfigured" }, 500);
+    }
+    throw e;
+  }
+  if (!loaded) return c.json({ v: WIRE_VERSION, status: "error", error: "unknown project" }, 404);
+
+  const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
+  const rl = await hitRateLimit(c.env, `fb:${ip}`, hourWindow(), loaded.config.rateLimit.perHour);
+  if (!rl.allowed) return c.json({ v: WIRE_VERSION, status: "error", error: "rate limited" }, 429);
+
+  const origin = c.req.header("Origin");
+  if (origin && !originAllowed(origin, loaded.config.auth.origins)) {
+    return c.json({ v: WIRE_VERSION, status: "error", error: "origin not allowed" }, 403);
+  }
+  if (origin) {
+    c.header("Access-Control-Allow-Origin", origin);
+    c.header("Vary", "Origin");
+  }
+
+  if (!loaded.config.enabled) return c.json({ v: WIRE_VERSION, status: "error", error: "feedback disabled" }, 403);
+
+  const apiKey = c.env["LLM_API_KEY"] as string | undefined;
+  const result = await orchestrateFeedback(c.env, loaded, parsed.data, { apiKey, chat: realChat });
+  return c.json(result.body, result.http as 200 | 400);
+});
+
+// Funnel events (P1.9): enum-only, fire-and-forget beacon. Never content, never
+// IP; always 204 so a bad beacon can't surface an error to the page.
+app.post("/api/events", async (c) => {
+  let raw: unknown;
+  try {
+    raw = await c.req.json();
+  } catch {
+    return c.body(null, 204);
+  }
+  const parsed = EventPayload.safeParse(raw);
+  if (parsed.success) {
+    try {
+      const loaded = await loadProject(c.env, parsed.data.project);
+      if (loaded) {
+        await c.env.DB.prepare("INSERT INTO events (project_id, name, ts) VALUES (?1, ?2, ?3)")
+          .bind(loaded.config.projectId, parsed.data.name, Date.now())
+          .run();
+      }
+    } catch {
+      /* fire-and-forget: never block or error the page */
+    }
+  }
+  return c.body(null, 204);
+});
+
 // Honest stubs — each names the milestone that builds it.
-app.post("/api/feedback", notImplemented("P1.9"));
-app.post("/api/events", notImplemented("P1.9"));
 app.get("/t/:key", notImplemented("P1.11"));
 app.all("/api/admin/*", notImplemented("P2"));
 
