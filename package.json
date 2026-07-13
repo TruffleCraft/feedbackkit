@@ -5,8 +5,9 @@
   "type": "module",
   "description": "Self-hosted feedback gateway — complete-at-the-source user feedback to structured, agent-ready GitHub issues.",
   "license": "MIT",
+  "packageManager": "pnpm@11.5.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "materialize": "node scripts/materialize-wrangler.mjs",
