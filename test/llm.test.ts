@@ -101,6 +101,13 @@ describe("classifyAndExtract", () => {
     expect(r.missing).toEqual([]);
   });
 
+  it("does not corrupt raw JSON whose string value contains a ``` fence", async () => {
+    const content = JSON.stringify({ type: "bug", summary: "s", repro: "run ```npm test``` then click", expected: "y", actual: "z" });
+    const r = await classifyAndExtract({ config, template: bug, message: "…", apiKey: "k", chat: mockChat(content) });
+    expect(r.degraded).toBe(false);
+    expect(r.extracted.repro).toBe("run ```npm test``` then click");
+  });
+
   it("omits response_format when structuredOutput is false (for endpoints that don't support it)", async () => {
     const off = FeedbackConfig.parse({ ...JSON.parse(JSON.stringify(config)), llm: { provider: "custom", model: "local", baseUrl: "http://localhost:11434/v1", structuredOutput: false } });
     let seenBody = "";

@@ -37,7 +37,7 @@ const payload = (over: Record<string, unknown> = {}) =>
   FeedbackPayload.parse({ v: 1, feedbackId: UUID, type: "bug", message: "Speichern kaputt", pageUrl: "https://acme.dev", ...over });
 
 // Stateful D1 fake: dedup replay + records feedback/dedup writes.
-function fakeDb(opts: { dedupThrows?: boolean } = {}) {
+function fakeDb(opts: { dedupThrows?: boolean; counterCount?: number } = {}) {
   const dedup = new Map<string, string>();
   const feedback: Array<{ id: unknown; outcome: unknown; issueUrl: unknown }> = [];
   const db = {
@@ -49,6 +49,7 @@ function fakeDb(opts: { dedupThrows?: boolean } = {}) {
           return stmt;
         },
         first: async () => {
+          if (sql.includes("counters")) return { count: opts.counterCount ?? 1 }; // rate-limit/budget upsert RETURNING
           if (sql.includes("FROM dedup")) {
             if (opts.dedupThrows) throw new Error("D1 down");
             const r = dedup.get(String(params[0]));
@@ -136,6 +137,16 @@ describe("orchestrateFeedback — POST-1", () => {
     const db = fakeDb();
     const gh = ghCapture();
     const r = await orchestrateFeedback(env(db.db), loaded(), payload(), { chat: chatMustNotRun, fetchImpl: gh.fetchImpl });
+    expect(r.body.status).toBe("need_fields");
+    expect((r.body as { missing: string[] }).missing.sort()).toEqual(["actual", "expected", "repro"]);
+    expect(gh.calls).toHaveLength(0);
+  });
+
+  it("over the daily LLM budget → required-field mode, no LLM call", async () => {
+    const cfg = baseConfig({ llm: { provider: "openrouter", model: "m", dailyBudget: 1 } });
+    const db = fakeDb({ counterCount: 5 }); // budget counter already past 1
+    const gh = ghCapture();
+    const r = await orchestrateFeedback(env(db.db), loaded(cfg), payload(), { apiKey: "k", chat: chatMustNotRun, fetchImpl: gh.fetchImpl });
     expect(r.body.status).toBe("need_fields");
     expect((r.body as { missing: string[] }).missing.sort()).toEqual(["actual", "expected", "repro"]);
     expect(gh.calls).toHaveLength(0);

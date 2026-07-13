@@ -142,7 +142,13 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(stripFence(raw));
+    // Try raw first so valid JSON containing a ``` inside a string value isn't
+    // corrupted by the fence-stripper; only strip fences if raw parse fails.
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = JSON.parse(stripFence(raw));
+    }
   } catch {
     return degraded(template, "llm returned non-JSON");
   }

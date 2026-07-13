@@ -46,6 +46,21 @@ async function readBounded(stream: ReadableStream<Uint8Array> | null, max: numbe
   return out;
 }
 
+// Sane body ceilings for the JSON endpoints (schema field-caps bound the useful
+// size; this stops a huge body being parsed into memory before Zod runs).
+const MAX_FEEDBACK_BYTES = 512 * 1024;
+const MAX_EVENT_BYTES = 4 * 1024;
+
+async function readJsonBounded(c: import("hono").Context, max: number): Promise<{ ok: true; value: unknown } | { ok: false; tooLarge: boolean }> {
+  const read = await readBounded(c.req.raw.body, max);
+  if (read === "too_large") return { ok: false, tooLarge: true };
+  try {
+    return { ok: true, value: JSON.parse(new TextDecoder().decode(read)) };
+  } catch {
+    return { ok: false, tooLarge: false };
+  }
+}
+
 export const VERSION = "0.0.0";
 
 // Length-independent compare for the admin token (avoids leaking a match via
@@ -318,12 +333,9 @@ app.post("/api/feedback", async (c) => {
   const key = c.req.query("project");
   if (!key) return c.json({ v: WIRE_VERSION, status: "error", error: "missing ?project" }, 400);
 
-  let raw: unknown;
-  try {
-    raw = await c.req.json();
-  } catch {
-    return c.json({ v: WIRE_VERSION, status: "error", error: "invalid json" }, 400);
-  }
+  const body = await readJsonBounded(c, MAX_FEEDBACK_BYTES);
+  if (!body.ok) return c.json({ v: WIRE_VERSION, status: "error", error: body.tooLarge ? "payload too large" : "invalid json" }, body.tooLarge ? 413 : 400);
+  const raw = body.value;
   // Honeypot: a filled trap field gets a plausible fake success — never reveal it.
   if (raw && typeof raw === "object" && typeof (raw as { hpField?: unknown }).hpField === "string" && (raw as { hpField: string }).hpField.length > 0) {
     return c.json({ v: WIRE_VERSION, status: "created", id: crypto.randomUUID() });
@@ -339,7 +351,10 @@ app.post("/api/feedback", async (c) => {
       console.warn(`[feedbackkit] ${e.message}`);
       return c.json({ v: WIRE_VERSION, status: "error", error: "project misconfigured" }, 500);
     }
-    throw e;
+    // D1 read failed (not a config problem) → retryable; the client keeps the
+    // unsent feedback, so nothing is lost — 503 tells it to retry.
+    console.error(`[feedbackkit] loadProject failed: ${(e as Error).message}`);
+    return c.json({ v: WIRE_VERSION, status: "error", error: "temporarily unavailable" }, 503);
   }
   if (!loaded) return c.json({ v: WIRE_VERSION, status: "error", error: "unknown project" }, 404);
 
@@ -359,20 +374,40 @@ app.post("/api/feedback", async (c) => {
   if (!loaded.config.enabled) return c.json({ v: WIRE_VERSION, status: "error", error: "feedback disabled" }, 403);
 
   const apiKey = c.env["LLM_API_KEY"] as string | undefined;
-  const result = await orchestrateFeedback(c.env, loaded, parsed.data, { apiKey, chat: realChat });
-  return c.json(result.body, result.http as 200 | 400);
+  try {
+    const result = await orchestrateFeedback(c.env, loaded, parsed.data, { apiKey, chat: realChat });
+    return c.json(result.body, result.http as 200 | 400);
+  } catch (e) {
+    // orchestrate is built never to throw; if it ever does, return a terminal
+    // issue_failed (client keeps the feedback) — never a bare 500.
+    console.error(`[feedbackkit] orchestrate crashed: ${(e as Error).message}`);
+    return c.json({ v: WIRE_VERSION, status: "issue_failed", id: parsed.data.feedbackId, reason: "internal error" });
+  }
+});
+
+app.options("/api/events", (c) => {
+  const origin = c.req.header("Origin");
+  if (origin) {
+    c.header("Access-Control-Allow-Origin", origin);
+    c.header("Vary", "Origin");
+    c.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    c.header("Access-Control-Allow-Headers", "Content-Type");
+    c.header("Access-Control-Max-Age", "3600");
+  }
+  return c.body(null, 204);
 });
 
 // Funnel events (P1.9): enum-only, fire-and-forget beacon. Never content, never
-// IP; always 204 so a bad beacon can't surface an error to the page.
+// IP; always 204 so a bad beacon can't surface an error to the page. Per-IP
+// throttled and bounded (an anonymous endpoint that writes D1 + resolves an
+// arbitrary project key is otherwise a flood + cache-amplification surface).
 app.post("/api/events", async (c) => {
-  let raw: unknown;
-  try {
-    raw = await c.req.json();
-  } catch {
-    return c.body(null, 204);
-  }
-  const parsed = EventPayload.safeParse(raw);
+  const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
+  const rl = await hitRateLimit(c.env, `ev:${ip}`, hourWindow(), 600);
+  if (!rl.allowed) return c.body(null, 204); // silently drop
+  const body = await readJsonBounded(c, MAX_EVENT_BYTES);
+  if (!body.ok) return c.body(null, 204);
+  const parsed = EventPayload.safeParse(body.value);
   if (parsed.success) {
     try {
       const loaded = await loadProject(c.env, parsed.data.project);

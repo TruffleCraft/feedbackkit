@@ -221,6 +221,12 @@ describe("POST /api/feedback (route wiring)", () => {
     expect(res.status).toBe(400);
   });
 
+  it("413s an oversized feedback body (bounded read, before Zod)", async () => {
+    const big = JSON.stringify({ v: 1, feedbackId: FID, pageUrl: "https://acme.dev", message: "x".repeat(600_000) });
+    const res = await app.request("/api/feedback?project=fk_pub_x", { method: "POST", body: big }, env(projectRow));
+    expect(res.status).toBe(413);
+  });
+
   it("with no LLM key, runs required-field mode → need_fields (no network)", async () => {
     const res = await app.request("/api/feedback?project=fk_pub_x", { method: "POST", body: fbPayload() }, env(projectRow));
     expect(res.status).toBe(200);

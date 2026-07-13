@@ -38,3 +38,8 @@ export async function hitRateLimit(
 export function hourWindow(now = Date.now()): number {
   return Math.floor(now / 3_600_000) * 3600;
 }
+
+// Current UTC-day bucket (day number since epoch) — for the LLM daily budget cap.
+export function dayWindow(now = Date.now()): number {
+  return Math.floor(now / 86_400_000);
+}

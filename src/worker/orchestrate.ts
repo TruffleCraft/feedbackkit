@@ -3,6 +3,7 @@ import { classifyAndExtract, type ChatFn } from "./llm/client.js";
 import { createIssue, TrackerError, type FetchFn } from "./providers/github.js";
 import { deriveTitle, renderIssueBody, type RenderContext } from "../shared/render.js";
 import { publicUrl } from "./storage/r2.js";
+import { hitRateLimit, dayWindow } from "./security/ratelimit.js";
 import type { LoadedProject } from "./config.js";
 import type { Env } from "./env.js";
 
@@ -59,6 +60,11 @@ export async function orchestrateFeedback(
 
   // Idempotency: replay a stored TERMINAL response (created/accepted_incomplete).
   // A D1 read failure here is a create-anyway signal, not a blocker.
+  // Deliberate tradeoff: dedup is check-then-act (store happens AFTER createIssue),
+  // so two *concurrent* identical feedbackId POSTs can both create an issue. We
+  // choose never-lose over never-duplicate — a rare duplicate issue is a lighter
+  // failure than a dropped submission, and GitHub has no idempotency key. The
+  // common serial retry (client resends after a slow/failed response) IS caught.
   const dg = await dedupGet(env, payload.feedbackId);
   if (dg.resp) return { http: 200, body: dg.resp };
   const d1Degraded = dg.degraded;
@@ -71,15 +77,21 @@ export async function orchestrateFeedback(
 
   // ── POST-1: extract, then either ask or create ──────────────────────────────
   if (!isCompletion) {
-    const llmOff = config.llm.provider === "off" || !deps.apiKey;
+    const llmConfigured = config.llm.provider !== "off" && !!deps.apiKey;
+    // Daily budget cap: a public + LLM endpoint is a cost-abuse surface. Once the
+    // project's dailyBudget is spent, fall back to required-field mode for the
+    // rest of the UTC day (never blocks — the widget just shows the base form).
+    // The counter is only touched when we're actually about to call the LLM.
+    const withinBudget = llmConfigured
+      ? (await hitRateLimit(env, `llm:${config.projectId}`, dayWindow(now), config.llm.dailyBudget)).allowed
+      : false;
+    const useLlm = llmConfigured && withinBudget;
+
     let extracted: Record<string, string> = {};
     let missing: string[];
     let degraded = false;
 
-    if (llmOff) {
-      // Kill-switch or no key → required-field mode: ask directly, no LLM.
-      missing = requiredAskable(template).map((f) => f.key);
-    } else {
+    if (useLlm) {
       const result = await classifyAndExtract({
         config,
         template,
@@ -91,6 +103,9 @@ export async function orchestrateFeedback(
       extracted = result.extracted;
       missing = result.missing;
       degraded = result.degraded;
+    } else {
+      // Kill-switch, no key, or budget exhausted → required-field mode (no LLM).
+      missing = requiredAskable(template).map((f) => f.key);
     }
 
     if (degraded) {
@@ -106,7 +121,7 @@ export async function orchestrateFeedback(
     }
 
     // Too many to reasonably ask → create-anyway (if allowed) instead of a wall of questions.
-    if (!llmOff && missing.length > FIELD_CEILING && config.createAnyway.onIncomplete) {
+    if (useLlm && missing.length > FIELD_CEILING && config.createAnyway.onIncomplete) {
       return finalizeCreate(env, loaded, payload, template, { fields: extracted, degraded: false, incomplete: true, d1Degraded, now, newId, fetchImpl: deps.fetchImpl });
     }
     return { http: 200, body: { v: WIRE_VERSION, status: "need_fields", missing, extracted } };
