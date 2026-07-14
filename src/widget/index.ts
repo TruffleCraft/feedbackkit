@@ -74,7 +74,7 @@ async function boot() {
       gen++; // abandon any in-flight attempt
       dispatch({ t: "close" });
     },
-    onSubmit: (type, text) => void submit(type, text),
+    onSubmit: (type, text, screenshot) => void submit(type, text, screenshot),
     onSendNow: () => {
       bailed = true;
       dispatch({ t: "sendNow" }, () => api.event("sent_anyway"));
@@ -97,7 +97,7 @@ async function boot() {
     slowTimer = undefined;
   }
 
-  async function submit(type: string, text: string) {
+  async function submit(type: string, text: string, screenshot: boolean) {
     const myGen = ++gen; // this attempt's token; a later submit/close bumps gen and invalidates us
     bailed = false;
     dispatch({ t: "submit" }, () => api.event("submitted"));
@@ -108,15 +108,17 @@ async function boot() {
 
     try {
       feedbackId = uuid();
-      // Screenshot (best-effort, time-boxed) → upload → key. Vision is a core
-      // input, but a slow/hung capture must never wedge the send.
+      // Screenshot (opt-out via the form checkbox; best-effort + time-boxed so a
+      // slow/hung capture never wedges the send).
       const attachmentKeys: string[] = [];
-      const shot = await Promise.race([captureScreenshot({ skip: host }), new Promise<null>((r) => setTimeout(() => r(null), 3000))]);
-      if (myGen !== gen) return; // superseded/closed while capturing
-      if (shot) {
-        const key = await api.uploadScreenshot(feedbackId, shot);
-        if (myGen !== gen) return;
-        if (key) attachmentKeys.push(key);
+      if (screenshot) {
+        const shot = await Promise.race([captureScreenshot({ skip: host }), new Promise<null>((r) => setTimeout(() => r(null), 3000))]);
+        if (myGen !== gen) return; // superseded/closed while capturing
+        if (shot) {
+          const key = await api.uploadScreenshot(feedbackId, shot);
+          if (myGen !== gen) return;
+          if (key) attachmentKeys.push(key);
+        }
       }
       base1 = {
         v: 1,

@@ -28,11 +28,12 @@ export const STYLES = `
   box-shadow: var(--fk-shadow);
 }
 .fk-trigger:focus-visible { outline: 3px solid var(--fk-primary); outline-offset: 2px; }
+/* Anchor the panel to the corner the trigger sits in (bottom-right) so it opens
+   where the button was, on every viewport — not a centered modal. */
 .fk-backdrop {
-  position: fixed; inset: 0; background: rgba(0,0,0,.35);
-  display: flex; align-items: flex-end; justify-content: flex-end; padding: 16px;
+  position: fixed; inset: 0; background: rgba(0,0,0,.2);
+  display: flex; align-items: flex-end; justify-content: flex-end; padding: 20px;
 }
-@media (min-width: 480px) { .fk-backdrop { align-items: center; } }
 .fk-panel {
   font-family: var(--fk-font); color: var(--fk-text); background: var(--fk-bg);
   width: 100%; max-width: 400px; max-height: min(90dvh, 640px); overflow: auto;
@@ -54,6 +55,8 @@ textarea.fk-input, input.fk-input {
 }
 textarea.fk-input { min-height: 96px; }
 .fk-input:focus-visible { outline: 2px solid var(--fk-primary); outline-offset: 1px; }
+.fk-check { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; color: var(--fk-muted); cursor: pointer; }
+.fk-check-input { width: 16px; height: 16px; accent-color: var(--fk-primary); flex: none; }
 .fk-actions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
 .fk-btn {
   background: var(--fk-primary); color: var(--fk-primary-contrast); border: 0;
