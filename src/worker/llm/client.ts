@@ -13,6 +13,9 @@ export interface ExtractionResult {
   /** Required field keys the LLM could not fill. */
   missing: string[];
   summary?: string;
+  /** ONE short natural-language follow-up question for the missing info (ADR-012),
+   * in the user's language; empty when nothing required is missing. */
+  followUpQuestion?: string;
   /** True if the LLM call/parse failed — caller must fall back, never block. */
   degraded: boolean;
   degradeReason?: string;
@@ -26,6 +29,7 @@ const SYSTEM_PROMPT = [
   "Keep values in the user's original language — never translate.",
   "Prefer verbatim spans; a short same-language paraphrase is allowed.",
   "Return JSON only, matching the requested schema. Leave a field as an empty string if the user did not provide it.",
+  "followUpQuestion: if any REQUIRED field is empty, write ONE short, friendly question (in the user's language) asking for the most important missing info — combine multiple missing items into a single natural question. If nothing required is missing, use an empty string.",
 ].join(" ");
 
 // Models commonly wrap JSON in a ```json … ``` fence even when asked not to.
@@ -50,6 +54,7 @@ function buildSchema(template: TemplateDefinition, allTypes: string[]) {
   const properties: Record<string, unknown> = {
     type: { type: "string", enum: allTypes },
     summary: { type: "string" },
+    followUpQuestion: { type: "string" },
   };
   for (const f of template.fields) {
     properties[f.key] =
@@ -63,7 +68,7 @@ function buildSchema(template: TemplateDefinition, allTypes: string[]) {
     schema: {
       type: "object",
       additionalProperties: false,
-      required: ["type", "summary", ...template.fields.map((f) => f.key)],
+      required: ["type", "summary", "followUpQuestion", ...template.fields.map((f) => f.key)],
       properties,
     },
   };
@@ -87,7 +92,7 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
     .map((f) => `- ${f.key} (${labelText(f.label, config.locale)})${f.extractionHint ? `: ${f.extractionHint}` : ""}`)
     .join("\n");
   // Naming the exact key set helps models that run WITHOUT json_schema (below).
-  const keyList = ["type", "summary", ...template.fields.map((f) => f.key)].join(", ");
+  const keyList = ["type", "summary", "followUpQuestion", ...template.fields.map((f) => f.key)].join(", ");
   const userText = `Feedback type: ${template.type}\nFields to extract:\n${fieldLines}\n\nReturn a JSON object with exactly these keys: ${keyList}.\n\nUser feedback:\n${message}`;
 
   const content: unknown = screenshotDataUrl
@@ -168,8 +173,9 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
   const missing = template.fields.filter((f) => f.required && f.askIfMissing && !extracted[f.key]).map((f) => f.key);
   const typeVal = typeof obj["type"] === "string" && allTypes.includes(obj["type"] as string) ? (obj["type"] as string) : undefined;
   const summary = typeof obj["summary"] === "string" ? (obj["summary"] as string).trim() : undefined;
+  const followUpQuestion = typeof obj["followUpQuestion"] === "string" ? (obj["followUpQuestion"] as string).trim() : undefined;
 
-  return { type: typeVal, extracted, missing, summary, degraded: false };
+  return { type: typeVal, extracted, missing, summary, followUpQuestion, degraded: false };
 }
 
 function degraded(template: TemplateDefinition, reason: string): ExtractionResult {

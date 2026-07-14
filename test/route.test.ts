@@ -227,12 +227,12 @@ describe("POST /api/feedback (route wiring)", () => {
     expect(res.status).toBe(413);
   });
 
-  it("with no LLM key, runs required-field mode → need_fields (no network)", async () => {
+  it("with no LLM key, asks a fallback follow-up question (no network)", async () => {
     const res = await app.request("/api/feedback?project=fk_pub_x", { method: "POST", body: fbPayload() }, env(projectRow));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { status: string; missing: string[] };
-    expect(body.status).toBe("need_fields");
-    expect(body.missing).toEqual(["repro"]);
+    const body = (await res.json()) as { status: string; question: string };
+    expect(body.status).toBe("follow_up");
+    expect(body.question).toBeTruthy();
   });
 });
 

@@ -98,7 +98,7 @@ describe("state machine", () => {
   });
   it("maps responses to states", () => {
     const ex: WidgetState = { name: "extracting", sendNow: false };
-    expect(reduce(ex, { t: "response", res: { v: 1, status: "need_fields", missing: ["a"], extracted: { b: "x" } } })).toEqual({ name: "completing", missing: ["a"], values: { b: "x" } });
+    expect(reduce(ex, { t: "response", res: { v: 1, status: "follow_up", question: "Was hast du erwartet?", extracted: { b: "x" } } })).toEqual({ name: "asking", question: "Was hast du erwartet?", extracted: { b: "x" } });
     expect(reduce(ex, { t: "response", res: { v: 1, status: "created", id: "1", issueUrl: "u" } })).toEqual({ name: "done", issueUrl: "u", soft: false });
     expect(reduce(ex, { t: "response", res: { v: 1, status: "accepted_incomplete", id: "1", issueUrl: "u" } })).toEqual({ name: "done", issueUrl: "u", soft: true });
     expect(reduce(ex, { t: "response", res: { v: 1, status: "issue_failed", id: "1", reason: "r" } })).toEqual({ name: "done", soft: true });
@@ -106,11 +106,11 @@ describe("state machine", () => {
     // A non-conforming response must not produce an undefined state (render crash).
     expect(reduce(ex, { t: "response", res: { v: 1, status: "weird" } as unknown as FeedbackResponse })).toEqual({ name: "failed", reason: "unexpected response" });
   });
-  it("ignores a response when no call is in flight; completing → submitting; retry → form", () => {
+  it("ignores a response when no call is in flight; asking → submitting; retry → form", () => {
     const form: WidgetState = { name: "form", type: "bug", text: "" };
     expect(reduce(form, { t: "response", res: { v: 1, status: "created", id: "1" } })).toBe(form);
-    const comp: WidgetState = { name: "completing", missing: [], values: {} };
-    expect(reduce(comp, { t: "completeSubmit" })).toEqual({ name: "submitting" });
+    const asking: WidgetState = { name: "asking", question: "q", extracted: {} };
+    expect(reduce(asking, { t: "answer" })).toEqual({ name: "submitting" });
     expect(reduce({ name: "failed", reason: "x" }, { t: "retry" })).toEqual({ name: "form", type: "", text: "" });
   });
 });

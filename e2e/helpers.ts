@@ -35,7 +35,7 @@ export async function installMocks(page: Page, opts: { config?: Res; post1: Res;
     } catch {
       /* no body */
     }
-    const isPost2 = body && typeof body === "object" && body["fields"] !== undefined;
+    const isPost2 = body && typeof body === "object" && body["followUpText"] !== undefined;
     const res = isPost2 ? (opts.post2 ?? { v: 1, status: "created", id: "2", issueUrl: "https://github.com/acme/site/issues/2" }) : opts.post1;
     r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(res) });
   });

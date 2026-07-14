@@ -9,10 +9,10 @@ type Key =
   | "textPlaceholder"
   | "send"
   | "attachScreenshot"
+  | "attachFile"
   | "analyzing"
   | "sendNow"
-  | "almostDone"
-  | "autoDetected"
+  | "followUpPlaceholder"
   | "sendAnyway"
   | "doneTitle"
   | "doneMsg"
@@ -20,19 +20,19 @@ type Key =
   | "failed"
   | "retry";
 
-const STR: Record<Locale, Record<Exclude<Key, "almostDone">, string> & { almostDone: (n: number) => string }> = {
+const STR: Record<Locale, Record<Key, string>> = {
   en: {
     trigger: "Feedback",
     title: "Send feedback",
     close: "Close",
-    textLabel: "What happened?",
-    textPlaceholder: "Describe it like you'd tell a colleague…",
+    textLabel: "What's on your mind?",
+    textPlaceholder: "Tell us anything — a bug, an idea, something that felt off…",
     send: "Send",
     attachScreenshot: "Attach a screenshot of this page",
+    attachFile: "Attach a file",
     analyzing: "Analyzing…",
     sendNow: "Send now",
-    almostDone: (n) => `Almost done — ${n} detail${n === 1 ? "" : "s"} missing`,
-    autoDetected: "auto-detected",
+    followUpPlaceholder: "Your answer…",
     sendAnyway: "Send anyway",
     doneTitle: "Thanks!",
     doneMsg: "Your feedback was received.",
@@ -44,14 +44,14 @@ const STR: Record<Locale, Record<Exclude<Key, "almostDone">, string> & { almostD
     trigger: "Feedback",
     title: "Feedback geben",
     close: "Schließen",
-    textLabel: "Was ist passiert?",
-    textPlaceholder: "Beschreibe es, als würdest du es einem Kollegen erzählen…",
+    textLabel: "Was möchtest du uns sagen?",
+    textPlaceholder: "Sag uns alles — ein Bug, eine Idee, etwas das sich falsch angefühlt hat…",
     send: "Senden",
     attachScreenshot: "Screenshot dieser Seite anhängen",
+    attachFile: "Datei anhängen",
     analyzing: "Wird analysiert…",
     sendNow: "Jetzt senden",
-    almostDone: (n) => `Fast fertig — noch ${n} Angabe${n === 1 ? "" : "n"}`,
-    autoDetected: "automatisch erkannt",
+    followUpPlaceholder: "Deine Antwort…",
     sendAnyway: "Trotzdem senden",
     doneTitle: "Danke!",
     doneMsg: "Dein Feedback ist angekommen.",
@@ -61,8 +61,6 @@ const STR: Record<Locale, Record<Exclude<Key, "almostDone">, string> & { almostD
   },
 };
 
-export function t(locale: Locale, key: Key, n = 0): string {
-  const table = STR[locale] ?? STR.en;
-  const v = table[key];
-  return typeof v === "function" ? v(n) : v;
+export function t(locale: Locale, key: Key): string {
+  return (STR[locale] ?? STR.en)[key];
 }

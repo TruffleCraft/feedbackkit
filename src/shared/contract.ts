@@ -129,8 +129,8 @@ export const FeedbackPayload = z.object({
   type: z.string().optional(),
   message: z.string().max(10_000).optional(),
   pageUrl: z.string().max(2048),
-  fields: z.record(z.string().max(4000)).optional(), // 2nd POST: completed fields
-  extracted: z.record(z.string().max(4000)).optional(), // echoed back on 2nd POST — capped like fields (no size-bypass)
+  followUpText: z.string().max(4000).optional(), // 2nd POST: freetext answer to the follow-up question
+  extracted: z.record(z.string().max(4000)).optional(), // echoed back on 2nd POST — capped (no size-bypass)
   attachmentKeys: z.array(z.string()).max(5).default([]),
   deviceInfo: DeviceInfo.optional(),
   consoleErrors: z.array(ConsoleEntry).max(10).default([]),
@@ -141,7 +141,9 @@ export type FeedbackPayload = z.infer<typeof FeedbackPayload>;
 // ── Feedback response (worker → widget) ───────────────────────────────────────
 export type FeedbackResponse =
   | { v: 1; status: "created"; id: string; issueUrl?: string }
-  | { v: 1; status: "need_fields"; missing: string[]; extracted: Record<string, string> }
+  // One conversational follow-up (ADR-012): a single natural-language question,
+  // answered in freetext — not a multi-field form.
+  | { v: 1; status: "follow_up"; question: string; extracted: Record<string, string> }
   | { v: 1; status: "accepted_incomplete"; id: string; issueUrl?: string }
   | { v: 1; status: "issue_failed"; id: string; reason: string }
   | { v: 1; status: "error"; error: string; degraded?: boolean };

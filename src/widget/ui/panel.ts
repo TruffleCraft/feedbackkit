@@ -6,6 +6,7 @@ import { t, type Locale } from "./i18n.js";
 // (never innerHTML-replaces a subtree carrying user input — the re-render ban).
 // Implements the four vanilla invariants: shadowRoot focus + restore, one
 // persistent aria-live region, body-append + dvh + scroll-lock, no re-render.
+// Follow-up is a SINGLE conversational question (state `asking`), not a form.
 
 export interface UIField {
   key: string;
@@ -27,7 +28,8 @@ export interface UIHandlers {
   onClose(): void;
   onSubmit(type: string, text: string, screenshot: boolean): void;
   onSendNow(): void;
-  onComplete(type: string, values: Record<string, string>): void;
+  onComplete(type: string, answer: string): void;
+  onAttach(file: File): void;
   onRetry(): void;
 }
 
@@ -46,8 +48,11 @@ export class WidgetUI {
   private views: Record<string, HTMLElement> = {};
   private typeButtons: HTMLButtonElement[] = [];
   private textarea!: HTMLTextAreaElement;
-  private fieldsBox!: HTMLDivElement;
-  private fieldInputs = new Map<string, HTMLInputElement | HTMLTextAreaElement>();
+  private shotCheck!: HTMLInputElement;
+  private attachInput!: HTMLInputElement;
+  private attachName!: HTMLSpanElement;
+  private questionEl!: HTMLParagraphElement;
+  private answerBox!: HTMLTextAreaElement;
   private sendNowBtn!: HTMLButtonElement;
   private issueLink!: HTMLAnchorElement;
   private doneMsg!: HTMLParagraphElement;
@@ -55,7 +60,6 @@ export class WidgetUI {
   private locked = false;
   private hasOpened = false;
   private activeType = "";
-  private shotCheck!: HTMLInputElement;
 
   constructor(
     private shadow: ShadowRoot,
@@ -65,14 +69,18 @@ export class WidgetUI {
     this.build();
   }
 
-  private tr(k: Parameters<typeof t>[1], n?: number) {
-    return t(this.config.locale, k, n);
+  private tr(k: Parameters<typeof t>[1]) {
+    return t(this.config.locale, k);
   }
 
   private build() {
     this.shadow.appendChild(el("style", { textContent: STYLES }));
 
-    this.trigger = el("button", { className: "fk-trigger", type: "button", textContent: this.config.triggerLabel || this.tr("trigger") });
+    // Expanding pill trigger: icon disc + label revealed on hover/focus.
+    const triggerLabel = this.config.triggerLabel || this.tr("trigger");
+    const icon = el("span", { className: "fk-trigger-icon", textContent: "✎" });
+    const label = el("span", { className: "fk-trigger-label", textContent: triggerLabel });
+    this.trigger = el("button", { className: "fk-trigger", type: "button", ariaLabel: triggerLabel }, [icon, label]);
     this.trigger.setAttribute("aria-haspopup", "dialog");
     this.trigger.addEventListener("click", () => this.h.onOpen());
 
@@ -86,7 +94,7 @@ export class WidgetUI {
     closeBtn.addEventListener("click", () => this.h.onClose());
     const head = el("div", { className: "fk-head" }, [this.title, closeBtn]);
 
-    const panel = el("div", { className: "fk-panel", role: "dialog" }, [head, this.buildForm(), this.buildExtracting(), this.buildCompleting(), this.buildDone(), this.buildFailed()]);
+    const panel = el("div", { className: "fk-panel", role: "dialog" }, [head, this.buildForm(), this.buildExtracting(), this.buildAsking(), this.buildDone(), this.buildFailed()]);
     panel.setAttribute("aria-modal", "true");
     panel.setAttribute("aria-labelledby", "fk-title");
     panel.addEventListener("click", (e) => e.stopPropagation());
@@ -113,12 +121,25 @@ export class WidgetUI {
 
     const label = el("label", { className: "fk-label", htmlFor: "fk-text", textContent: this.tr("textLabel") });
     this.textarea = el("textarea", { className: "fk-input", id: "fk-text", placeholder: this.tr("textPlaceholder") });
-    // Visible, opt-out screenshot control (the capture is otherwise invisible).
+
+    // Media row: visible, opt-out screenshot + a simple image attach.
     this.shotCheck = el("input", { className: "fk-check-input", type: "checkbox", id: "fk-shot", checked: true });
     const shotLabel = el("label", { className: "fk-check", htmlFor: "fk-shot" }, [this.shotCheck, el("span", { textContent: this.tr("attachScreenshot") })]);
+    this.attachInput = el("input", { type: "file", accept: "image/*", hidden: true, id: "fk-file" });
+    this.attachName = el("span", { className: "fk-attach-name" });
+    const attachBtn = el("label", { className: "fk-attach", htmlFor: "fk-file" }, [el("span", { textContent: `📎 ${this.tr("attachFile")}` }), this.attachName, this.attachInput]);
+    this.attachInput.addEventListener("change", () => {
+      const f = this.attachInput.files?.[0];
+      if (f) {
+        this.attachName.textContent = f.name;
+        this.h.onAttach(f);
+      }
+    });
+    const media = el("div", { className: "fk-media" }, [shotLabel, attachBtn]);
+
     const send = el("button", { className: "fk-btn", type: "button", textContent: this.tr("send") });
     send.addEventListener("click", () => this.h.onSubmit(this.activeType, this.textarea.value.trim(), this.shotCheck.checked));
-    const view = el("div", {}, [types, label, this.textarea, shotLabel, el("div", { className: "fk-actions" }, [send])]);
+    const view = el("div", {}, [types, label, this.textarea, media, el("div", { className: "fk-actions" }, [send])]);
     this.views["form"] = view;
     return view;
   }
@@ -131,22 +152,24 @@ export class WidgetUI {
     return view;
   }
 
-  private buildCompleting(): HTMLElement {
-    const heading = el("p", { className: "fk-hint", id: "fk-completing-hint" });
-    this.fieldsBox = el("div", {});
+  // ONE conversational follow-up question + a single freetext answer (ADR-012).
+  private buildAsking(): HTMLElement {
+    this.questionEl = el("p", { className: "fk-question", id: "fk-question" });
+    this.answerBox = el("textarea", { className: "fk-input", id: "fk-answer", placeholder: this.tr("followUpPlaceholder") });
+    this.answerBox.rows = 3;
     const send = el("button", { className: "fk-btn", type: "button", textContent: this.tr("send") });
-    send.addEventListener("click", () => this.h.onComplete(this.activeType, this.collectFields()));
+    send.addEventListener("click", () => this.h.onComplete(this.activeType, this.answerBox.value.trim()));
     const anyway = el("button", { className: "fk-link", type: "button", textContent: this.tr("sendAnyway") });
-    anyway.addEventListener("click", () => this.h.onComplete(this.activeType, this.collectFields()));
-    const view = el("div", {}, [heading, this.fieldsBox, el("div", { className: "fk-actions" }, [send, anyway])]);
-    this.views["completing"] = view;
+    anyway.addEventListener("click", () => this.h.onComplete(this.activeType, "")); // skip the answer
+    const view = el("div", {}, [this.questionEl, this.answerBox, el("div", { className: "fk-actions" }, [send, anyway])]);
+    this.views["asking"] = view;
     return view;
   }
 
   private buildDone(): HTMLElement {
     this.doneMsg = el("p", { className: "fk-hint" });
     this.issueLink = el("a", { className: "fk-btn", textContent: this.tr("viewIssue"), target: "_blank", rel: "noopener noreferrer" });
-    const view = el("div", {}, [el("div", { className: "fk-done-icon", textContent: "✓" }), el("h3", { className: "fk-title", textContent: this.tr("doneTitle") }), this.doneMsg, el("div", { className: "fk-actions" }, [this.issueLink])]);
+    const view = el("div", { className: "fk-done" }, [el("div", { className: "fk-done-icon", textContent: "✓" }), el("h3", { className: "fk-title", textContent: this.tr("doneTitle") }), this.doneMsg, el("div", { className: "fk-actions", role: "group" }, [this.issueLink])]);
     this.views["done"] = view;
     return view;
   }
@@ -162,35 +185,6 @@ export class WidgetUI {
   private selectType(type: string) {
     this.activeType = type;
     this.config.types.forEach((ty, i) => this.typeButtons[i]?.setAttribute("aria-pressed", String(ty.type === type)));
-  }
-
-  private collectFields(): Record<string, string> {
-    const out: Record<string, string> = {};
-    for (const [key, input] of this.fieldInputs) {
-      const v = input.value.trim();
-      if (v) out[key] = v;
-    }
-    return out;
-  }
-
-  // Built once per need_fields response (not on keystroke).
-  private buildCompletingFields(missing: string[], values: Record<string, string>) {
-    this.fieldsBox.replaceChildren();
-    this.fieldInputs.clear();
-    const type = this.config.types.find((t2) => t2.type === this.activeType) ?? this.config.types[0];
-    const fields = type?.fields ?? [];
-    // Fall back to raw keys if the config has no matching field defs.
-    const keys = fields.length ? fields.map((f) => f.key) : Array.from(new Set([...Object.keys(values), ...missing]));
-    for (const key of keys) {
-      const def = fields.find((f) => f.key === key);
-      const label = el("label", { className: "fk-label", htmlFor: `fk-f-${key}`, textContent: def?.label ?? key });
-      if (values[key]) label.appendChild(el("span", { className: "fk-field-auto", textContent: `· ${this.tr("autoDetected")}` }));
-      const input = el("textarea", { className: "fk-input", id: `fk-f-${key}` });
-      input.rows = 2;
-      if (values[key]) input.value = values[key]!;
-      this.fieldInputs.set(key, input);
-      this.fieldsBox.append(label, input);
-    }
   }
 
   private show(name: string) {
@@ -209,11 +203,6 @@ export class WidgetUI {
       root.style.overflow = this.scrollLock;
       this.locked = false;
     }
-  }
-
-  private focusFirstMissing(missing: string[]) {
-    const key = missing.find((k) => this.fieldInputs.has(k)) ?? this.fieldInputs.keys().next().value;
-    if (key) this.fieldInputs.get(key)?.focus();
   }
 
   render(state: WidgetState) {
@@ -247,15 +236,13 @@ export class WidgetUI {
         this.sendNowBtn.className = state.sendNow ? "fk-btn" : "fk-btn fk-ghost";
         this.live.textContent = this.tr("analyzing");
         break;
-      case "completing": {
-        this.show("completing");
-        this.buildCompletingFields(state.missing, state.values);
-        const hint = this.shadow.getElementById("fk-completing-hint");
-        if (hint) hint.textContent = this.tr("almostDone", state.missing.length);
-        this.live.textContent = this.tr("almostDone", state.missing.length);
-        this.focusFirstMissing(state.missing);
+      case "asking":
+        this.show("asking");
+        this.questionEl.textContent = state.question;
+        this.answerBox.value = "";
+        this.live.textContent = state.question;
+        this.answerBox.focus();
         break;
-      }
       case "submitting":
         this.show("extracting");
         this.sendNowBtn.className = "fk-btn fk-ghost";

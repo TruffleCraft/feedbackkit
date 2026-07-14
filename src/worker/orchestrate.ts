@@ -1,5 +1,5 @@
 import { WIRE_VERSION, type FeedbackConfig, type FeedbackPayload, type FeedbackResponse, type TemplateDefinition } from "../shared/contract.js";
-import { classifyAndExtract, type ChatFn } from "./llm/client.js";
+import { classifyAndExtract, type ChatFn, type ExtractionResult } from "./llm/client.js";
 import { createIssue, TrackerError, type FetchFn } from "./providers/github.js";
 import { deriveTitle, renderIssueBody, type RenderContext } from "../shared/render.js";
 import { publicUrl } from "./storage/r2.js";
@@ -70,6 +70,34 @@ function buildAttachments(config: FeedbackConfig, payload: FeedbackPayload): Ren
   return payload.attachmentKeys.map((k) => ({ url: publicUrl(base, k)!, kind: "upload" }));
 }
 
+function lbl(label: unknown, locale: string): string {
+  if (typeof label === "string") return label;
+  if (label && typeof label === "object") {
+    const r = label as Record<string, string>;
+    return r[locale] ?? Object.values(r)[0] ?? "";
+  }
+  return "";
+}
+
+/** A generic follow-up question from the missing fields' labels — used when the
+ * LLM is off/over-budget (no model-composed question available). */
+function fallbackQuestion(config: FeedbackConfig, template: TemplateDefinition, missingKeys: string[]): string {
+  const de = config.locale.startsWith("de");
+  const labels = template.fields.filter((f) => missingKeys.includes(f.key)).map((f) => lbl(f.label, config.locale)).filter(Boolean);
+  if (!labels.length) return de ? "Magst du noch etwas ergänzen?" : "Anything you'd like to add?";
+  return (de ? "Kurz noch: " : "One more thing: ") + labels.join(" · ");
+}
+
+/** LLM extraction gated by the daily budget. Returns null when the LLM is
+ * unavailable (provider off, no key, or budget spent) — the caller falls back. */
+async function extractWithBudget(env: Env, config: FeedbackConfig, template: TemplateDefinition, message: string, deps: OrchestrateDeps, screenshotUrl?: string): Promise<ExtractionResult | null> {
+  if (config.llm.provider === "off" || !deps.apiKey) return null;
+  const now = deps.now ?? Date.now();
+  const within = (await hitRateLimit(env, `llm:${config.projectId}`, dayWindow(now), config.llm.dailyBudget)).allowed;
+  if (!within) return null;
+  return classifyAndExtract({ config, template, message, screenshotDataUrl: screenshotUrl, apiKey: deps.apiKey, chat: deps.chat });
+}
+
 export async function orchestrateFeedback(
   env: Env,
   loaded: LoadedProject,
@@ -95,77 +123,49 @@ export async function orchestrateFeedback(
   if (!template) return { http: 400, body: { v: WIRE_VERSION, status: "error", error: "unknown feedback type" } };
 
   const message = (payload.message ?? "").trim();
-  const isCompletion = payload.fields !== undefined; // POST-2 carries completed fields
+  const isCompletion = payload.followUpText !== undefined; // POST-2 carries the follow-up answer
 
-  // ── POST-1: extract, then either ask or create ──────────────────────────────
+  // ── POST-1: extract → ask ONE conversational follow-up, or create ────────────
   if (!isCompletion) {
-    const llmConfigured = config.llm.provider !== "off" && !!deps.apiKey;
-    // Daily budget cap: a public + LLM endpoint is a cost-abuse surface. Once the
-    // project's dailyBudget is spent, fall back to required-field mode for the
-    // rest of the UTC day (never blocks — the widget just shows the base form).
-    // The counter is only touched when we're actually about to call the LLM.
-    const withinBudget = llmConfigured
-      ? (await hitRateLimit(env, `llm:${config.projectId}`, dayWindow(now), config.llm.dailyBudget)).allowed
-      : false;
-    const useLlm = llmConfigured && withinBudget;
+    const result = await extractWithBudget(env, config, template, message, deps, firstAttachmentUrl(config, payload));
+    const extracted = result?.extracted ?? {};
+    // LLM unavailable (off/no-key/over-budget) → treat all required as missing → ask one generic question.
+    const missing = result && !result.degraded ? result.missing : requiredAskable(template).map((f) => f.key);
+    const create = (o: Partial<CreateOpts>) =>
+      finalizeCreate(env, loaded, payload, template, { fields: extracted, degraded: false, incomplete: false, d1Degraded, now, newId, fetchImpl: deps.fetchImpl, ...o });
 
-    let extracted: Record<string, string> = {};
-    let missing: string[];
-    let degraded = false;
-
-    if (useLlm) {
-      const result = await classifyAndExtract({
-        config,
-        template,
-        message,
-        screenshotDataUrl: firstAttachmentUrl(config, payload),
-        apiKey: deps.apiKey!,
-        chat: deps.chat,
-      });
-      extracted = result.extracted;
-      missing = result.missing;
-      degraded = result.degraded;
-    } else {
-      // Kill-switch, no key, or budget exhausted → required-field mode (no LLM).
-      missing = requiredAskable(template).map((f) => f.key);
+    if (result?.degraded) {
+      // LLM ran but failed. onLlmError → create unenriched; else ask (generic question).
+      if (config.createAnyway.onLlmError) return create({ fields: {}, degraded: true, incomplete: true });
+      return { http: 200, body: { v: WIRE_VERSION, status: "follow_up", question: fallbackQuestion(config, template, missing), extracted: {} } };
     }
-
-    if (degraded) {
-      // Runtime LLM failure. onLlmError decides: create unenriched vs ask manually.
-      if (config.createAnyway.onLlmError) {
-        return finalizeCreate(env, loaded, payload, template, { fields: extracted, degraded: true, incomplete: true, d1Degraded, now, newId, fetchImpl: deps.fetchImpl });
-      }
-      return { http: 200, body: { v: WIRE_VERSION, status: "need_fields", missing, extracted } };
-    }
-
-    if (missing.length === 0) {
-      return finalizeCreate(env, loaded, payload, template, { fields: extracted, degraded: false, incomplete: false, d1Degraded, now, newId, fetchImpl: deps.fetchImpl });
-    }
-
+    if (missing.length === 0) return create({}); // nothing required missing (extracted all, or no required fields) → create
     // Too many to reasonably ask → create-anyway (if allowed) instead of a wall of questions.
-    if (useLlm && missing.length > FIELD_CEILING && config.createAnyway.onIncomplete) {
-      return finalizeCreate(env, loaded, payload, template, { fields: extracted, degraded: false, incomplete: true, d1Degraded, now, newId, fetchImpl: deps.fetchImpl });
-    }
-    return { http: 200, body: { v: WIRE_VERSION, status: "need_fields", missing, extracted } };
+    if (result && missing.length > FIELD_CEILING && config.createAnyway.onIncomplete) return create({ incomplete: true });
+    // Ask ONE follow-up: the model-composed question, or a label-based fallback.
+    const question = (result?.followUpQuestion && result.followUpQuestion.trim()) || fallbackQuestion(config, template, missing);
+    return { http: 200, body: { v: WIRE_VERSION, status: "follow_up", question, extracted } };
   }
 
-  // ── POST-2: deterministic create from completed fields (no LLM) ──────────────
-  const merged: Record<string, string> = { ...(payload.extracted ?? {}) };
-  for (const [k, v] of Object.entries(payload.fields ?? {})) if (typeof v === "string" && v.trim()) merged[k] = v.trim();
+  // ── POST-2: ONE re-extraction of the freetext answer, then create (single-shot) ──
+  const answer = (payload.followUpText ?? "").trim();
+  const combined = [message, answer].filter(Boolean).join("\n\n");
+  const reExtract = await extractWithBudget(env, config, template, combined, deps); // text-only, no screenshot
+  let fields: Record<string, string> = { ...(payload.extracted ?? {}) };
+  if (reExtract && !reExtract.degraded) fields = { ...fields, ...reExtract.extracted };
   const cleaned: Record<string, string> = {};
-  for (const [k, v] of Object.entries(merged)) if (typeof v === "string" && v.trim()) cleaned[k] = v.trim();
+  for (const [k, v] of Object.entries(fields)) if (typeof v === "string" && v.trim()) cleaned[k] = v.trim();
   const stillMissing = requiredAskable(template)
     .filter((f) => !cleaned[f.key])
     .map((f) => f.key);
-
-  if (stillMissing.length > 0 && !config.createAnyway.onIncomplete) {
-    return { http: 200, body: { v: WIRE_VERSION, status: "need_fields", missing: stillMissing, extracted: cleaned } };
-  }
-  return finalizeCreate(env, loaded, payload, template, { fields: cleaned, degraded: false, incomplete: stillMissing.length > 0, d1Degraded, now, newId, fetchImpl: deps.fetchImpl });
+  // Always create now — never a second question (ADR-012). The answer is folded
+  // into the issue via `combined` so it's never lost even if re-extraction fails.
+  return finalizeCreate(env, loaded, payload, template, { fields: cleaned, message: combined, degraded: false, incomplete: stillMissing.length > 0, d1Degraded, now, newId, fetchImpl: deps.fetchImpl });
 }
 
 interface CreateOpts {
   fields: Record<string, string>;
+  message?: string; // effective message for rendering (POST-2 folds in the follow-up answer)
   degraded: boolean; // LLM unenriched
   incomplete: boolean; // required fields still missing
   d1Degraded: boolean;
@@ -185,7 +185,7 @@ async function finalizeCreate(
   const id = opts.newId();
 
   const ctx: RenderContext = {
-    message: payload.message ?? "",
+    message: opts.message ?? payload.message ?? "",
     fields: opts.fields,
     pageUrl: payload.pageUrl,
     deviceInfo: payload.deviceInfo,
