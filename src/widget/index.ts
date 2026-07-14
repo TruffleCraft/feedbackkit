@@ -64,12 +64,23 @@ async function boot() {
   let state: WidgetState = { name: "closed" };
   let feedbackId = "";
   let base1: FeedbackPayload | null = null; // POST-1 payload, reused for POST-2
+  let attachedKeys: string[] = []; // R2 keys of manually attached files (uploaded on pick)
   let bailed = false;
   let slowTimer: ReturnType<typeof setTimeout> | undefined;
   let gen = 0; // attempt generation: a stale async result (from a closed/superseded attempt) is ignored
 
+  function resetAttempt() {
+    attachedKeys = [];
+    feedbackId = "";
+    base1 = null;
+    bailed = false;
+  }
+
   const ui = new WidgetUI(shadow, toUIConfig(cfg, script.dataset.label), {
-    onOpen: () => dispatch({ t: "open", type: cfg.types[0]?.type ?? "" }, () => api.event("opened")),
+    onOpen: () => {
+      resetAttempt();
+      dispatch({ t: "open", type: cfg.types[0]?.type ?? "" }, () => api.event("opened"));
+    },
     onClose: () => {
       gen++; // abandon any in-flight attempt
       dispatch({ t: "close" });
@@ -79,8 +90,12 @@ async function boot() {
       bailed = true;
       dispatch({ t: "sendNow" }, () => api.event("sent_anyway"));
     },
-    onComplete: (_type, values) => void complete(values),
-    onRetry: () => dispatch({ t: "retry" }),
+    onComplete: (_type, answer) => void complete(answer),
+    onAttach: (file) => void attach(file),
+    onRetry: () => {
+      resetAttempt();
+      dispatch({ t: "retry" });
+    },
   });
 
   function dispatch(event: Parameters<typeof reduce>[1], after?: () => void) {
@@ -107,10 +122,10 @@ async function boot() {
     }, 4000);
 
     try {
-      feedbackId = uuid();
+      if (!feedbackId) feedbackId = uuid(); // reuse the id a pre-submit attach already created
       // Screenshot (opt-out via the form checkbox; best-effort + time-boxed so a
-      // slow/hung capture never wedges the send).
-      const attachmentKeys: string[] = [];
+      // slow/hung capture never wedges the send). Manually attached files first.
+      const attachmentKeys: string[] = [...attachedKeys];
       if (screenshot) {
         const shot = await Promise.race([captureScreenshot({ skip: host }), new Promise<null>((r) => setTimeout(() => r(null), 3000))]);
         if (myGen !== gen) return; // superseded/closed while capturing
@@ -126,7 +141,7 @@ async function boot() {
         type,
         message: text,
         pageUrl: location.href,
-        attachmentKeys,
+        attachmentKeys: attachmentKeys.slice(0, 5), // contract cap
         deviceInfo: collectDeviceInfo(window),
         consoleErrors: buffer.snapshot(),
         hpField: "",
@@ -134,9 +149,10 @@ async function boot() {
       const res = await api.submit(base1);
       if (myGen !== gen) return;
       clearSlow();
-      if (res.status === "need_fields") {
+      if (res.status === "follow_up") {
         api.event("need_fields");
-        if (bailed) return complete(res.extracted, res.extracted); // user pre-chose "send now"
+        // User pre-chose "send now": skip the question, but keep POST-1's extraction.
+        if (bailed) return complete("", res.extracted);
       }
       dispatch({ t: "response", res });
     } catch (e) {
@@ -147,14 +163,24 @@ async function boot() {
     }
   }
 
-  async function complete(values: Record<string, string>, extracted?: Record<string, string>) {
+  async function complete(answer: string, extractedOverride?: Record<string, string>) {
     if (!base1) return;
+    const echoed = extractedOverride ?? (state.name === "asking" ? state.extracted : {}); // what POST-1 already understood
     const myGen = gen; // stay bound to the current attempt (complete() doesn't start a new one)
-    dispatch({ t: "completeSubmit" }, () => api.event("completed"));
-    const payload: FeedbackPayload = { ...base1, fields: values, extracted: extracted ?? values };
+    dispatch({ t: "answer" }, () => api.event("completed"));
+    const payload: FeedbackPayload = { ...base1, followUpText: answer, extracted: echoed };
     const res = await api.submit(payload);
     if (myGen !== gen) return; // closed/superseded while POST-2 in flight
     dispatch({ t: "response", res });
+  }
+
+  // Manual file attach (picked in the form) → upload now, key rides along on submit.
+  async function attach(file: File) {
+    if (attachedKeys.length >= 4) return; // leave room for the auto-screenshot (cap 5)
+    if (!feedbackId) feedbackId = uuid();
+    const bucket = attachedKeys; // capture: a close→reopen (resetAttempt) rebinds attachedKeys,
+    const key = await api.uploadScreenshot(feedbackId, file); // so a stale upload lands in the OLD bucket, not the new session
+    if (key) bucket.push(key);
   }
 
   ui.render(state);

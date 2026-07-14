@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { installMocks } from "./helpers";
 
-const desc = /describe it/i;
+const placeholder = /tell us anything/i;
 const send = { name: "Send", exact: true } as const;
 const feedbackBtn = { name: "Feedback" } as const;
 const closeBtn = { name: "Close" } as const;
@@ -23,26 +23,22 @@ test("scroll-lock: set on open, restored on close — twice, no corruption (regr
   await page.getByRole("button", closeBtn).click();
   expect(await overflow()).toBe(""); // restored to the host's original
 
-  // Full cycle incl. a submit, then close — must STILL restore (the corrupted
-  // save re-captured "hidden" and left the page unscrollable forever).
+  // Full cycle incl. a submit, then close — must STILL restore.
   await page.getByRole("button", feedbackBtn).click();
-  await page.getByPlaceholder(desc).fill("x");
+  await page.getByPlaceholder(placeholder).fill("x");
   await page.getByRole("button", send).click();
   await expect(page.getByText("Thanks!")).toBeVisible();
   await page.getByRole("button", closeBtn).click();
   expect(await overflow()).toBe("");
 });
 
-test("typing in one completing field survives editing another (no re-render wipe)", async ({ page }) => {
-  await installMocks(page, { post1: { v: 1, status: "need_fields", missing: ["repro", "expected"], extracted: {} } });
+test("form input survives a DOM toggle (re-render ban)", async ({ page }) => {
+  await installMocks(page, { post1: {} });
   await page.goto("/");
   await page.getByRole("button", feedbackBtn).click();
-  await page.getByPlaceholder(desc).fill("broken");
-  await page.getByRole("button", send).click();
-  await expect(page.locator("#fk-completing-hint")).toContainText(/Almost done/i);
-  await page.locator("#fk-f-repro").fill("step one");
-  await page.locator("#fk-f-expected").fill("expected two");
-  await expect(page.locator("#fk-f-repro")).toHaveValue("step one"); // A not wiped while editing B
+  await page.getByPlaceholder(placeholder).fill("my typed feedback");
+  await page.locator("#fk-shot").click(); // toggle the screenshot checkbox
+  await expect(page.getByPlaceholder(placeholder)).toHaveValue("my typed feedback"); // form not rebuilt
 });
 
 test("renders full-viewport even when an ancestor is transformed (fixed-positioning trap)", async ({ page }) => {

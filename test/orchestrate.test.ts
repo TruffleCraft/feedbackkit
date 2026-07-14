@@ -106,18 +106,18 @@ describe("orchestrateFeedback — POST-1", () => {
     expect(db.dedup.has(UUID)).toBe(true); // terminal success is idempotency-stored
   });
 
-  it("asks for missing required fields (need_fields) and creates no issue", async () => {
+  it("asks ONE conversational follow-up (follow_up), no issue yet", async () => {
     const db = fakeDb();
     const gh = ghCapture();
     const r = await orchestrateFeedback(env(db.db), loaded(), payload(), {
       apiKey: "k",
-      chat: chatReturning({ type: "bug", summary: "s", repro: "klick", expected: "", actual: "" }),
+      chat: chatReturning({ type: "bug", summary: "s", repro: "klick", expected: "", actual: "", followUpQuestion: "Was hast du erwartet und was ist passiert?" }),
       fetchImpl: gh.fetchImpl,
     });
-    expect(r.body.status).toBe("need_fields");
-    expect((r.body as { missing: string[] }).missing.sort()).toEqual(["actual", "expected"]);
+    expect(r.body.status).toBe("follow_up");
+    expect((r.body as { question: string }).question).toBe("Was hast du erwartet und was ist passiert?");
     expect(gh.calls).toHaveLength(0);
-    expect(db.dedup.size).toBe(0); // need_fields is NOT terminal
+    expect(db.dedup.size).toBe(0); // follow_up is NOT terminal
   });
 
   it("create-anyway on LLM failure: accepted_incomplete + ai-failed label", async () => {
@@ -133,22 +133,21 @@ describe("orchestrateFeedback — POST-1", () => {
     expect(db.feedback[0]).toMatchObject({ outcome: "ai-failed" });
   });
 
-  it("required-field mode (LLM off / no key): asks all required, no LLM call", async () => {
+  it("LLM off / no key: asks a fallback follow-up (no LLM call)", async () => {
     const db = fakeDb();
     const gh = ghCapture();
     const r = await orchestrateFeedback(env(db.db), loaded(), payload(), { chat: chatMustNotRun, fetchImpl: gh.fetchImpl });
-    expect(r.body.status).toBe("need_fields");
-    expect((r.body as { missing: string[] }).missing.sort()).toEqual(["actual", "expected", "repro"]);
+    expect(r.body.status).toBe("follow_up");
+    expect((r.body as { question: string }).question).toBeTruthy(); // composed from field labels
     expect(gh.calls).toHaveLength(0);
   });
 
-  it("over the daily LLM budget → required-field mode, no LLM call", async () => {
+  it("over the daily LLM budget → fallback follow-up, no LLM call", async () => {
     const cfg = baseConfig({ llm: { provider: "openrouter", model: "m", dailyBudget: 1 } });
     const db = fakeDb({ counterCount: 5 }); // budget counter already past 1
     const gh = ghCapture();
     const r = await orchestrateFeedback(env(db.db), loaded(cfg), payload(), { apiKey: "k", chat: chatMustNotRun, fetchImpl: gh.fetchImpl });
-    expect(r.body.status).toBe("need_fields");
-    expect((r.body as { missing: string[] }).missing.sort()).toEqual(["actual", "expected", "repro"]);
+    expect(r.body.status).toBe("follow_up");
     expect(gh.calls).toHaveLength(0);
   });
 
@@ -174,54 +173,62 @@ describe("orchestrateFeedback — POST-1", () => {
   });
 });
 
-describe("orchestrateFeedback — POST-2 (deterministic, no LLM)", () => {
-  it("creates from completed fields without an LLM call", async () => {
+describe("orchestrateFeedback — POST-2 (freetext answer → one re-extraction)", () => {
+  it("re-extracts the freetext answer, merges, and creates", async () => {
     const db = fakeDb();
     const gh = ghCapture();
-    const r = await orchestrateFeedback(env(db.db), loaded(), payload({ fields: { repro: "k", expected: "e", actual: "a" }, extracted: {} }), {
+    const r = await orchestrateFeedback(env(db.db), loaded(), payload({ followUpText: "erwartet gespeichert, es bleibt hängen", extracted: { repro: "klick" } }), {
       apiKey: "k",
-      chat: chatMustNotRun,
+      chat: chatReturning({ type: "bug", summary: "s", repro: "klick", expected: "gespeichert", actual: "hängt" }),
       fetchImpl: gh.fetchImpl,
     });
     expect(r.body.status).toBe("created");
     expect(gh.calls).toHaveLength(1);
   });
 
-  it("still-missing + createAnyway.onIncomplete → accepted_incomplete", async () => {
+  it("still-missing after the answer → accepted_incomplete (single-shot, always creates)", async () => {
     const db = fakeDb();
     const gh = ghCapture();
-    const r = await orchestrateFeedback(env(db.db), loaded(), payload({ fields: { repro: "k" }, extracted: {} }), {
+    const r = await orchestrateFeedback(env(db.db), loaded(), payload({ followUpText: "weiß nicht", extracted: {} }), {
       apiKey: "k",
-      chat: chatMustNotRun,
+      chat: chatReturning({ type: "bug", summary: "s", repro: "klick", expected: "", actual: "" }),
       fetchImpl: gh.fetchImpl,
     });
     expect(r.body.status).toBe("accepted_incomplete");
+    expect(gh.calls[0]!.body.labels).toContain("needs-triage");
   });
 
-  it("still-missing + onIncomplete=false → keeps asking (need_fields)", async () => {
-    const cfg = baseConfig({ createAnyway: { onIncomplete: false, onLlmError: true } });
+  it("empty answer (send-now/anyway bail) → NO re-extraction, uses echoed extraction", async () => {
     const db = fakeDb();
     const gh = ghCapture();
-    const r = await orchestrateFeedback(env(db.db), loaded(cfg), payload({ fields: { repro: "k" }, extracted: {} }), {
+    const r = await orchestrateFeedback(env(db.db), loaded(), payload({ followUpText: "", extracted: { repro: "klick", expected: "e", actual: "a" } }), {
       apiKey: "k",
-      chat: chatMustNotRun,
+      chat: chatMustNotRun, // empty answer must not trigger a redundant LLM call
       fetchImpl: gh.fetchImpl,
     });
-    expect(r.body.status).toBe("need_fields");
-    expect(gh.calls).toHaveLength(0);
+    expect(r.body.status).toBe("created");
+    expect(gh.calls[0]!.body.body).toContain("klick"); // POST-1's extraction preserved
+  });
+
+  it("preserves the answer in the issue even if re-extraction is unavailable (no key)", async () => {
+    const db = fakeDb();
+    const gh = ghCapture();
+    const r = await orchestrateFeedback(env(db.db), loaded(), payload({ message: "Bilder langsam", followUpText: "auf der Projekte-Seite", extracted: {} }), {
+      chat: chatMustNotRun, // no apiKey → no re-extraction
+      fetchImpl: gh.fetchImpl,
+    });
+    expect(["created", "accepted_incomplete"]).toContain(r.body.status);
+    expect(gh.calls[0]!.body.body).toContain("auf der Projekte-Seite"); // folded into the issue
   });
 });
 
 describe("orchestrateFeedback — create-anyway on tracker/D1 failure", () => {
+  const fullExtract = () => chatReturning({ type: "bug", summary: "s", repro: "k", expected: "e", actual: "a" });
+
   it("tracker create fails → issue_failed, payload persisted, NOT dedup-stored (retryable)", async () => {
     const db = fakeDb();
     const gh = ghCapture(500);
-    const r = await orchestrateFeedback(env(db.db), loaded(), payload({ fields: { repro: "k", expected: "e", actual: "a" } }), {
-      apiKey: "k",
-      chat: chatMustNotRun,
-      fetchImpl: gh.fetchImpl,
-      newId: () => "fid-f",
-    });
+    const r = await orchestrateFeedback(env(db.db), loaded(), payload(), { apiKey: "k", chat: fullExtract(), fetchImpl: gh.fetchImpl, newId: () => "fid-f" });
     expect(r.body.status).toBe("issue_failed");
     expect(db.feedback[0]).toMatchObject({ outcome: "issue_failed", issueUrl: null });
     expect(db.dedup.size).toBe(0);
@@ -230,11 +237,7 @@ describe("orchestrateFeedback — create-anyway on tracker/D1 failure", () => {
   it("missing PAT → issue_failed without a tracker call", async () => {
     const db = fakeDb();
     const gh = ghCapture();
-    const r = await orchestrateFeedback({ DB: db.db } as unknown as Env, loaded(), payload({ fields: { repro: "k", expected: "e", actual: "a" } }), {
-      apiKey: "k",
-      chat: chatMustNotRun,
-      fetchImpl: gh.fetchImpl,
-    });
+    const r = await orchestrateFeedback({ DB: db.db } as unknown as Env, loaded(), payload(), { apiKey: "k", chat: fullExtract(), fetchImpl: gh.fetchImpl });
     expect(r.body.status).toBe("issue_failed");
     expect((r.body as { reason: string }).reason).toContain("credential");
     expect(gh.calls).toHaveLength(0);
@@ -243,11 +246,7 @@ describe("orchestrateFeedback — create-anyway on tracker/D1 failure", () => {
   it("D1 dedup read down → still creates, tags the issue d1-degraded", async () => {
     const db = fakeDb({ dedupThrows: true });
     const gh = ghCapture();
-    const r = await orchestrateFeedback(env(db.db), loaded(), payload({ fields: { repro: "k", expected: "e", actual: "a" } }), {
-      apiKey: "k",
-      chat: chatMustNotRun,
-      fetchImpl: gh.fetchImpl,
-    });
+    const r = await orchestrateFeedback(env(db.db), loaded(), payload(), { apiKey: "k", chat: fullExtract(), fetchImpl: gh.fetchImpl });
     expect(["created", "accepted_incomplete"]).toContain(r.body.status);
     expect(gh.calls[0]!.body.labels).toContain("d1-degraded");
   });
