@@ -1,9 +1,57 @@
 # Security
 
-> Scope note: this file grows through P1.13. Today it covers the attachment
-> pipeline shipped in P1.8 (R2 storage, retention, deletion). Reporting a
-> vulnerability: open a private security advisory on the repo, or email the
-> maintainer — do not file a public issue for an exploitable finding.
+**Reporting a vulnerability:** open a private security advisory on the repo, or
+email the maintainer — do not file a public issue for an exploitable finding.
+
+## Threat model
+
+FeedbackKit's data-plane endpoints (`/api/config`, `/api/feedback`,
+`/api/upload`, `/api/events`) are **public and anonymous** by design — the widget
+runs on visitors' browsers with no login. The project key in the snippet is
+**public** (anyone viewing the page can read it). So the security model is *not*
+"keep the key secret"; it's **bound the blast radius of an anonymous endpoint**.
+
+Explicitly in scope: an attacker who knows the public key and scripts requests
+directly. What stops them from turning your feedback endpoint into an
+issue-spam / LLM-cost relay:
+
+| Control | Where |
+|---|---|
+| Per-IP hourly rate limit (`rateLimit.perHour`) | atomic D1 upsert, fail-open + loud log |
+| LLM **daily budget cap** (`llm.dailyBudget`) — over budget → required-field mode, no LLM cost | per-project D1 counter |
+| Honeypot field → silent fake-success | `/api/feedback` |
+| Payload size + field caps (Zod), bounded body read | wire contract + streaming read |
+| Upload: content-type by **magic bytes** (header never trusted), 2 MB cap, image-only | `storage/r2.ts` |
+| `enabled` kill-switch per project | config |
+
+**The origin allowlist (`auth.origins`) is a browser/CORS control, not hard
+auth.** A browser on another site is blocked (its `Origin` can't be forged); a
+non-browser client can omit `Origin` and is bounded by the controls above
+instead. Same-origin requests (the gateway's own `/t/<key>` test page) are always
+allowed. This is inherent to anonymous feedback — treat rate-limit + budget +
+honeypot as the real spam/cost defense, and set a **spend/credit cap on your LLM
+provider account** (e.g. OpenRouter) as a hard backstop.
+
+**Feedback is never lost** (create-anyway): an LLM, D1, or tracker failure
+downgrades the outcome (`accepted_incomplete`, or `issue_failed` with the payload
+persisted for retry) and tags the issue for triage (`ai-failed`, `needs-triage`,
+`d1-degraded`) — it never drops a submission or 500s.
+
+**The test page (`/t/<key>`) is dry-run by default:** it renders the *would-be*
+issue with no LLM call, no tracker call, and no data stored, under a strict CSP
+(`default-src 'self'` + per-request nonce, all values via `textContent`). It
+cannot create a real issue.
+
+## Secrets
+
+- All secrets live **only** in Worker env (`ADMIN_TOKEN`, `GITHUB_PAT_<name>`,
+  `LLM_API_KEY`) — never in the client bundle, never in the public config
+  projection (`/api/config` whitelists fields; PAT/LLM/origins/prompt internals
+  never ship to the browser).
+- The PAT and LLM key are never logged, echoed into an error message, or placed
+  in an issue body or client response.
+- `wrangler.toml` is gitignored (operator-specific IDs; ADR-004) and generated
+  from build variables. Never commit it.
 
 ## Attachments & screenshots
 

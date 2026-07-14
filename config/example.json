@@ -1,0 +1,48 @@
+{
+  "projectId": "my-project",
+  "locale": "en",
+  "enabled": true,
+  "askType": true,
+  "templates": [
+    {
+      "type": "bug",
+      "label": "Bug",
+      "fields": [
+        { "key": "repro", "label": "Steps to reproduce", "kind": "longtext", "required": true, "extractionHint": "How did you get here / what did you click?" },
+        { "key": "expected", "label": "What you expected", "kind": "longtext", "required": true },
+        { "key": "actual", "label": "What happened instead", "kind": "longtext", "required": true }
+      ],
+      "body": [
+        { "heading": "Steps to reproduce", "template": "{{repro}}" },
+        { "heading": "Expected vs actual", "template": "**Expected:** {{expected}}\n**Actual:** {{actual}}" }
+      ],
+      "tracker": { "labels": ["type/bug", "source/feedbackkit"] }
+    },
+    {
+      "type": "idea",
+      "label": "Idea",
+      "fields": [{ "key": "problem", "label": "The problem this solves", "kind": "longtext", "required": true }],
+      "tracker": { "labels": ["type/idea", "source/feedbackkit"] }
+    }
+  ],
+  "llm": {
+    "provider": "openrouter",
+    "model": "google/gemma-4-26b-a4b-it",
+    "dailyBudget": 200,
+    "structuredOutput": true
+  },
+  "tracker": {
+    "kind": "github",
+    "defaultRepo": "your-org/your-repo",
+    "patSecret": "GITHUB_PAT_default"
+  },
+  "storage": {
+    "kind": "r2",
+    "publicBaseUrl": "https://your-uploads.r2.dev",
+    "retentionDays": 90
+  },
+  "auth": {
+    "origins": ["https://your-site.example"]
+  },
+  "rateLimit": { "perHour": 75 }
+}
