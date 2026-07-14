@@ -198,6 +198,18 @@ describe("orchestrateFeedback — POST-2 (freetext answer → one re-extraction)
     expect(gh.calls[0]!.body.labels).toContain("needs-triage");
   });
 
+  it("empty answer (send-now/anyway bail) → NO re-extraction, uses echoed extraction", async () => {
+    const db = fakeDb();
+    const gh = ghCapture();
+    const r = await orchestrateFeedback(env(db.db), loaded(), payload({ followUpText: "", extracted: { repro: "klick", expected: "e", actual: "a" } }), {
+      apiKey: "k",
+      chat: chatMustNotRun, // empty answer must not trigger a redundant LLM call
+      fetchImpl: gh.fetchImpl,
+    });
+    expect(r.body.status).toBe("created");
+    expect(gh.calls[0]!.body.body).toContain("klick"); // POST-1's extraction preserved
+  });
+
   it("preserves the answer in the issue even if re-extraction is unavailable (no key)", async () => {
     const db = fakeDb();
     const gh = ghCapture();

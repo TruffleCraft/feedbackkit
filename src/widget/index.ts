@@ -151,7 +151,8 @@ async function boot() {
       clearSlow();
       if (res.status === "follow_up") {
         api.event("need_fields");
-        if (bailed) return complete(""); // user pre-chose "send now" → skip the question
+        // User pre-chose "send now": skip the question, but keep POST-1's extraction.
+        if (bailed) return complete("", res.extracted);
       }
       dispatch({ t: "response", res });
     } catch (e) {
@@ -162,9 +163,9 @@ async function boot() {
     }
   }
 
-  async function complete(answer: string) {
+  async function complete(answer: string, extractedOverride?: Record<string, string>) {
     if (!base1) return;
-    const echoed = state.name === "asking" ? state.extracted : {}; // what POST-1 already understood
+    const echoed = extractedOverride ?? (state.name === "asking" ? state.extracted : {}); // what POST-1 already understood
     const myGen = gen; // stay bound to the current attempt (complete() doesn't start a new one)
     dispatch({ t: "answer" }, () => api.event("completed"));
     const payload: FeedbackPayload = { ...base1, followUpText: answer, extracted: echoed };
@@ -177,8 +178,9 @@ async function boot() {
   async function attach(file: File) {
     if (attachedKeys.length >= 4) return; // leave room for the auto-screenshot (cap 5)
     if (!feedbackId) feedbackId = uuid();
-    const key = await api.uploadScreenshot(feedbackId, file);
-    if (key) attachedKeys.push(key);
+    const bucket = attachedKeys; // capture: a close→reopen (resetAttempt) rebinds attachedKeys,
+    const key = await api.uploadScreenshot(feedbackId, file); // so a stale upload lands in the OLD bucket, not the new session
+    if (key) bucket.push(key);
   }
 
   ui.render(state);

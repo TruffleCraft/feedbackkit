@@ -150,7 +150,10 @@ export async function orchestrateFeedback(
   // ── POST-2: ONE re-extraction of the freetext answer, then create (single-shot) ──
   const answer = (payload.followUpText ?? "").trim();
   const combined = [message, answer].filter(Boolean).join("\n\n");
-  const reExtract = await extractWithBudget(env, config, template, combined, deps); // text-only, no screenshot
+  // Only re-extract when there's actually a new answer to parse. An empty answer
+  // (the "send now"/"send anyway" bail) skips the LLM entirely and just uses what
+  // POST-1 already understood (echoed) — no redundant call, no lost extraction.
+  const reExtract = answer ? await extractWithBudget(env, config, template, combined, deps) : null; // text-only, no screenshot
   let fields: Record<string, string> = { ...(payload.extracted ?? {}) };
   if (reExtract && !reExtract.degraded) fields = { ...fields, ...reExtract.extracted };
   const cleaned: Record<string, string> = {};
