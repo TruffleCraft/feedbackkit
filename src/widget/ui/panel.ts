@@ -25,7 +25,7 @@ export interface UIConfig {
 export interface UIHandlers {
   onOpen(): void;
   onClose(): void;
-  onSubmit(type: string, text: string): void;
+  onSubmit(type: string, text: string, screenshot: boolean): void;
   onSendNow(): void;
   onComplete(type: string, values: Record<string, string>): void;
   onRetry(): void;
@@ -55,6 +55,7 @@ export class WidgetUI {
   private locked = false;
   private hasOpened = false;
   private activeType = "";
+  private shotCheck!: HTMLInputElement;
 
   constructor(
     private shadow: ShadowRoot,
@@ -112,9 +113,12 @@ export class WidgetUI {
 
     const label = el("label", { className: "fk-label", htmlFor: "fk-text", textContent: this.tr("textLabel") });
     this.textarea = el("textarea", { className: "fk-input", id: "fk-text", placeholder: this.tr("textPlaceholder") });
+    // Visible, opt-out screenshot control (the capture is otherwise invisible).
+    this.shotCheck = el("input", { className: "fk-check-input", type: "checkbox", id: "fk-shot", checked: true });
+    const shotLabel = el("label", { className: "fk-check", htmlFor: "fk-shot" }, [this.shotCheck, el("span", { textContent: this.tr("attachScreenshot") })]);
     const send = el("button", { className: "fk-btn", type: "button", textContent: this.tr("send") });
-    send.addEventListener("click", () => this.h.onSubmit(this.activeType, this.textarea.value.trim()));
-    const view = el("div", {}, [types, label, this.textarea, el("div", { className: "fk-actions" }, [send])]);
+    send.addEventListener("click", () => this.h.onSubmit(this.activeType, this.textarea.value.trim(), this.shotCheck.checked));
+    const view = el("div", {}, [types, label, this.textarea, shotLabel, el("div", { className: "fk-actions" }, [send])]);
     this.views["form"] = view;
     return view;
   }

@@ -8,6 +8,7 @@ type Key =
   | "textLabel"
   | "textPlaceholder"
   | "send"
+  | "attachScreenshot"
   | "analyzing"
   | "sendNow"
   | "almostDone"
@@ -27,6 +28,7 @@ const STR: Record<Locale, Record<Exclude<Key, "almostDone">, string> & { almostD
     textLabel: "What happened?",
     textPlaceholder: "Describe it like you'd tell a colleague…",
     send: "Send",
+    attachScreenshot: "Attach a screenshot of this page",
     analyzing: "Analyzing…",
     sendNow: "Send now",
     almostDone: (n) => `Almost done — ${n} detail${n === 1 ? "" : "s"} missing`,
@@ -45,6 +47,7 @@ const STR: Record<Locale, Record<Exclude<Key, "almostDone">, string> & { almostD
     textLabel: "Was ist passiert?",
     textPlaceholder: "Beschreibe es, als würdest du es einem Kollegen erzählen…",
     send: "Senden",
+    attachScreenshot: "Screenshot dieser Seite anhängen",
     analyzing: "Wird analysiert…",
     sendNow: "Jetzt senden",
     almostDone: (n) => `Fast fertig — noch ${n} Angabe${n === 1 ? "" : "n"}`,
