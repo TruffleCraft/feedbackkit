@@ -100,8 +100,10 @@ curl https://<your-worker>.workers.dev/diag
 curl -H "Authorization: Bearer $ADMIN_TOKEN" \
   "https://<your-worker>.workers.dev/diag?project=<public-key>"
 
-# prove the PAT can open issues in your repo
-pnpm test-issue your-org/your-repo
+# prove a PAT can open issues in your repo. This CLI uses a LOCAL token (not the
+# Cloudflare secret), so pass it for this check — the /diag line above already
+# verified the deployed secret's reach:
+GITHUB_PAT=<your-fine-grained-pat> pnpm test-issue your-org/your-repo
 
 # try the full flow with zero risk (dry-run — no issue, no AI call)
 open https://<your-worker>.workers.dev/t/<public-key>

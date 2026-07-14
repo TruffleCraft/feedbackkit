@@ -29,12 +29,13 @@ auth.** A browser on another site is blocked (its `Origin` can't be forged); a
 non-browser client can omit `Origin` and is bounded by the controls above
 instead. Same-origin requests (the gateway's own `/t/<key>` test page) are always
 allowed. This is inherent to anonymous feedback — treat rate-limit + budget +
-honeypot as the real spam/cost defense, and set a Cloudflare account **spend
-limit** on your LLM provider.
+honeypot as the real spam/cost defense, and set a **spend/credit cap on your LLM
+provider account** (e.g. OpenRouter) as a hard backstop.
 
 **Feedback is never lost** (create-anyway): an LLM, D1, or tracker failure
-downgrades the outcome (`accepted_incomplete` / `issue_failed` with the payload
-persisted for retry / `d1-degraded`) — it never drops a submission or 500s.
+downgrades the outcome (`accepted_incomplete`, or `issue_failed` with the payload
+persisted for retry) and tags the issue for triage (`ai-failed`, `needs-triage`,
+`d1-degraded`) — it never drops a submission or 500s.
 
 **The test page (`/t/<key>`) is dry-run by default:** it renders the *would-be*
 issue with no LLM call, no tracker call, and no data stored, under a strict CSP

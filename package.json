@@ -7,7 +7,7 @@
   "license": "MIT",
   "packageManager": "pnpm@11.5.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13"
   },
   "scripts": {
     "materialize": "node scripts/materialize-wrangler.mjs",

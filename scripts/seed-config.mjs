@@ -27,18 +27,25 @@ try {
   process.exit(1);
 }
 
+const pinnedKey = typeof cfg.publicKey === "string" && cfg.publicKey ? cfg.publicKey : "";
+delete cfg.publicKey; // stored in its own column, not in the config blob
+
 const problems = [];
 if (!cfg.projectId) problems.push("projectId is required");
 if (!Array.isArray(cfg.templates) || cfg.templates.length === 0) problems.push("templates must be a non-empty array");
 if (!cfg.tracker?.defaultRepo) problems.push("tracker.defaultRepo is required");
 if (!cfg.tracker?.patSecret) problems.push("tracker.patSecret is required (the name of the GITHUB_PAT_<name> secret)");
+if (!cfg.llm) problems.push("llm is required (provider + model)");
+if (!cfg.auth) problems.push("auth is required (auth.origins)");
 if (problems.length) {
   console.error("seed: invalid config:\n  - " + problems.join("\n  - "));
   process.exit(1);
 }
 
-const publicKey = cfg.publicKey || `fk_pub_${randomBytes(6).toString("hex")}`;
-delete cfg.publicKey; // stored in its own column, not in the config blob
+// The upsert never rotates public_key (that would break installed snippets), so
+// a freshly-generated key must be PINNED back into the file — otherwise a
+// re-seed would print a new key that isn't the one actually stored.
+const publicKey = pinnedKey || `fk_pub_${randomBytes(6).toString("hex")}`;
 const id = String(cfg.projectId);
 const now = Date.now();
 const esc = (s) => s.replace(/'/g, "''");
@@ -49,6 +56,11 @@ ON CONFLICT(id) DO UPDATE SET config = excluded.config, config_version = project
 if (dry) {
   console.log(sql);
   process.exit(0);
+}
+
+if (!pinnedKey) {
+  writeFileSync(file, JSON.stringify({ publicKey, ...cfg }, null, 2) + "\n");
+  console.log(`seed: pinned generated publicKey into ${file}`);
 }
 
 const sqlFile = join(tmpdir(), `fk-seed-${now}.sql`);
