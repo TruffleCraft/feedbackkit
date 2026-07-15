@@ -24,7 +24,7 @@ const CSP = [
   "default-src 'self'",
   `script-src 'self' ${GATEWAY}`,
   "style-src 'unsafe-inline'",
-  "img-src 'self' data:",
+  "img-src 'self' data: blob:",
   `font-src 'self' ${GATEWAY}`,
   `connect-src 'self' ${GATEWAY}`,
   "base-uri 'none'",
