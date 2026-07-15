@@ -28,8 +28,7 @@ const SYSTEM_PROMPT = [
   "You are given the user's text and, when available, a SCREENSHOT of the page they were on plus session context (page URL, device, recent console messages).",
   "Use ALL of these as evidence: read the screenshot for the visible UI state, any error message shown, and what the user is pointing at; treat the console messages and URL as corroborating technical detail.",
   "Rules: extract ONLY what is supported by the user's text, the screenshot, or the session context — never invent facts that none of them show.",
-  "Keep values in the user's original language — never translate. Technical detail read verbatim from the screenshot or console (an error string, a URL) may be included as-is.",
-  "Prefer verbatim spans; a short same-language paraphrase is allowed.",
+  "Write summary and extracted issue fields in the requested issue language. Preserve technical strings such as errors, URLs and identifiers verbatim.",
   "Return JSON only, matching the requested schema. Leave a field as an empty string if none of the inputs provide it.",
   "followUpQuestion: if any REQUIRED field is still empty AFTER using every input, write ONE short, friendly question (in the user's language) for the single most important missing thing — combine multiple missing items into one natural question, and do NOT ask for anything the screenshot or context already answered. If nothing required is missing, use an empty string.",
 ].join(" ");
@@ -124,7 +123,7 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
     .join("\n");
   // Naming the exact key set helps models that run WITHOUT json_schema (below).
   const keyList = ["type", "summary", "followUpQuestion", ...template.fields.map((f) => f.key)].join(", ");
-  const userText = `Feedback type: ${template.type}\nFields to extract:\n${fieldLines}\n\nReturn a JSON object with exactly these keys: ${keyList}.${renderContext(opts)}\n\nUser feedback:\n${message}`;
+  const userText = `Feedback type: ${template.type}\nIssue language: ${config.locale}\nTranslate summary and extracted issue fields into that language when needed. Keep followUpQuestion in the user's language.${"\n"}Fields to extract:\n${fieldLines}\n\nReturn a JSON object with exactly these keys: ${keyList}.${renderContext(opts)}\n\nUser feedback:\n${message}`;
 
   const content: unknown = screenshotDataUrl
     ? [

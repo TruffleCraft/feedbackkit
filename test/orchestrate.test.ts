@@ -95,13 +95,13 @@ describe("orchestrateFeedback — POST-1", () => {
     const gh = ghCapture();
     const r = await orchestrateFeedback(env(db.db), loaded(), payload(), {
       apiKey: "k",
-      chat: chatReturning({ type: "bug", summary: "Speichern kaputt", repro: "klick", expected: "gespeichert", actual: "hängt" }),
+      chat: chatReturning({ type: "bug", summary: "Saving fails", repro: "klick", expected: "gespeichert", actual: "hängt" }),
       fetchImpl: gh.fetchImpl,
       now: 1000,
       newId: () => "fid1",
     });
     expect(r.body).toMatchObject({ status: "created", issueUrl: "https://github.com/acme/site/issues/1" });
-    expect(gh.calls[0]!.body.title).toBe("[BUG] Speichern kaputt");
+    expect(gh.calls[0]!.body.title).toBe("[BUG] Saving fails");
     expect(db.feedback[0]).toMatchObject({ outcome: "created" });
     expect(db.dedup.has(UUID)).toBe(true); // terminal success is idempotency-stored
   });

@@ -29,8 +29,11 @@
     {
       "type": "improvement",
       "label": "Improvement",
-      "fields": [{ "key": "what", "label": "What could be better?", "kind": "longtext", "required": true }],
-      "body": [{ "heading": "Improvement", "template": "{{what}}" }],
+      "fields": [
+        { "key": "what", "label": "What could be better?", "kind": "longtext", "required": true },
+        { "key": "desired", "label": "What would feel better instead?", "kind": "longtext", "required": true, "extractionHint": "The concrete desired behavior, wording, or outcome." }
+      ],
+      "body": [{ "heading": "Improvement", "template": "{{what}}\n\n**Desired outcome:** {{desired}}" }],
       "tracker": { "labels": ["type/improvement", "source/feedbackkit", "demo"] }
     }
   ],
