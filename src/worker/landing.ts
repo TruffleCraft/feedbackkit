@@ -9,6 +9,7 @@ export const LANDING_CSP = "default-src 'none'; style-src 'unsafe-inline'; base-
 
 export interface LandingState {
   version: string;
+  origin: string; // this worker's own origin — makes the curl example copy-pasteable
   schema: SchemaState;
   secrets: { adminToken: boolean; githubPat: boolean; llmKey: boolean };
   projects: number | null;
@@ -41,7 +42,7 @@ export function renderLanding(s: LandingState): string {
     {
       ok: projects > 0,
       label: projects > 0 ? `${projects} project${projects === 1 ? "" : "s"} configured` : "No project configured yet",
-      fix: 'curl -X POST "https://<this-worker>/api/admin/config/import" -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" --data @config.json',
+      fix: `curl -X POST "${s.origin}/api/admin/config/import" -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" --data @config.json`,
     },
     {
       ok: s.secrets.llmKey,

@@ -1,7 +1,7 @@
 // P2: CLI-free config import (POST /api/admin/config/import), /diag first-run
 // visibility, and the GET / landing page.
 import { describe, it, expect, beforeEach } from "vitest";
-import { app } from "../src/worker/index.js";
+import { app } from "../src/worker/app.js";
 import { __clearConfigCache } from "../src/worker/config.js";
 import { fakeD1 } from "./helpers.js";
 import type { Env } from "../src/worker/env.js";
