@@ -7,6 +7,18 @@ export type SchemaState =
 
 // Boot-time schema check (ADR-004 invariant 2): if the DB schema is behind the
 // code, /diag goes red and write endpoints refuse rather than failing cryptically.
+// Cheap readiness signal for /diag and the landing page. null = the query
+// failed (migrations not applied yet, or D1 unreachable) — callers treat that
+// the same as "no projects": the install is not usable yet.
+export async function countProjects(env: Env): Promise<number | null> {
+  try {
+    const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM projects").first<{ n: number }>();
+    return row ? Number(row.n) : 0;
+  } catch {
+    return null;
+  }
+}
+
 export async function checkSchema(env: Env): Promise<SchemaState> {
   try {
     const row = await env.DB.prepare("SELECT value FROM meta WHERE key = 'schema_version'").first<{

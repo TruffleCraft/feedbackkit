@@ -86,6 +86,20 @@ pnpm seed config/my-project.json --remote
 It prints your **public key**, the **snippet**, and the **test page URL**.
 Re-run any time to update the config (bumps the version so widgets refetch).
 
+**No CLI at hand?** The same JSON imports over the API — one authenticated POST,
+no clone, no wrangler, no Node (this is the path after a one-click deploy):
+
+```bash
+curl -X POST "https://<your-worker>.workers.dev/api/admin/config/import" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data @config/my-project.json
+```
+
+The response carries the same public key, snippet, and test-page URL. An
+optional top-level `"publicKey"` field pins the key; on re-import the stored
+key always wins (installed snippets never break).
+
 > **R2 public URL:** enable public access on the bucket (an `r2.dev` URL or a
 > custom domain) and put it in `storage.publicBaseUrl` — screenshots are served
 > from there and rendered inline in the issue.

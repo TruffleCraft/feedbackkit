@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { app } from "../src/worker/index.js";
+import { app } from "../src/worker/app.js";
 import { __clearConfigCache } from "../src/worker/config.js";
 import { fakeD1 } from "./helpers.js";
 import { MAX_UPLOAD_BYTES } from "../src/worker/storage/r2.js";
