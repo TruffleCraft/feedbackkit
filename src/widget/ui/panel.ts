@@ -1,5 +1,6 @@
 import type { WidgetState } from "../core/state.js";
 import { STYLES } from "./styles.js";
+import { AnnotatorUI } from "./annotate.js";
 import { t, type Locale } from "./i18n.js";
 
 // Shadow-DOM view. Built ONCE; render() toggles view visibility and patches text
@@ -32,6 +33,10 @@ export interface UIHandlers {
   onComplete(type: string, answer: string): void;
   onAttach(file: File): void;
   onRetry(): void;
+  /** "Mark up screenshot" clicked → index captures the page, then calls openAnnotator(). */
+  onEditScreenshot(): void;
+  /** Annotator finished → index uses this blob at submit instead of a fresh capture. */
+  onAnnotated(blob: Blob): void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> = {}, kids: Node[] = []): HTMLElementTagNameMap[K] {
@@ -58,6 +63,11 @@ export class WidgetUI {
   private sendNowBtn!: HTMLButtonElement;
   private issueLink!: HTMLAnchorElement;
   private doneMsg!: HTMLParagraphElement;
+  private panel!: HTMLDivElement;
+  private annotator!: AnnotatorUI;
+  private shotThumb!: HTMLImageElement;
+  private shotReady!: HTMLSpanElement;
+  private mediaHint!: HTMLParagraphElement;
   private scrollLock = "";
   private locked = false;
   private hasOpened = false;
@@ -96,12 +106,12 @@ export class WidgetUI {
     closeBtn.addEventListener("click", () => this.h.onClose());
     const head = el("div", { className: "fk-head" }, [this.title, closeBtn]);
 
-    const panel = el("div", { className: "fk-panel", role: "dialog" }, [head, this.buildForm(), this.buildExtracting(), this.buildAsking(), this.buildDone(), this.buildFailed()]);
-    panel.setAttribute("aria-modal", "true");
-    panel.setAttribute("aria-labelledby", "fk-title");
-    panel.addEventListener("click", (e) => e.stopPropagation());
+    this.panel = el("div", { className: "fk-panel", role: "dialog" }, [head, this.buildForm(), this.buildAnnotate(), this.buildExtracting(), this.buildAsking(), this.buildDone(), this.buildFailed()]);
+    this.panel.setAttribute("aria-modal", "true");
+    this.panel.setAttribute("aria-labelledby", "fk-title");
+    this.panel.addEventListener("click", (e) => e.stopPropagation());
 
-    this.backdrop = el("div", { className: "fk-backdrop", hidden: true }, [panel]);
+    this.backdrop = el("div", { className: "fk-backdrop", hidden: true }, [this.panel]);
     this.backdrop.addEventListener("click", () => this.h.onClose()); // click outside = close
     this.backdrop.addEventListener("keydown", (e) => {
       if ((e as KeyboardEvent).key === "Escape") this.h.onClose();
@@ -141,7 +151,14 @@ export class WidgetUI {
         this.h.onAttach(f);
       }
     });
-    const media = el("div", { className: "fk-media" }, [shotLabel, attachBtn]);
+    // Screenshot editing (#54): capture → preview → crop/annotate in the panel.
+    const editBtn = el("button", { className: "fk-attach", type: "button" }, [el("span", { textContent: `✏️ ${this.tr("editShot")}` })]);
+    editBtn.addEventListener("click", () => this.h.onEditScreenshot());
+    this.shotThumb = el("img", { className: "fk-shot-thumb", hidden: true, alt: this.tr("shotReady") });
+    this.shotReady = el("span", { className: "fk-shot-ready", hidden: true, textContent: this.tr("shotReady") });
+    const editRow = el("div", { className: "fk-shot-row" }, [editBtn, this.shotThumb, this.shotReady]);
+    this.mediaHint = el("p", { className: "fk-hint", hidden: true });
+    const media = el("div", { className: "fk-media" }, [shotLabel, editRow, attachBtn, this.mediaHint]);
 
     const send = el("button", { className: "fk-btn", type: "button", textContent: this.tr("send") });
     send.addEventListener("click", () => this.h.onSubmit(this.activeType, this.textarea.value.trim(), this.shotCheck.checked));
@@ -156,6 +173,53 @@ export class WidgetUI {
     const g = this.config.types.find((ty) => ty.type === this.activeType)?.guidance ?? "";
     this.guidanceEl.textContent = g;
     this.guidanceEl.hidden = !g;
+  }
+
+  // Annotator view (#54): persistent element like every other view; the editor
+  // stays UI-local (submission state remains "form" while it is open).
+  private buildAnnotate(): HTMLElement {
+    this.annotator = new AnnotatorUI(this.config.locale, {
+      onDone: (blob, thumbUrl) => {
+        this.shotThumb.src = thumbUrl;
+        this.shotThumb.hidden = false;
+        this.shotReady.hidden = false;
+        this.shotCheck.checked = true; // an edited shot implies "send it"
+        this.closeAnnotator();
+        this.h.onAnnotated(blob);
+      },
+      onCancel: () => this.closeAnnotator(),
+    });
+    this.views["annotate"] = this.annotator.root;
+    return this.annotator.root;
+  }
+
+  /** Called by index once the page capture is ready. */
+  openAnnotator(img: HTMLImageElement) {
+    this.mediaHint.hidden = true;
+    this.panel.classList.add("fk-wide");
+    this.show("annotate");
+    this.annotator.load(img); // after show(): fit() needs a laid-out wrap width
+    this.live.textContent = this.tr("annotateHint");
+  }
+
+  private closeAnnotator() {
+    this.panel.classList.remove("fk-wide");
+    this.show("form");
+  }
+
+  /** Capture failed — tell the user, feedback itself is never blocked. */
+  captureFailed() {
+    this.mediaHint.textContent = this.tr("captureFailed");
+    this.mediaHint.hidden = false;
+  }
+
+  /** New attempt → drop the edited-shot affordances. */
+  private resetShotUI() {
+    this.shotThumb.hidden = true;
+    this.shotThumb.removeAttribute("src");
+    this.shotReady.hidden = true;
+    this.mediaHint.hidden = true;
+    this.panel.classList.remove("fk-wide");
   }
 
   private buildExtracting(): HTMLElement {
@@ -241,6 +305,7 @@ export class WidgetUI {
     switch (state.name) {
       case "form":
         this.show("form");
+        this.resetShotUI(); // "form" is only entered on a fresh attempt (open/retry)
         this.title.textContent = this.tr("title");
         this.live.textContent = this.tr("title");
         this.textarea.focus();

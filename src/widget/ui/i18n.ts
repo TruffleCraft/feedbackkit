@@ -18,7 +18,20 @@ type Key =
   | "doneMsg"
   | "viewIssue"
   | "failed"
-  | "retry";
+  | "retry"
+  | "editShot"
+  | "captureFailed"
+  | "shotReady"
+  | "annotateHint"
+  | "toolCrop"
+  | "toolRect"
+  | "toolArrow"
+  | "toolText"
+  | "toolPen"
+  | "undo"
+  | "clear"
+  | "useShot"
+  | "cancel";
 
 const STR: Record<Locale, Record<Key, string>> = {
   en: {
@@ -39,6 +52,19 @@ const STR: Record<Locale, Record<Key, string>> = {
     viewIssue: "View issue",
     failed: "Something went wrong. Please try again.",
     retry: "Try again",
+    editShot: "Mark up screenshot",
+    captureFailed: "Could not capture this page — you can still send your feedback.",
+    shotReady: "Screenshot edited ✓",
+    annotateHint: "Drag to crop, or pick a tool to mark things up.",
+    toolCrop: "Crop",
+    toolRect: "Rectangle",
+    toolArrow: "Arrow",
+    toolText: "Text",
+    toolPen: "Draw",
+    undo: "Undo",
+    clear: "Clear all",
+    useShot: "Use screenshot",
+    cancel: "Cancel",
   },
   de: {
     trigger: "Feedback",
@@ -58,6 +84,19 @@ const STR: Record<Locale, Record<Key, string>> = {
     viewIssue: "Zum Ticket",
     failed: "Etwas ist schiefgelaufen. Bitte erneut versuchen.",
     retry: "Erneut versuchen",
+    editShot: "Screenshot markieren",
+    captureFailed: "Seite konnte nicht aufgenommen werden — dein Feedback kannst du trotzdem senden.",
+    shotReady: "Screenshot bearbeitet ✓",
+    annotateHint: "Ziehen zum Zuschneiden, oder ein Werkzeug zum Markieren wählen.",
+    toolCrop: "Zuschneiden",
+    toolRect: "Rechteck",
+    toolArrow: "Pfeil",
+    toolText: "Text",
+    toolPen: "Zeichnen",
+    undo: "Rückgängig",
+    clear: "Alles löschen",
+    useShot: "Screenshot übernehmen",
+    cancel: "Abbrechen",
   },
 };
 
