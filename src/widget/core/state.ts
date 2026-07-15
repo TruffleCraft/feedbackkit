@@ -24,6 +24,7 @@ export type WidgetEvent =
   | { t: "sendNow" } // user forces send during extracting → submitting
   | { t: "answer" } // asking → submitting (index fires POST-2 with the freetext answer)
   | { t: "response"; res: FeedbackResponse } // POST-1/POST-2 result
+  | { t: "restart" }
   | { t: "retry" };
 
 function fromResponse(res: FeedbackResponse): WidgetState {
@@ -68,6 +69,8 @@ export function reduce(state: WidgetState, event: WidgetEvent): WidgetState {
     case "response":
       // A response is only meaningful while a call is in flight.
       return state.name === "extracting" || state.name === "submitting" ? fromResponse(event.res) : state;
+    case "restart":
+      return state.name === "done" ? { name: "form", type: "", text: "" } : state;
     case "retry":
       return state.name === "failed" ? { name: "form", type: "", text: "" } : state;
   }

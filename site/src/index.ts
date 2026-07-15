@@ -4,8 +4,8 @@
 // pages (Impressum + Datenschutz) required for a publicly reachable German site.
 //
 // Design (v2): developer-tool aesthetic, DM Sans (self-hosted for GDPR/CSP,
-// served at /fonts/dm-sans.woff2), violet accent, light theme by default with a
-// persisted dark theme (data-theme attribute + /theme.js — no inline scripts, so
+// served at /fonts/dm-sans.woff2), violet accent, dark theme by default with a
+// persisted theme choice (data-theme attribute + /theme.js — no inline scripts, so
 // script-src stays tight). Graphite panels (architecture, quickstart, closing
 // CTA, footer) stay dark in both themes; the rest of the palette is themed.
 //
@@ -264,9 +264,9 @@ footer .bottom{border-top:1px solid rgba(255,255,255,.1);padding:20px 0;font-siz
 const THEME_JS = `(function(){
 var KEY='fk-theme';
 function apply(t){document.documentElement.setAttribute('data-theme',t)}
-apply(localStorage.getItem(KEY)||'light');
+apply(localStorage.getItem(KEY)||'dark');
 window.__fkToggleTheme=function(){
-  var next=(localStorage.getItem(KEY)||'light')==='dark'?'light':'dark';
+  var next=(localStorage.getItem(KEY)||'dark')==='dark'?'light':'dark';
   localStorage.setItem(KEY,next);
   apply(next);
   var btn=document.getElementById('fk-theme-btn');
@@ -275,7 +275,7 @@ window.__fkToggleTheme=function(){
 document.addEventListener('DOMContentLoaded',function(){
   var btn=document.getElementById('fk-theme-btn');
   if(!btn)return;
-  btn.textContent=(localStorage.getItem(KEY)||'light')==='dark'?'☀':'☾';
+  btn.textContent=(localStorage.getItem(KEY)||'dark')==='dark'?'☀':'☾';
   btn.addEventListener('click',window.__fkToggleTheme);
 });
 })();`;
@@ -374,7 +374,7 @@ function homePage(): string {
 
 <div class="stats"><div class="wrap"><div class="grid">
   <div class="stat"><div class="v">2</div><div class="l">attributes — the whole snippet</div></div>
-  <div class="stat"><div class="v">&lt; 18 kB</div><div class="l">widget bundle budget, gzipped</div></div>
+  <div class="stat"><div class="v">&lt; 19 kB</div><div class="l">widget bundle budget, gzipped</div></div>
   <div class="stat"><div class="v">≤ 2</div><div class="l">LLM calls per feedback</div></div>
   <div class="stat"><div class="v">0</div><div class="l">cookies &amp; trackers</div></div>
   <div class="stat"><div class="v">MIT</div><div class="l">license, self-hosted</div></div>
@@ -530,7 +530,7 @@ Chrome 149 · macOS · 1440×900 · en-US
     <details><summary>Do I need my own AI key?</summary><p>Yes — any OpenAI-compatible endpoint, OpenRouter by default, and it stays in your Cloudflare account. Daily budget cap per project; there's even an "LLM off" kill switch that degrades to plain required-field forms.</p></details>
     <details><summary>What data does the widget collect?</summary><p>The feedback text, an optional screenshot, and technical context: browser, OS, viewport, language, page URL, recent console errors — PII-filtered client-side. Funnel events are enum-only: no content, no keystrokes, no persisted IPs. See the <a href="/datenschutz">Datenschutzerklärung</a>.</p></details>
     <details><summary>What happens when the AI fails or the budget is spent?</summary><p>Create-anyway is an architecture invariant: the issue is created unenriched and labelled <code>ai-failed</code>. Even if the database is unreachable the issue is still created. No failure may lose feedback.</p></details>
-    <details><summary>Does it slow my page down or break my styles?</summary><p>No. A ~12 kB loader renders everything inside a Shadow DOM — fully isolated from your CSS, loading after your page is interactive, on any stack including React/Next.</p></details>
+    <details><summary>Does it slow my page down or break my styles?</summary><p>No. The ~19 kB gzipped widget renders everything inside a Shadow DOM — fully isolated from your CSS, loading after your page is interactive, on any stack including React/Next.</p></details>
     <details><summary>How hard is it to run?</summary><p>One <code>pnpm deploy</code> to your Cloudflare account (Workers + D1 + R2, free tiers). Zero-touch updates: your fork stays commit-identical with upstream, so "Sync fork" is a conflict-free upgrade. <code>/diag</code> tells you what's wrong before you have to guess.</p></details>
   </div>
 </div></section>

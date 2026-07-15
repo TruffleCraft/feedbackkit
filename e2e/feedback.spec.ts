@@ -16,6 +16,8 @@ test("happy path: type → send → issue created", async ({ page }) => {
   expect(payload.pageUrl).toContain("/");
   await expect(page.getByText("Thanks!")).toBeVisible();
   await expect(page.getByRole("link", { name: "View issue" })).toHaveAttribute("href", /github\.com/);
+  await page.getByRole("button", { name: "Send more feedback" }).click();
+  await expect(page.getByPlaceholder(placeholder)).toHaveValue("");
 });
 
 test("follow_up: shows ONE conversational question, freetext answer → created", async ({ page }) => {
@@ -94,4 +96,29 @@ test("send waits for a visible attachment upload before creating feedback", asyn
   const feedback = page.waitForRequest("**/api/feedback**");
   await page.getByRole("button", send).click();
   expect((await feedback).postDataJSON().attachmentKeys).toContain("fk_test/manual.png");
+});
+
+test("drop processes every file and keeps independent status chips through failure and cap rejection", async ({ page }) => {
+  await installMocks(page, { post1: { v: 1, status: "created", id: "5" } });
+  let upload = 0;
+  await page.route("**/api/upload**", async (route) => {
+    upload++;
+    if (upload === 2) return route.fulfill({ status: 500, body: "failed" });
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ v: 1, key: `fk_test/manual-${upload}.png` }) });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Feedback" }).click();
+  await expect(page.locator("#fk-file")).toHaveAttribute("multiple", "");
+  await page.locator(".fk-media").evaluate((node) => {
+    const transfer = new DataTransfer();
+    for (let i = 1; i <= 5; i++) transfer.items.add(new File([String(i)], `evidence-${i}.png`, { type: "image/png" }));
+    node.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }));
+  });
+
+  await expect(page.locator(".fk-files .fk-chip")).toHaveCount(5);
+  await expect(page.locator('.fk-chip.file[data-status="uploaded"]')).toHaveCount(3);
+  await expect(page.locator('.fk-chip.file[data-status="failed"]')).toHaveCount(1);
+  await expect(page.locator('.fk-chip.file[data-status="limit"]')).toContainText(["evidence-5.png"]);
+  const chips = await page.locator(".fk-chip.file").allTextContents();
+  for (let i = 1; i <= 5; i++) expect(chips.some((text) => text.includes(`evidence-${i}.png`))).toBe(true);
 });

@@ -29,6 +29,8 @@ export class AnnotatorUI {
   private toolBtns = new Map<Tool, HTMLButtonElement>();
   private undoBtn!: HTMLButtonElement;
   private clearBtn!: HTMLButtonElement;
+  private smallerBtn!: HTMLButtonElement;
+  private largerBtn!: HTMLButtonElement;
 
   private img: HTMLImageElement | null = null;
   private tool: Tool = "crop";
@@ -36,6 +38,7 @@ export class AnnotatorUI {
   private crop: Rect | null = null;
   private drag: { x: number; y: number; a: Annotation | null } | null = null;
   private scale = 1; // image px → CSS px
+  private textSize = 20; // image px; copied onto each text annotation
 
   constructor(
     private locale: Locale,
@@ -83,6 +86,15 @@ export class AnnotatorUI {
       this.toolBtns.set(tool, b);
       bar.appendChild(b);
     }
+    const textSize = document.createElement("span");
+    textSize.className = "fk-text-size";
+    textSize.setAttribute("role", "group");
+    textSize.setAttribute("aria-label", this.tr("textSize"));
+    this.smallerBtn = btn("fk-tool", "A−", this.tr("textSmaller"));
+    this.largerBtn = btn("fk-tool", "A+", this.tr("textLarger"));
+    this.smallerBtn.addEventListener("click", () => this.changeTextSize(0.8));
+    this.largerBtn.addEventListener("click", () => this.changeTextSize(1.25));
+    textSize.append(this.smallerBtn, this.largerBtn);
     const sep = document.createElement("span");
     sep.className = "fk-tool-sep";
     this.undoBtn = btn("fk-tool", "↶", this.tr("undo"));
@@ -99,7 +111,7 @@ export class AnnotatorUI {
       this.crop = null;
       this.redraw();
     });
-    bar.append(sep, this.undoBtn, this.clearBtn);
+    bar.append(textSize, sep, this.undoBtn, this.clearBtn);
 
     this.canvas = document.createElement("canvas");
     this.canvas.className = "fk-canvas";
@@ -143,6 +155,7 @@ export class AnnotatorUI {
     this.annotations = [];
     this.crop = null;
     this.drag = null;
+    this.textSize = fontSize(img.naturalWidth);
     this.setTool("crop");
     this.fit();
     this.redraw();
@@ -177,6 +190,14 @@ export class AnnotatorUI {
     this.tool = tool;
     for (const [k, b] of this.toolBtns) b.setAttribute("aria-pressed", String(k === tool));
     this.canvas.style.cursor = tool === "text" ? "text" : "crosshair";
+    this.smallerBtn.disabled = tool !== "text";
+    this.largerBtn.disabled = tool !== "text";
+  }
+
+  private changeTextSize(factor: number) {
+    const base = fontSize(this.img?.naturalWidth ?? 800);
+    this.textSize = Math.min(base * 2, Math.max(base * 0.5, this.textSize * factor));
+    if (!this.textInput.hidden) this.layoutTextInput(Number(this.textInput.dataset["rawX"]), Number(this.textInput.dataset["rawY"]));
   }
 
   private pointerDown(e: PointerEvent) {
@@ -233,12 +254,26 @@ export class AnnotatorUI {
   private showTextInput(x: number, y: number) {
     this.textInput.hidden = false;
     this.textInput.value = "";
-    this.textInput.style.left = `${this.canvas.offsetLeft + x * this.scale}px`;
-    this.textInput.style.top = `${this.canvas.offsetTop + y * this.scale}px`;
-    this.textInput.style.font = `600 ${Math.max(12, fontSize(this.img?.naturalWidth ?? 800) * this.scale)}px inherit`;
-    this.textInput.dataset["x"] = String(x);
-    this.textInput.dataset["y"] = String(y);
+    this.textInput.dataset["rawX"] = String(x);
+    this.textInput.dataset["rawY"] = String(y);
+    this.layoutTextInput(x, y);
     this.textInput.focus();
+  }
+
+  private layoutTextInput(x: number, y: number) {
+    if (!this.img) return;
+    const canvasW = this.canvas.clientWidth || this.img.naturalWidth * this.scale;
+    const canvasH = this.canvas.clientHeight || this.img.naturalHeight * this.scale;
+    const width = Math.min(240, canvasW);
+    const fontPx = Math.max(12, this.textSize * this.scale);
+    const localLeft = Math.min(x * this.scale, Math.max(0, canvasW - width));
+    const localTop = Math.min(Math.max(0, y * this.scale - fontPx), Math.max(0, canvasH - fontPx - 10));
+    this.textInput.style.left = `${this.canvas.offsetLeft + localLeft}px`;
+    this.textInput.style.top = `${this.canvas.offsetTop + localTop}px`;
+    this.textInput.style.width = `${width}px`;
+    this.textInput.style.font = `600 ${fontPx}px inherit`;
+    this.textInput.dataset["x"] = String(localLeft / this.scale);
+    this.textInput.dataset["y"] = String(Math.min(Math.max(y, this.textSize), this.img.naturalHeight));
   }
 
   private hideTextInput() {
@@ -249,7 +284,7 @@ export class AnnotatorUI {
   private commitText() {
     const text = this.textInput.value.trim();
     if (!this.textInput.hidden && text) {
-      this.annotations.push({ tool: "text", x: Number(this.textInput.dataset["x"]), y: Number(this.textInput.dataset["y"]), text });
+      this.annotations.push({ tool: "text", x: Number(this.textInput.dataset["x"]), y: Number(this.textInput.dataset["y"]), text, size: this.textSize });
     }
     this.hideTextInput();
     this.redraw();
@@ -263,8 +298,8 @@ export class AnnotatorUI {
     ctx.setTransform(k, 0, 0, k, 0, 0);
     ctx.clearRect(0, 0, this.img.naturalWidth, this.img.naturalHeight);
     ctx.drawImage(this.img, 0, 0);
-    drawScene(ctx, this.annotations, this.img.naturalWidth);
-    if (inProgress) drawAnnotation(ctx, inProgress, this.img.naturalWidth);
+    drawScene(ctx, this.annotations, this.img.naturalWidth, this.img.naturalHeight);
+    if (inProgress) drawAnnotation(ctx, inProgress, this.img.naturalWidth, this.img.naturalHeight);
     if (this.crop) {
       const { x, y, w, h } = this.crop;
       const W = this.img.naturalWidth;
@@ -295,7 +330,7 @@ export class AnnotatorUI {
     if (!ctx) return this.h.onCancel();
     ctx.translate(-region.x, -region.y);
     ctx.drawImage(this.img, 0, 0);
-    drawScene(ctx, this.annotations, this.img.naturalWidth);
+    drawScene(ctx, this.annotations, this.img.naturalWidth, this.img.naturalHeight);
     const blob = await new Promise<Blob | null>((r) => out.toBlob((b) => r(b), "image/webp", 0.8));
     if (!blob) return this.h.onCancel();
     this.h.onDone(blob, out.toDataURL("image/webp", 0.5));

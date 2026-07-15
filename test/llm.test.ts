@@ -94,6 +94,28 @@ describe("classifyAndExtract", () => {
     expect(r.summary).toBe("Seite hängt");
   });
 
+  it("grounds extraction in reported and directly visible evidence", async () => {
+    let systemPrompt = "";
+    const chat: ChatFn = async (req) => {
+      const body = JSON.parse((req as { init: { body: string } }).init.body) as {
+        messages: Array<{ role: string; content: string }>;
+      };
+      systemPrompt = body.messages[0]!.content;
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: JSON.stringify({ type: "bug", summary: "", followUpQuestion: "", repro: "", expected: "", actual: "" }) } }] }),
+        { status: 200 },
+      );
+    };
+
+    await classifyAndExtract({ config, template: bug, message: "Ich hätte lieber einen größeren Button", apiKey: "k", chat });
+
+    expect(systemPrompt).toContain("user-reported claims, not as independently verified facts");
+    expect(systemPrompt).toContain("only facts directly visible in the image");
+    expect(systemPrompt).toContain("Never invent or reconstruct reproduction steps");
+    expect(systemPrompt).toContain("Do not reframe desired or expected behavior as verified current behavior");
+    expect(systemPrompt).toContain("leave it as an empty string even when a value seems plausible");
+  });
+
   it("rejects translated or unknown select values when structured output is disabled", async () => {
     const selectConfig = FeedbackConfig.parse({
       ...config,

@@ -43,24 +43,36 @@ describe("deriveTitle", () => {
 });
 
 describe("renderIssueBody", () => {
+  const provenance =
+    "_AI-generated draft: verify structured fields against the unchanged original feedback._";
+
   it("substitutes fields into body sections and marks missing ones", () => {
     const body = renderIssueBody(bug, ctx());
+    expect(body.indexOf(provenance)).toBeLessThan(body.indexOf("### Steps to reproduce"));
     expect(body).toContain("### Steps to reproduce\nclick save");
     expect(body).toContain("Expected: it saves");
     expect(body).toContain("Actual: _(not provided)_"); // 'actual' not in fields
   });
 
-  it("appends environment, original feedback, and (when degraded) a triage note", () => {
+  it("keeps original feedback authoritative and omits AI provenance when degraded", () => {
     const body = renderIssueBody(bug, ctx({ degraded: true }));
     expect(body).toContain("### Environment");
     expect(body).toContain("Chrome");
     expect(body).toContain("URL: https://acme.dev/form");
     expect(body).toContain("### Original feedback\n> save button does nothing");
+    expect(body).not.toContain(provenance);
     expect(body).toContain("please triage");
   });
 
-  it("renders image attachments inline, others as links", () => {
+  it("localizes the provenance note", () => {
+    const body = renderIssueBody(bug, ctx(), "de");
+    expect(body).toContain("AI-generierter Entwurf");
+    expect(body).not.toContain(provenance);
+  });
+
+  it("renders multiple image and file attachments", () => {
     const body = renderIssueBody(bug, ctx({ attachments: [{ url: "https://r2/x.png", kind: "screenshot" }, { url: "https://r2/log.txt", kind: "upload" }] }));
+    expect(body.match(/^!?\[attachment\]/gm)).toHaveLength(2);
     expect(body).toContain("![attachment](https://r2/x.png)");
     expect(body).toContain("[attachment](https://r2/log.txt)");
   });

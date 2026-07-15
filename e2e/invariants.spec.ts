@@ -41,6 +41,27 @@ test("form input survives a DOM toggle (re-render ban)", async ({ page }) => {
   await expect(page.getByPlaceholder(placeholder)).toHaveValue("my typed feedback"); // form not rebuilt
 });
 
+test("a fresh attempt clears text, answer, and media without replacing persistent inputs", async ({ page }) => {
+  await installMocks(page, { post1: { v: 1, status: "follow_up", question: "What happened?", extracted: {} } });
+  await page.goto("/");
+  await page.getByRole("button", feedbackBtn).click();
+  const text = page.getByPlaceholder(placeholder);
+  await text.evaluate((node) => node.setAttribute("data-persistent", "yes"));
+  await page.locator("#fk-file").setInputFiles({ name: "old.png", mimeType: "image/png", buffer: Buffer.from([1]) });
+  await page.getByRole("button", { name: "Remove screenshot" }).click();
+  await text.fill("old attempt");
+  await page.getByRole("button", send).click();
+  await page.locator("#fk-answer").fill("stale answer");
+  await page.getByRole("button", closeBtn).click();
+  await page.getByRole("button", feedbackBtn).click();
+
+  await expect(text).toHaveValue("");
+  await expect(text).toHaveAttribute("data-persistent", "yes");
+  await expect(page.locator("#fk-answer")).toHaveValue("");
+  await expect(page.locator(".fk-files .fk-chip")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Remove screenshot" })).toBeVisible();
+});
+
 test("renders full-viewport even when an ancestor is transformed (fixed-positioning trap)", async ({ page }) => {
   await installMocks(page, { post1: {} });
   await page.goto("/");
@@ -51,4 +72,35 @@ test("renders full-viewport even when an ancestor is transformed (fixed-position
   // Widget appends to <body> (not #app), so its fixed backdrop covers the viewport.
   expect(box!.width).toBeGreaterThanOrEqual(vp.width - 2);
   expect(box!.height).toBeGreaterThanOrEqual(vp.height - 2);
+});
+
+test("panel is lower-right on desktop, bottom-aligned on mobile, with a clear backdrop", async ({ page }) => {
+  await installMocks(page, { post1: {} });
+  await page.goto("/");
+  await page.getByRole("button", feedbackBtn).click();
+  const panelLocator = page.locator(".fk-panel");
+  await panelLocator.evaluate((node) => Promise.all(node.getAnimations().map((animation) => animation.finished)));
+  const panel = (await panelLocator.boundingBox())!;
+  const vp = page.viewportSize()!;
+  expect(vp.height - panel.y - panel.height).toBeLessThanOrEqual(vp.width <= 600 ? 1 : 22);
+  if (vp.width > 600) expect(vp.width - panel.x - panel.width).toBeLessThanOrEqual(22);
+  const backdrop = page.locator(".fk-backdrop");
+  await expect(backdrop).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(backdrop).toHaveCSS("backdrop-filter", "none");
+});
+
+test("host theme follows document data-theme and falls back to color scheme", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await installMocks(page, { post1: {} });
+  await page.goto("/");
+  const host = page.locator('[data-feedbackkit="host"]');
+  await expect(host).not.toHaveAttribute("data-theme");
+  await page.getByRole("button", feedbackBtn).click();
+  await expect(page.locator(".fk-panel")).toHaveCSS("background-color", "rgb(12, 17, 23)");
+
+  await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
+  await expect(host).toHaveAttribute("data-theme", "light");
+  await expect(page.locator(".fk-panel")).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
+  await expect(host).toHaveAttribute("data-theme", "dark");
 });

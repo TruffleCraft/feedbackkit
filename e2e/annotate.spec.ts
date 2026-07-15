@@ -98,3 +98,29 @@ test("annotate: cancel leaves no edited shot; undo/clear controls exist", async 
   await expect(page.getByRole("button", { name: "Mark up" })).toBeFocused();
   await expect(page.getByPlaceholder(placeholder)).toBeVisible(); // back on the form
 });
+
+test("annotate: text size controls are accessible and input stays inside the canvas edge", async ({ page }) => {
+  await installMocks(page, { post1: { v: 1, status: "created", id: "1" } });
+  await page.goto("/");
+  await openAnnotator(page);
+
+  const smaller = page.getByRole("button", { name: "Smaller text" });
+  const larger = page.getByRole("button", { name: "Larger text" });
+  await expect(smaller).toBeDisabled();
+  await page.getByRole("button", { name: "Text", exact: true }).click();
+  await expect(smaller).toBeEnabled();
+  await smaller.click();
+  await larger.click();
+
+  const canvas = page.locator(".fk-canvas");
+  const canvasBox = (await canvas.boundingBox())!;
+  await page.mouse.click(canvasBox.x + canvasBox.width - 2, canvasBox.y + 30);
+  const input = page.locator(".fk-canvas-text");
+  const inputBox = (await input.boundingBox())!;
+  expect(inputBox.x).toBeGreaterThanOrEqual(canvasBox.x - 1);
+  expect(inputBox.x + inputBox.width).toBeLessThanOrEqual(canvasBox.x + canvasBox.width + 1);
+  await input.fill("averylongunbrokenannotationthatmustwrap");
+  await input.press("Enter");
+  await expect(input).toBeHidden();
+  await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+});
