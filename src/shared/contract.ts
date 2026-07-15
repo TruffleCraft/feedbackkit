@@ -32,6 +32,11 @@ export const BodySection = z.object({
 export const TemplateDefinition = z.object({
   type: z.string().min(1), // bug | idea | improvement | question | praise | custom
   label: Label,
+  // Optional short inline hint rendered in the widget under the type selector
+  // ("what a good report of this kind needs"). Sets expectations up front so the
+  // user supplies the key facts in one shot — fewer follow-up round-trips, better
+  // issues out the back (P2 categories). Guidance only; never asked/validated.
+  guidance: Label.optional(),
   fields: z.array(FieldSpec).default([]),
   body: z.array(BodySection).default([]),
   tracker: z
@@ -95,6 +100,8 @@ export const PublicConfig = z.object({
     z.object({
       type: z.string(),
       label: Label,
+      // Inline "what's needed" hint for this type (see TemplateDefinition.guidance).
+      guidance: Label.optional(),
       fields: z.array(
         z.object({
           key: z.string(),

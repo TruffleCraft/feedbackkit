@@ -7,6 +7,7 @@
     {
       "type": "bug",
       "label": "Bug",
+      "guidance": "Helpful to include: what you did, what you expected, and what happened instead. A screenshot of the problem makes it much faster to fix.",
       "fields": [
         { "key": "repro", "label": "Steps to reproduce", "kind": "longtext", "required": true, "extractionHint": "How did you get here / what did you click?" },
         { "key": "expected", "label": "What you expected", "kind": "longtext", "required": true },
@@ -21,6 +22,7 @@
     {
       "type": "idea",
       "label": "Idea",
+      "guidance": "Tell us the problem you're trying to solve and who it's for — not just the feature. The 'why' helps us build the right thing.",
       "fields": [{ "key": "problem", "label": "The problem this solves", "kind": "longtext", "required": true }],
       "tracker": { "labels": ["type/idea", "source/feedbackkit"] }
     }

@@ -23,6 +23,7 @@ function toUIConfig(cfg: PublicConfig, triggerLabel: string | undefined): UIConf
     types: cfg.types.map((ty) => ({
       type: ty.type,
       label: label(ty.label, locale),
+      guidance: ty.guidance ? label(ty.guidance, locale) : undefined,
       fields: ty.fields.filter((f) => f.required).map((f) => ({ key: f.key, label: label(f.label, locale), required: f.required })),
     })),
   };

@@ -76,6 +76,8 @@ export const STYLES = `
 .fk-types { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .fk-type { border: 1px solid var(--fk-border); background: transparent; color: var(--fk-text-soft); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
 .fk-type[aria-pressed="true"] { border-color: var(--fk-primary); color: var(--fk-primary); font-weight: 600; }
+/* Inline per-type guidance: a soft accent-tinted hint under the type selector. */
+.fk-guidance { font-size: 12.5px; line-height: 1.45; color: var(--fk-text-soft); margin: 0 0 12px; padding: 8px 10px; border-inline-start: 2px solid var(--fk-primary); border-radius: 6px; background: color-mix(in srgb, var(--fk-primary) 8%, transparent); }
 .fk-label { display: block; font-size: 13px; font-weight: 600; margin: 8px 0 6px; }
 .fk-hint { font-size: 12px; color: var(--fk-muted); margin: 0 0 10px; }
 .fk-question { font-size: 15px; font-weight: 500; margin: 4px 0 8px; color: var(--fk-text); }

@@ -37,6 +37,28 @@ test("follow_up: shows ONE conversational question, freetext answer → created"
   await expect(page.getByText("Thanks!")).toBeVisible();
 });
 
+test("category guidance: shows the per-type hint and updates on type switch", async ({ page }) => {
+  await installMocks(page, {
+    config: {
+      v: 1,
+      enabled: true,
+      locale: "en",
+      askType: true,
+      configVersion: 1,
+      types: [
+        { type: "bug", label: "Bug", guidance: "Include what you did, expected, and saw.", fields: [{ key: "repro", label: "Steps", kind: "longtext", required: true }] },
+        { type: "idea", label: "Idea", guidance: "Tell us the problem this solves and who it's for.", fields: [{ key: "problem", label: "Problem", kind: "longtext", required: true }] },
+      ],
+    },
+    post1: { v: 1, status: "created", id: "1", issueUrl: "https://github.com/acme/site/issues/1" },
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Feedback" }).click();
+  await expect(page.locator(".fk-guidance")).toHaveText("Include what you did, expected, and saw.");
+  await page.getByRole("button", { name: "Idea", exact: true }).click();
+  await expect(page.locator(".fk-guidance")).toHaveText("Tell us the problem this solves and who it's for."); // patched, not re-rendered
+});
+
 test("LLM degrade / incomplete: accepted_incomplete → soft done", async ({ page }) => {
   await installMocks(page, { post1: { v: 1, status: "accepted_incomplete", id: "3", issueUrl: "https://github.com/acme/site/issues/3" } });
   await page.goto("/");
