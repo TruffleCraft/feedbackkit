@@ -9,7 +9,12 @@ export function fakeD1(handler: (sql: string, params: unknown[]) => unknown): D1
           return stmt;
         },
         first: async () => handler(sql, params) as never,
-        run: async () => ({ success: true }) as never,
+        // run() also forwards to the handler so tests can capture writes and
+        // simulate constraint errors (throw); its return value is ignored.
+        run: async () => {
+          handler(sql, params);
+          return { success: true } as never;
+        },
         all: async () => ({ results: [] }) as never,
         raw: async () => [] as never,
       };

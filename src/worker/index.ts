@@ -1,9 +1,10 @@
 import { Hono } from "hono";
-import { WIRE_VERSION, SCHEMA_VERSION, FeedbackPayload, EventPayload } from "../shared/contract.js";
+import { WIRE_VERSION, SCHEMA_VERSION, FeedbackPayload, EventPayload, FeedbackConfig } from "../shared/contract.js";
 import { toPublicConfig } from "../shared/projection.js";
 import { orchestrateFeedback, realChat, dryRunPreview } from "./orchestrate.js";
 import { renderTestPage, TEST_PAGE_CSP } from "./testpage.js";
-import { checkSchema } from "./db.js";
+import { checkSchema, countProjects } from "./db.js";
+import { renderLanding, LANDING_CSP } from "./landing.js";
 import { loadProject } from "./config.js";
 import { originAllowed } from "./security/origin.js";
 import { hitRateLimit, hourWindow } from "./security/ratelimit.js";
@@ -82,6 +83,17 @@ function adminAuthed(c: import("hono").Context): boolean {
   return m ? safeEqual(m[1]!, token) : false;
 }
 
+// Non-sensitive presence booleans for /diag and the landing page: which setup
+// steps are done, never the values. Any GITHUB_PAT_* secret counts — the name
+// suffix is per-project config (tracker.patSecret), not fixed.
+function secretsPresence(env: Env): { adminToken: boolean; githubPat: boolean; llmKey: boolean } {
+  return {
+    adminToken: Boolean(env["ADMIN_TOKEN"]),
+    githubPat: Object.keys(env).some((k) => k.startsWith("GITHUB_PAT_") && Boolean(env[k])),
+    llmKey: Boolean(env["LLM_API_KEY"]),
+  };
+}
+
 const app = new Hono<{ Bindings: Env }>();
 
 // GET /widget.js is served as a static asset from ./dist (built by build:widget,
@@ -147,6 +159,20 @@ app.get("/diag", async (c) => {
     }
   }
 
+  // First-run visibility (P2): a fresh (button) deploy is healthy at the infra
+  // level but unusable until secrets + a project exist. `ok` keeps meaning
+  // "infra healthy"; these fields make the remaining setup steps visible on the
+  // public endpoint without disclosing anything sensitive (presence only).
+  const secrets = secretsPresence(c.env);
+  const projects = await countProjects(c.env);
+  const firstRun = projects === null || projects === 0;
+  const nextSteps: string[] = [];
+  if (!schema.ok) nextSteps.push("apply D1 migrations (see schema.reason)");
+  if (!secrets.adminToken) nextSteps.push("set the admin secret: npx wrangler secret put ADMIN_TOKEN");
+  if (!secrets.githubPat) nextSteps.push("set a GitHub PAT: npx wrangler secret put GITHUB_PAT_default");
+  if (firstRun) nextSteps.push("create your first project: POST /api/admin/config/import (see docs/QUICKSTART.md)");
+  if (!secrets.llmKey) nextSteps.push("optional: set LLM_API_KEY to enable AI follow-up questions");
+
   const ok = schema.ok && bindings.DB && bindings.UPLOADS && !tracker.startsWith("FAIL") && !r2.startsWith("FAIL");
   return c.json(
     {
@@ -155,6 +181,10 @@ app.get("/diag", async (c) => {
       wireVersion: WIRE_VERSION,
       schema: { expected: SCHEMA_VERSION, ...schema },
       bindings,
+      secrets,
+      projects,
+      firstRun,
+      nextSteps,
       checks: { tracker, llm, r2 },
       ok,
     },
@@ -311,6 +341,76 @@ app.delete("/api/admin/assets", async (c) => {
   if (!UUID_RE.test(feedbackId)) return c.json({ v: WIRE_VERSION, status: "error", error: "missing or invalid feedbackId" }, 400);
   const deleted = await deleteAssetsForFeedback(c.env, feedbackId);
   return c.json({ v: WIRE_VERSION, deleted });
+});
+
+// CLI-free project seeding (P2): takes a fresh deploy from "worker live" to
+// "project configured" with one authenticated POST — no clone, no wrangler, no
+// Node required (the Deploy-to-Cloudflare path ends without any of them).
+// Accepts the same JSON shape as `pnpm seed`: an optional top-level publicKey
+// pins the snippet key (stored in its own column, never in the config blob).
+// Re-importing the same projectId updates the config and bumps config_version;
+// the public key NEVER rotates on update (installed snippets keep working).
+// Widgets pick up the new config within the isolate cache TTL (~60 s, ADR-008).
+app.post("/api/admin/config/import", async (c) => {
+  if (!adminAuthed(c)) return c.json({ v: WIRE_VERSION, status: "error", error: "unauthorized" }, 401);
+
+  const body = await readJsonBounded(c, MAX_FEEDBACK_BYTES);
+  if (!body.ok) return c.json({ v: WIRE_VERSION, status: "error", error: body.tooLarge ? "payload too large" : "invalid json" }, body.tooLarge ? 413 : 400);
+  if (!body.value || typeof body.value !== "object" || Array.isArray(body.value)) {
+    return c.json({ v: WIRE_VERSION, status: "error", error: "config must be a JSON object" }, 400);
+  }
+
+  const { publicKey: pinnedRaw, ...cfg } = body.value as Record<string, unknown>;
+  if (pinnedRaw !== undefined && (typeof pinnedRaw !== "string" || !/^[A-Za-z0-9_-]{8,64}$/.test(pinnedRaw))) {
+    return c.json({ v: WIRE_VERSION, status: "error", error: "publicKey must be 8-64 chars of [A-Za-z0-9_-]" }, 400);
+  }
+
+  const validated = FeedbackConfig.safeParse(cfg);
+  if (!validated.success) {
+    // Admin-authed, so detailed Zod paths are safe — and save a debugging loop.
+    const issues = validated.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`);
+    return c.json({ v: WIRE_VERSION, status: "error", error: "config failed validation", issues }, 400);
+  }
+
+  // Store the raw blob (minus publicKey), like `pnpm seed`: loadProject re-runs
+  // Zod on every read, so future schema defaults apply without a re-import.
+  const id = validated.data.projectId;
+  const publicKey =
+    (pinnedRaw as string | undefined) ||
+    `fk_pub_${[...crypto.getRandomValues(new Uint8Array(6))].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+  try {
+    await c.env.DB.prepare(
+      `INSERT INTO projects (id, public_key, config, config_version, updated_at)
+       VALUES (?1, ?2, ?3, 1, ?4)
+       ON CONFLICT(id) DO UPDATE SET config = excluded.config, config_version = projects.config_version + 1, updated_at = excluded.updated_at`,
+    )
+      .bind(id, publicKey, JSON.stringify(cfg), Date.now())
+      .run();
+  } catch (e) {
+    const msg = (e as Error).message ?? "";
+    if (msg.includes("UNIQUE")) {
+      return c.json({ v: WIRE_VERSION, status: "error", error: "publicKey already in use by another project" }, 409);
+    }
+    console.error(`[feedbackkit] config import failed: ${msg}`);
+    return c.json({ v: WIRE_VERSION, status: "error", error: "import failed — are migrations applied? see /diag" }, 503);
+  }
+
+  // Read the row back: on update the STORED key and bumped version win, not the
+  // request's — so the response always reflects what the snippet must use.
+  const row = await c.env.DB.prepare("SELECT public_key, config_version FROM projects WHERE id = ?1")
+    .bind(id)
+    .first<{ public_key: string; config_version: number }>();
+  const key = row?.public_key ?? publicKey;
+  const origin = new URL(c.req.url).origin;
+  return c.json({
+    v: WIRE_VERSION,
+    status: "imported",
+    projectId: id,
+    publicKey: key,
+    configVersion: Number(row?.config_version ?? 1),
+    snippet: `<script src="${origin}/widget.js" data-project="${key}"></script>`,
+    testPage: `${origin}/t/${key}`,
+  });
 });
 
 // Feedback orchestration (P1.9) — the core 2-POST loop. Cross-origin (JSON body
@@ -472,7 +572,15 @@ app.get("/t/:key", (c) => {
 
 app.all("/api/admin/*", notImplemented("P2"));
 
-app.get("/", (c) => c.text(`FeedbackKit ${VERSION} — see /diag`));
+// First-run landing page (P2): the first URL an operator sees after a deploy.
+// Renders the setup checklist from presence signals; strict no-script CSP.
+app.get("/", async (c) => {
+  const [schema, projects] = await Promise.all([checkSchema(c.env), countProjects(c.env)]);
+  c.header("Content-Security-Policy", LANDING_CSP);
+  c.header("X-Content-Type-Options", "nosniff");
+  c.header("Cache-Control", "no-store");
+  return c.html(renderLanding({ version: VERSION, schema, secrets: secretsPresence(c.env), projects }));
+});
 
 // Test entrypoint: route tests call app.request().
 export { app };
