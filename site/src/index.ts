@@ -15,6 +15,7 @@
 // 'self' for the self-hosted woff2 — no Google Fonts or other CDN.
 
 import { DM_SANS_WOFF2_B64 } from "./font.js";
+import { WIDGET_VER } from "./widget-ver.js";
 
 const GATEWAY = "https://feedbackkit.trufflecraft.workers.dev";
 const DEMO_PROJECT_KEY = "fk_pub_64a564982de5";
@@ -313,7 +314,7 @@ function shell(opts: { title: string; description: string; body: string; widget?
 ${HEADER}
 ${opts.body}
 ${FOOTER}
-${opts.widget ? `<script src="${GATEWAY}/widget.js" data-project="${DEMO_PROJECT_KEY}"></script>` : ""}
+${opts.widget ? `<script src="${GATEWAY}/widget.js?v=${WIDGET_VER}" data-project="${DEMO_PROJECT_KEY}"></script>` : ""}
 </body></html>`;
 }
 

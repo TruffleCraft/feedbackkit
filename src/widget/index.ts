@@ -130,7 +130,7 @@ async function boot() {
   async function editShot() {
     const myGen = gen;
     const t0 = Date.now();
-    const shot = await Promise.race([captureScreenshot({ skip: host }), new Promise<null>((r) => setTimeout(() => r(null), 6000))]);
+    const shot = await Promise.race([captureScreenshot({ skip: host, maxWidth: 1600 }), new Promise<null>((r) => setTimeout(() => r(null), 6000))]);
     debug("edit capture", { ms: Date.now() - t0, ok: !!shot, bytes: shot?.size ?? 0 });
     if (myGen !== gen || state.name !== "form") return; // closed/superseded while capturing
     if (!shot) {

@@ -2,7 +2,7 @@
 // ADR-004: the repo commits only wrangler.template.toml. This script renders the
 // real (gitignored) wrangler.toml from build variables so a fork stays commit-
 // identical with upstream and "Sync fork" is conflict-free.
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -19,8 +19,14 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
+const verFile = join(root, "dist", "widget.ver");
+const widgetVersion = existsSync(verFile)
+  ? readFileSync(verFile, "utf8").trim()
+  : "unversioned";
+
 const template = readFileSync(join(root, "wrangler.template.toml"), "utf8");
 const rendered = template.replace(/\$\{(\w+)\}/g, (_, name) => {
+  if (name === "WIDGET_VERSION") return widgetVersion;
   const v = process.env[name];
   if (v === undefined) {
     console.error(`materialize: unresolved variable \${${name}} in template`);
@@ -29,4 +35,4 @@ const rendered = template.replace(/\$\{(\w+)\}/g, (_, name) => {
   return v;
 });
 writeFileSync(join(root, "wrangler.toml"), rendered);
-console.log("materialize: wrote wrangler.toml");
+console.log(`materialize: wrote wrangler.toml (widget v=${widgetVersion})`);
