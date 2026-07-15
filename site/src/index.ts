@@ -3,7 +3,7 @@
 // from the gateway, wired to the feedbackkit-demo project), and carries the legal
 // pages (Impressum + Datenschutz) required for a publicly reachable German site.
 //
-// Design: adapted from the speechsdk.dev system — DM Sans (self-hosted for
+// Design: a clean developer-tool landing aesthetic — DM Sans (self-hosted for
 // GDPR/CSP, served at /fonts/dm-sans.woff2), light monochrome palette, teal
 // accent (FeedbackKit brand), code-first hero, native <details> FAQ (no JS).
 //
