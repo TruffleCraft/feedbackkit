@@ -3,7 +3,6 @@ import { WIRE_VERSION, SCHEMA_VERSION, FeedbackPayload, EventPayload } from "../
 import { toPublicConfig } from "../shared/projection.js";
 import { orchestrateFeedback, realChat, dryRunPreview } from "./orchestrate.js";
 import { renderTestPage, TEST_PAGE_CSP } from "./testpage.js";
-import { renderDemoPage, DEMO_CSP } from "./demo.js";
 import { checkSchema } from "./db.js";
 import { loadProject } from "./config.js";
 import { originAllowed } from "./security/origin.js";
@@ -473,15 +472,7 @@ app.get("/t/:key", (c) => {
 
 app.all("/api/admin/*", notImplemented("P2"));
 
-// Product/demo one-pager: introduces FeedbackKit and embeds the live widget
-// (same-origin, `feedbackkit-demo` project) as a stable testing surface.
-app.get("/demo", (c) => {
-  c.header("Content-Security-Policy", DEMO_CSP);
-  c.header("X-Content-Type-Options", "nosniff");
-  return c.html(renderDemoPage());
-});
-
-app.get("/", (c) => c.text(`FeedbackKit ${VERSION} — see /demo or /diag`));
+app.get("/", (c) => c.text(`FeedbackKit ${VERSION} — see /diag`));
 
 // Test entrypoint: route tests call app.request().
 export { app };

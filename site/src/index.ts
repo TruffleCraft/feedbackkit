@@ -1,19 +1,30 @@
-// Worker-served product/demo one-pager at /demo. Two jobs: (1) introduce
-// FeedbackKit to a first-time visitor, and (2) be a stable, self-hosted testing
-// surface — the live widget is embedded same-origin against the `feedbackkit-demo`
-// project, so submitting here creates a real (demo-labelled) GitHub issue.
+// FeedbackKit marketing / demo site — a standalone Cloudflare Worker, separate
+// from the gateway. Two jobs: introduce FeedbackKit, and be a live testing
+// surface. The feedback widget is embedded from the gateway (cross-origin, the
+// real integration shape), wired to the `feedbackkit-demo` project whose origin
+// allowlist is THIS worker's URL — so submitting here opens a real, demo-labelled
+// issue in TruffleCraft/feedbackkit.
 //
-// The widget auto-boots from the <script data-project> attribute, so the page
-// needs no inline JS → script-src stays 'self' with no nonce. The widget injects
-// its styles into a shadow root, which needs style-src 'unsafe-inline'; page
-// styles ride the same allowance. Everything else is same-origin ('self').
+// Static HTML only: the widget auto-boots from its <script data-project> attr, so
+// there is no inline JS and script-src can stay tight (gateway origin + self).
+// The widget injects styles into a shadow root → style-src 'unsafe-inline'. All
+// widget API traffic and the widget bundle come from the gateway origin, so both
+// script-src and connect-src list it explicitly.
 
+const GATEWAY = "https://feedbackkit.schieder-account.workers.dev";
 const DEMO_PROJECT_KEY = "fk_pub_64a564982de5";
 
-export const DEMO_CSP =
-  "default-src 'self'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'";
+const CSP = [
+  "default-src 'self'",
+  `script-src 'self' ${GATEWAY}`,
+  "style-src 'unsafe-inline'",
+  "img-src 'self' data:",
+  `connect-src 'self' ${GATEWAY}`,
+  "base-uri 'none'",
+  "frame-ancestors 'none'",
+].join("; ");
 
-export function renderDemoPage(): string {
+function page(): string {
   return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8">
@@ -23,21 +34,19 @@ export function renderDemoPage(): string {
 <style>
   :root{
     --bg:#f7f9fb; --bg-elev:#ffffff; --ink:#16202b; --ink-soft:#475569; --muted:#64748b;
-    --line:#e3e9ef; --teal:#0f766e; --teal-ink:#0b3d39; --navy:#1b2735; --accent:#0f766e;
+    --line:#e3e9ef; --teal:#0f766e; --navy:#1b2735; --accent:#0f766e;
     --serif:Georgia,"Times New Roman",serif; --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   }
   @media (prefers-color-scheme:dark){
     :root{
       --bg:#0f1720; --bg-elev:#1b2735; --ink:rgba(255,255,255,.94); --ink-soft:rgba(255,255,255,.72);
-      --muted:rgba(255,255,255,.5); --line:rgba(255,255,255,.12); --teal:#86d9d2; --teal-ink:#dffdfa;
-      --accent:#86d9d2;
+      --muted:rgba(255,255,255,.5); --line:rgba(255,255,255,.12); --teal:#86d9d2; --accent:#86d9d2;
     }
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
   body{margin:0;font-family:var(--sans);color:var(--ink);background:var(--bg);line-height:1.6;-webkit-font-smoothing:antialiased}
-  a{color:inherit}
   .wrap{max-width:1000px;margin:0 auto;padding:0 24px}
   h1,h2,h3{font-family:var(--serif);font-weight:500;line-height:1.15;margin:0}
 
@@ -56,7 +65,6 @@ export function renderDemoPage(): string {
   .cta{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
   .btn{display:inline-flex;align-items:center;gap:8px;font:inherit;font-weight:600;font-size:15px;padding:12px 22px;border-radius:999px;border:0;cursor:pointer;text-decoration:none}
   .btn.primary{background:var(--accent);color:#06231f}
-  @media (prefers-color-scheme:dark){.btn.primary{color:#06231f}}
   .btn.primary:hover{transform:translateY(-1px)}
   .btn.link{color:var(--ink-soft);border:1px solid var(--line);background:transparent}
   .btn.link:hover{border-color:var(--accent);color:var(--accent)}
@@ -113,7 +121,7 @@ export function renderDemoPage(): string {
   <h1>Turn what users actually type into clean, structured issues.</h1>
   <p class="lede">Your users won't fill out a bug-report form. FeedbackKit lets them write one sentence — then an AI structures it, asks one smart follow-up, grabs a screenshot and the page context, and opens a proper GitHub issue.</p>
   <div class="cta">
-    <button class="btn primary" onclick="return false" aria-hidden="true">Try it — look bottom-right ↘</button>
+    <a class="btn primary" href="#try">Try it — leave feedback ↘</a>
     <a class="btn link" href="#how">See how it works</a>
   </div>
   <p class="hint">This page is running FeedbackKit live. Click the <b>Feedback</b> button in the bottom-right corner and submit something — it opens a real issue in <code>TruffleCraft/feedbackkit</code> (labelled <b>demo</b>).</p>
@@ -187,7 +195,7 @@ Chrome 149 · Windows · 1920×911 · en-US
   </div>
 </div></section>
 
-<section><div class="wrap">
+<section id="try"><div class="wrap">
   <div class="band">
     <h2>Go on — leave us feedback.</h2>
     <p>This is not a mockup. The <b>Feedback</b> button in the corner is the real widget, wired to a live gateway. Tell us what you think of this page, report a "bug", or ask for a feature — you'll get a follow-up question, and a real issue will open on GitHub.</p>
@@ -203,6 +211,20 @@ Chrome 149 · Windows · 1920×911 · en-US
   </div>
 </div></footer>
 
-<script src="/widget.js" data-project="${DEMO_PROJECT_KEY}"></script>
+<script src="${GATEWAY}/widget.js" data-project="${DEMO_PROJECT_KEY}"></script>
 </body></html>`;
 }
+
+export default {
+  fetch(): Response {
+    return new Response(page(), {
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Security-Policy": CSP,
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Cache-Control": "public, max-age=300",
+      },
+    });
+  },
+};
