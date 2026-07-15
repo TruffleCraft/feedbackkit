@@ -127,6 +127,13 @@ async function boot() {
       // slow/hung capture never wedges the send). Manually attached files first.
       const attachmentKeys: string[] = [...attachedKeys];
       if (screenshot) {
+        // Time-boxed capture. Now that cacheBust is gone a full-page shot runs
+        // ~0.6-1s, so 3s is ample AND deliberately stays UNDER the 4s slowHint:
+        // that ordering keeps capture invisible to the "send now" escape hatch.
+        // (Raising it past 4s makes slowHint fire mid-capture, so "send now"
+        // appears to do nothing while submit() is still blocked here, and widens
+        // the close-during-capture drop window.) A page that still can't capture
+        // in 3s degrades to no screenshot — feedback itself is never blocked.
         const shot = await Promise.race([captureScreenshot({ skip: host }), new Promise<null>((r) => setTimeout(() => r(null), 3000))]);
         if (myGen !== gen) return; // superseded/closed while capturing
         if (shot) {

@@ -4,6 +4,6 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": []
   },
-  "include": ["src/widget/**/*.ts", "src/shared/contract.ts", "test/widget.test.ts"],
+  "include": ["src/widget/**/*.ts", "src/shared/contract.ts", "test/widget.test.ts", "test/screenshot.test.ts"],
   "exclude": ["node_modules", "dist", ".wrangler"]
 }
