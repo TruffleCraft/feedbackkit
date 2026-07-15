@@ -37,7 +37,7 @@ test("form input survives a DOM toggle (re-render ban)", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", feedbackBtn).click();
   await page.getByPlaceholder(placeholder).fill("my typed feedback");
-  await page.locator("#fk-shot").click(); // toggle the screenshot checkbox
+  await page.getByRole("button", { name: "Remove screenshot" }).click();
   await expect(page.getByPlaceholder(placeholder)).toHaveValue("my typed feedback"); // form not rebuilt
 });
 

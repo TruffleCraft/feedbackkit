@@ -10,6 +10,17 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "dist");
 mkdirSync(dist, { recursive: true });
 
+// Serve the same self-hosted font as the marketing site. The widget is loaded
+// cross-origin, so the asset needs an explicit CORS header.
+const fontSrc = join(root, "site", "src", "font.ts");
+if (existsSync(fontSrc)) {
+  const encoded = readFileSync(fontSrc, "utf8").match(/[A-Za-z0-9+/=]{500,}/)?.[0];
+  if (encoded) {
+    writeFileSync(join(dist, "dm-sans.woff2"), Buffer.from(encoded, "base64"));
+    writeFileSync(join(dist, "_headers"), "/dm-sans.woff2\n  Access-Control-Allow-Origin: *\n  Cache-Control: public, max-age=31536000, immutable\n");
+  }
+}
+
 const entry = join(root, "src", "widget", "index.ts");
 if (existsSync(entry)) {
   const { build } = await import("esbuild");

@@ -62,6 +62,13 @@ async function boot() {
   document.body.appendChild(host);
   const shadow = host.attachShadow({ mode: "open" });
 
+  if (!document.querySelector("style[data-feedbackkit-font]")) {
+    const fontStyle = document.createElement("style");
+    fontStyle.setAttribute("data-feedbackkit-font", "");
+    fontStyle.textContent = `@font-face{font-family:"DM Sans";src:url("${base}/dm-sans.woff2") format("woff2");font-weight:100 1000;font-style:normal;font-display:swap}`;
+    document.head.appendChild(fontStyle);
+  }
+
   let state: WidgetState = { name: "closed" };
   let feedbackId = "";
   let base1: FeedbackPayload | null = null; // POST-1 payload, reused for POST-2
@@ -85,6 +92,12 @@ async function boot() {
   const ui = new WidgetUI(shadow, toUIConfig(cfg, script.dataset.label), {
     onOpen: () => {
       resetAttempt();
+      const device = collectDeviceInfo(window);
+      ui.setContext({
+        browser: device.viewport ? `${device.browser} · ${device.viewport.w}×${device.viewport.h}` : device.browser,
+        url: location.pathname,
+        consoleErrors: buffer.snapshot().length,
+      });
       dispatch({ t: "open", type: cfg.types[0]?.type ?? "" }, () => api.event("opened"));
     },
     onClose: () => {
@@ -130,7 +143,8 @@ async function boot() {
   async function editShot() {
     const myGen = gen;
     const t0 = Date.now();
-    const shot = await Promise.race([captureScreenshot({ skip: host, maxWidth: 1600 }), new Promise<null>((r) => setTimeout(() => r(null), 6000))]);
+    ui.captureStarted();
+    const shot = await Promise.race([captureScreenshot({ skip: host, maxWidth: 1600, viewport: true }), new Promise<null>((r) => setTimeout(() => r(null), 6000))]);
     debug("edit capture", { ms: Date.now() - t0, ok: !!shot, bytes: shot?.size ?? 0 });
     if (myGen !== gen || state.name !== "form") return; // closed/superseded while capturing
     if (!shot) {
@@ -176,7 +190,7 @@ async function boot() {
         // and widens the close-during-capture drop window.) A page that still
         // can't capture in 3s degrades to no screenshot — feedback itself is
         // never blocked.
-        const shot = editedShot ?? (await Promise.race([captureScreenshot({ skip: host }), new Promise<null>((r) => setTimeout(() => r(null), 3000))]));
+        const shot = editedShot ?? (await Promise.race([captureScreenshot({ skip: host, viewport: true }), new Promise<null>((r) => setTimeout(() => r(null), 3000))]));
         if (myGen !== gen) return; // superseded/closed while capturing
         if (shot) {
           const key = await api.uploadScreenshot(feedbackId, shot);

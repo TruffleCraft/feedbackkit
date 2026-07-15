@@ -21,7 +21,17 @@ type Key =
   | "retry"
   | "editShot"
   | "captureFailed"
+  | "captureStarted"
+  | "capturing"
   | "shotReady"
+  | "screenshotChip"
+  | "removeShot"
+  | "restoreShot"
+  | "dropTitle"
+  | "dropTitleAccent"
+  | "dropSub"
+  | "privacy"
+  | "annotateTitle"
   | "annotateHint"
   | "toolCrop"
   | "toolRect"
@@ -52,9 +62,19 @@ const STR: Record<Locale, Record<Key, string>> = {
     viewIssue: "View issue",
     failed: "Something went wrong. Please try again.",
     retry: "Try again",
-    editShot: "Mark up screenshot",
+    editShot: "Mark up",
+    captureStarted: "Capturing the visible page…",
+    capturing: "Capturing…",
     captureFailed: "Could not capture this page — you can still send your feedback.",
-    shotReady: "Screenshot edited ✓",
+    shotReady: "edited ✓",
+    screenshotChip: "Screenshot",
+    removeShot: "Remove screenshot",
+    restoreShot: "Restore screenshot",
+    dropTitleAccent: "Drop an image here",
+    dropTitle: " or click",
+    dropSub: "PNG, JPG, WebP or GIF · up to 2 MB",
+    privacy: "Private by default",
+    annotateTitle: "Mark up screenshot",
     annotateHint: "Drag to crop, or pick a tool to mark things up.",
     toolCrop: "Crop",
     toolRect: "Rectangle",
@@ -84,9 +104,19 @@ const STR: Record<Locale, Record<Key, string>> = {
     viewIssue: "Zum Ticket",
     failed: "Etwas ist schiefgelaufen. Bitte erneut versuchen.",
     retry: "Erneut versuchen",
-    editShot: "Screenshot markieren",
+    editShot: "Markieren",
+    captureStarted: "Sichtbaren Bereich aufnehmen…",
+    capturing: "Aufnahme…",
     captureFailed: "Seite konnte nicht aufgenommen werden — dein Feedback kannst du trotzdem senden.",
-    shotReady: "Screenshot bearbeitet ✓",
+    shotReady: "bearbeitet ✓",
+    screenshotChip: "Screenshot",
+    removeShot: "Screenshot entfernen",
+    restoreShot: "Screenshot wiederherstellen",
+    dropTitleAccent: "Bild hierher ziehen",
+    dropTitle: " oder klicken",
+    dropSub: "PNG, JPG, WebP oder GIF · bis 2 MB",
+    privacy: "Standardmäßig privat",
+    annotateTitle: "Screenshot markieren",
     annotateHint: "Ziehen zum Zuschneiden, oder ein Werkzeug zum Markieren wählen.",
     toolCrop: "Zuschneiden",
     toolRect: "Rechteck",

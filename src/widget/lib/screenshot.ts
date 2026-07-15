@@ -11,13 +11,24 @@ const MAX_WIDTH = 800; // token-thrift: the LLM reads a small image fine
 // under the cap instead of vanishing on a very long page.
 const MAX_HEIGHT = 4000;
 
-export async function captureScreenshot(opts: { root?: Element; skip?: Element; maxWidth?: number } = {}): Promise<Blob | null> {
+export async function captureScreenshot(opts: { root?: Element; skip?: Element; maxWidth?: number; viewport?: boolean } = {}): Promise<Blob | null> {
   const root = (opts.root ?? document.body) as HTMLElement;
   const maxW = opts.maxWidth ?? MAX_WIDTH;
   try {
+    const viewport = opts.viewport
+      ? {
+          width: window.innerWidth,
+          height: window.innerHeight,
+          style: {
+            transform: `translate(${-window.scrollX}px, ${-window.scrollY}px)`,
+            transformOrigin: "top left",
+          },
+        }
+      : {};
     const canvas = await toCanvas(root, {
       pixelRatio: 1,
       filter: opts.skip ? (node: HTMLElement) => node !== opts.skip : undefined,
+      ...viewport,
     });
     const scale = Math.min(1, maxW / (canvas.width || maxW), MAX_HEIGHT / (canvas.height || MAX_HEIGHT));
     const out = document.createElement("canvas");

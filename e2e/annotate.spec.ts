@@ -8,7 +8,7 @@ const placeholder = /tell us anything/i;
 
 async function openAnnotator(page: import("@playwright/test").Page) {
   await page.getByRole("button", { name: "Feedback" }).click();
-  await page.getByRole("button", { name: "Mark up screenshot" }).click();
+  await page.getByRole("button", { name: "Mark up" }).click();
   await expect(page.locator(".fk-canvas")).toBeVisible({ timeout: 10_000 }); // html-to-image capture can take a moment
 }
 
@@ -26,10 +26,10 @@ test("annotate: capture → draw → use → flattened shot uploads and key ride
   await page.mouse.move(box.x + 140, box.y + 100, { steps: 4 });
   await page.mouse.up();
 
-  // Use it → back on the form with the edited-shot affordances visible.
+  // Use it → overlay closes and the screenshot chip records the edit.
   await page.getByRole("button", { name: "Use screenshot" }).click();
-  await expect(page.locator(".fk-shot-ready")).toBeVisible();
-  await expect(page.locator(".fk-shot-thumb")).toBeVisible();
+  await expect(page.locator(".fk-editor")).toBeHidden();
+  await expect(page.locator(".fk-chip.shot .txt")).toContainText("edited");
 
   // Send → the edited blob uploads (screenshot kind) and its key is on the payload.
   await page.getByPlaceholder(placeholder).fill("the header overlaps the menu");
@@ -83,6 +83,7 @@ test("annotate: cancel leaves no edited shot; undo/clear controls exist", async 
   await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
 
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(page.locator(".fk-shot-ready")).toBeHidden(); // no edited shot kept
+  await expect(page.locator(".fk-editor")).toBeHidden();
+  await expect(page.locator(".fk-chip.shot .txt")).not.toContainText("edited");
   await expect(page.getByPlaceholder(placeholder)).toBeVisible(); // back on the form
 });
