@@ -16,7 +16,7 @@
 
 import { DM_SANS_WOFF2_B64 } from "./font.js";
 
-const GATEWAY = "https://feedbackkit.schieder-account.workers.dev";
+const GATEWAY = "https://feedbackkit.trufflecraft.workers.dev";
 const DEMO_PROJECT_KEY = "fk_pub_64a564982de5";
 
 const CSP = [
