@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 // Builds the Shadow-DOM widget bundle into ./dist. Until the widget source lands
 // (P1.10) this emits a placeholder so `wrangler deploy` has an assets dir.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "dist");
+rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
 
 // Serve the same self-hosted font as the marketing site. The widget is loaded
@@ -17,7 +18,7 @@ if (existsSync(fontSrc)) {
   const encoded = readFileSync(fontSrc, "utf8").match(/[A-Za-z0-9+/=]{500,}/)?.[0];
   if (encoded) {
     writeFileSync(join(dist, "dm-sans.woff2"), Buffer.from(encoded, "base64"));
-    writeFileSync(join(dist, "_headers"), "/dm-sans.woff2\n  Access-Control-Allow-Origin: *\n  Cache-Control: public, max-age=31536000, immutable\n");
+    writeFileSync(join(dist, "_headers"), "/dm-sans.woff2\n  Access-Control-Allow-Origin: *\n  Cache-Control: public, max-age=0, must-revalidate\n");
   }
 }
 

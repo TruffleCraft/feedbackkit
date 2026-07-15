@@ -368,7 +368,7 @@ function homePage(): string {
       <div class="signal-step"><span class="n">02</span><b>Ask only what is missing</b><em>structured LLM</em></div>
       <div class="signal-step"><span class="n">03</span><b>Create an agent-ready issue</b><em>GitHub · private infra</em></div>
     </div>
-    <div class="signal-foot">Your data stays in your Cloudflare account. The real widget is the Feedback button, not a second mockup.</div>
+    <div class="signal-foot">Your gateway and storage stay in your Cloudflare account. Configured LLM and tracker providers receive the workflow data they need.</div>
   </div>
 </div></div></section>
 

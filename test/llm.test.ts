@@ -80,7 +80,7 @@ describe("classifyAndExtract", () => {
     let requestBody = "";
     const chat: ChatFn = async (req) => {
       requestBody = (req as { init: { body: string } }).init.body;
-      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ type: "bug", summary: "Page hangs", repro: "click", expected: "saved", actual: "page hangs" }) } }] }), { status: 200 });
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ type: "bug", summary: "Seite hängt", repro: "klicken", expected: "gespeichert", actual: "Seite hängt" }) } }] }), { status: 200 });
     };
     const r = await classifyAndExtract({
       config,
@@ -91,7 +91,28 @@ describe("classifyAndExtract", () => {
     });
     expect(requestBody).toContain("Issue language: de");
     expect(requestBody).toContain("Translate summary and extracted issue fields");
-    expect(r.summary).toBe("Page hangs");
+    expect(r.summary).toBe("Seite hängt");
+  });
+
+  it("rejects translated or unknown select values when structured output is disabled", async () => {
+    const selectConfig = FeedbackConfig.parse({
+      ...config,
+      llm: { ...config.llm, structuredOutput: false },
+      templates: [{
+        type: "bug",
+        label: "Bug",
+        fields: [{ key: "severity", label: "Schweregrad", kind: "select", required: true, options: [{ value: "high", label: "Hoch" }] }],
+      }],
+    });
+    const result = await classifyAndExtract({
+      config: selectConfig,
+      template: selectConfig.templates[0]!,
+      message: "Sehr schlimm",
+      apiKey: "k",
+      chat: mockChat(JSON.stringify({ type: "bug", summary: "Schwerer Fehler", followUpQuestion: "", severity: "hoch" })),
+    });
+    expect(result.extracted.severity).toBeUndefined();
+    expect(result.missing).toContain("severity");
   });
 
   it("tolerates a ```json fenced response (common when structured output is off)", async () => {

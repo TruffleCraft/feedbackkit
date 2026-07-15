@@ -73,6 +73,7 @@ async function boot() {
   let feedbackId = "";
   let base1: FeedbackPayload | null = null; // POST-1 payload, reused for POST-2
   let attachedKeys: string[] = []; // R2 keys of manually attached files (uploaded on pick)
+  let pendingAttachments: Promise<boolean>[] = [];
   let editedShot: Blob | null = null; // annotated/cropped capture (#54); replaces the submit-time capture
   let editedShotUrl = ""; // object URL backing the annotator's <img>, revoked on reset
   let bailed = false;
@@ -81,6 +82,7 @@ async function boot() {
 
   function resetAttempt() {
     attachedKeys = [];
+    pendingAttachments = [];
     feedbackId = "";
     base1 = null;
     bailed = false;
@@ -110,7 +112,16 @@ async function boot() {
       dispatch({ t: "sendNow" }, () => api.event("sent_anyway"));
     },
     onComplete: (_type, answer) => void complete(answer),
-    onAttach: (file) => void attach(file),
+    onAttach: (file) => {
+      const bucket = pendingAttachments;
+      const upload = attach(file);
+      bucket.push(upload);
+      void upload.finally(() => {
+        const index = bucket.indexOf(upload);
+        if (index >= 0) bucket.splice(index, 1);
+      });
+      return upload;
+    },
     onRetry: () => {
       resetAttempt();
       dispatch({ t: "retry" });
@@ -176,8 +187,10 @@ async function boot() {
 
     try {
       if (!feedbackId) feedbackId = uuid(); // reuse the id a pre-submit attach already created
-      // Screenshot (opt-out via the form checkbox; best-effort + time-boxed so a
-      // slow/hung capture never wedges the send). Manually attached files first.
+      // A user can click Send while an attachment upload is still in flight.
+      // Wait for those uploads so the visible chip cannot be silently omitted.
+      await Promise.allSettled([...pendingAttachments]);
+      if (myGen !== gen) return;
       const attachmentKeys: string[] = [...attachedKeys];
       if (screenshot) {
         // An annotated/cropped shot (#54) wins over a fresh capture — what the
@@ -213,6 +226,7 @@ async function boot() {
       if (myGen !== gen) return;
       clearSlow();
       if (res.status === "follow_up") {
+        base1.summary = res.summary;
         api.event("need_fields");
         // User pre-chose "send now": skip the question, but keep POST-1's extraction.
         if (bailed) return complete("", res.extracted);
@@ -238,12 +252,13 @@ async function boot() {
   }
 
   // Manual file attach (picked in the form) → upload now, key rides along on submit.
-  async function attach(file: File) {
-    if (attachedKeys.length >= 4) return; // leave room for the auto-screenshot (cap 5)
+  async function attach(file: File): Promise<boolean> {
+    if (attachedKeys.length + pendingAttachments.length >= 4) return false; // leave room for the auto-screenshot (cap 5)
     if (!feedbackId) feedbackId = uuid();
     const bucket = attachedKeys; // capture: a close→reopen (resetAttempt) rebinds attachedKeys,
     const key = await api.uploadScreenshot(feedbackId, file); // so a stale upload lands in the OLD bucket, not the new session
     if (key) bucket.push(key);
+    return Boolean(key);
   }
 
   ui.render(state);

@@ -45,6 +45,7 @@ export class AnnotatorUI {
     this.root.className = "fk-editor";
     this.root.setAttribute("role", "dialog");
     this.root.setAttribute("aria-modal", "true");
+    this.root.setAttribute("aria-labelledby", "fk-editor-title");
     this.root.hidden = true;
     this.build();
   }
@@ -55,6 +56,7 @@ export class AnnotatorUI {
 
   private build() {
     const title = document.createElement("h2");
+    title.id = "fk-editor-title";
     title.textContent = this.tr("annotateTitle");
     const hint = document.createElement("span");
     hint.className = "fk-editor-hint";
@@ -129,6 +131,10 @@ export class AnnotatorUI {
       if (e.key === "Escape") this.hideTextInput();
     });
     this.textInput.addEventListener("blur", () => this.commitText());
+  }
+
+  focusInitial() {
+    this.toolBtns.get(this.tool)?.focus();
   }
 
   /** (Re)target the editor at a freshly captured image and reset all state. */
@@ -227,8 +233,8 @@ export class AnnotatorUI {
   private showTextInput(x: number, y: number) {
     this.textInput.hidden = false;
     this.textInput.value = "";
-    this.textInput.style.left = `${x * this.scale}px`;
-    this.textInput.style.top = `${y * this.scale}px`;
+    this.textInput.style.left = `${this.canvas.offsetLeft + x * this.scale}px`;
+    this.textInput.style.top = `${this.canvas.offsetTop + y * this.scale}px`;
     this.textInput.style.font = `600 ${Math.max(12, fontSize(this.img?.naturalWidth ?? 800) * this.scale)}px inherit`;
     this.textInput.dataset["x"] = String(x);
     this.textInput.dataset["y"] = String(y);

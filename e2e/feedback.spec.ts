@@ -20,7 +20,7 @@ test("happy path: type → send → issue created", async ({ page }) => {
 
 test("follow_up: shows ONE conversational question, freetext answer → created", async ({ page }) => {
   await installMocks(page, {
-    post1: { v: 1, status: "follow_up", question: "What did you expect to happen?", extracted: { repro: "clicked save" } },
+    post1: { v: 1, status: "follow_up", question: "What did you expect to happen?", extracted: { repro: "clicked save" }, summary: "Save action fails" },
     post2: { v: 1, status: "created", id: "2", issueUrl: "https://github.com/acme/site/issues/2" },
   });
   await page.goto("/");
@@ -34,6 +34,7 @@ test("follow_up: shows ONE conversational question, freetext answer → created"
     page.getByRole("button", send).click(),
   ]);
   expect(req.postDataJSON().followUpText).toContain("save the form"); // freetext answer, not per-field
+  expect(req.postDataJSON().summary).toBe("Save action fails");
   await expect(page.getByText("Thanks!")).toBeVisible();
 });
 
@@ -77,4 +78,20 @@ test("error → failed → retry returns to the form", async ({ page }) => {
   await expect(page.getByRole("button", { name: /try again/i })).toBeVisible(); // failed state
   await page.getByRole("button", { name: /try again/i }).click();
   await expect(page.getByPlaceholder(placeholder)).toBeVisible();
+});
+
+test("send waits for a visible attachment upload before creating feedback", async ({ page }) => {
+  await installMocks(page, { post1: { v: 1, status: "created", id: "4" } });
+  await page.route("**/api/upload**", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ v: 1, key: "fk_test/manual.png" }) });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Feedback" }).click();
+  await page.locator("#fk-file").setInputFiles({ name: "evidence.png", mimeType: "image/png", buffer: Buffer.from([1, 2, 3]) });
+  await page.getByRole("button", { name: "Remove screenshot" }).click();
+  await page.getByPlaceholder(placeholder).fill("attachment must not be dropped");
+  const feedback = page.waitForRequest("**/api/feedback**");
+  await page.getByRole("button", send).click();
+  expect((await feedback).postDataJSON().attachmentKeys).toContain("fk_test/manual.png");
 });

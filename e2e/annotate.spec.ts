@@ -17,6 +17,10 @@ test("annotate: capture → draw → use → flattened shot uploads and key ride
   await page.goto("/");
   await openAnnotator(page);
 
+  await expect(page.locator(".fk-panel")).toHaveAttribute("inert", "");
+  await expect(page.locator(".fk-backdrop")).toHaveAttribute("aria-hidden", "true");
+  await expect(page.getByRole("button", { name: "Crop" })).toBeFocused();
+
   // Draw a rectangle annotation (pointer drag on the canvas).
   await page.getByRole("button", { name: "Rectangle" }).click();
   const canvas = page.locator(".fk-canvas");
@@ -85,5 +89,7 @@ test("annotate: cancel leaves no edited shot; undo/clear controls exist", async 
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.locator(".fk-editor")).toBeHidden();
   await expect(page.locator(".fk-chip.shot .txt")).not.toContainText("edited");
+  await expect(page.locator(".fk-panel")).not.toHaveAttribute("inert", "");
+  await expect(page.getByRole("button", { name: "Mark up" })).toBeFocused();
   await expect(page.getByPlaceholder(placeholder)).toBeVisible(); // back on the form
 });

@@ -31,7 +31,7 @@ export interface UIHandlers {
   onSubmit(type: string, text: string, screenshot: boolean): void;
   onSendNow(): void;
   onComplete(type: string, answer: string): void;
-  onAttach(file: File): void;
+  onAttach(file: File): Promise<boolean>;
   onRetry(): void;
   /** "Mark up screenshot" clicked → index captures the page, then calls openAnnotator(). */
   onEditScreenshot(): void;
@@ -78,6 +78,7 @@ export class WidgetUI {
   private fileChip!: HTMLSpanElement;
   private mediaHint!: HTMLParagraphElement;
   private shotEnabled = true;
+  private annotatorReturnFocus: HTMLElement | null = null;
   private scrollLock = "";
   private locked = false;
   private hasOpened = false;
@@ -217,7 +218,9 @@ export class WidgetUI {
   private acceptFile(file: File) {
     this.fileChip.textContent = `📎 ${file.name}`;
     this.fileChip.hidden = false;
-    this.h.onAttach(file);
+    void this.h.onAttach(file).then((uploaded) => {
+      if (!uploaded) this.fileChip.textContent = `⚠ ${file.name} · upload failed`;
+    });
   }
 
   setContext(ctx: UIContext) {
@@ -249,6 +252,9 @@ export class WidgetUI {
       onCancel: () => this.closeAnnotator(),
     });
     this.annotator.root.hidden = true;
+    this.annotator.root.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") this.closeAnnotator();
+    });
   }
 
   /** Called by index once the page capture is ready. */
@@ -256,16 +262,24 @@ export class WidgetUI {
     this.mediaHint.hidden = true;
     this.shotMarkupBtn.disabled = false;
     this.shotMarkupBtn.textContent = this.tr("editShot");
+    this.panel.setAttribute("inert", "");
+    this.backdrop.setAttribute("aria-hidden", "true");
     this.annotator.root.hidden = false;
     this.annotator.load(img);
+    this.annotator.focusInitial();
     this.live.textContent = this.tr("annotateHint");
   }
 
   private closeAnnotator() {
     this.annotator.root.hidden = true;
+    this.panel.removeAttribute("inert");
+    this.backdrop.removeAttribute("aria-hidden");
+    this.annotatorReturnFocus?.focus();
+    this.annotatorReturnFocus = null;
   }
 
   captureStarted() {
+    this.annotatorReturnFocus = this.shadow.activeElement as HTMLElement | null;
     this.mediaHint.textContent = this.tr("captureStarted");
     this.mediaHint.hidden = false;
     this.shotMarkupBtn.disabled = true;
@@ -291,6 +305,8 @@ export class WidgetUI {
     this.fileChip.textContent = "";
     this.mediaHint.hidden = true;
     this.annotator.root.hidden = true;
+    this.panel.removeAttribute("inert");
+    this.backdrop.removeAttribute("aria-hidden");
   }
 
   private buildExtracting(): HTMLElement {

@@ -149,7 +149,6 @@ export async function orchestrateFeedback(
 
     if (result?.degraded) {
       console.warn("feedbackkit llm degraded", {
-        feedbackId: payload.feedbackId,
         projectId: config.projectId,
         provider: config.llm.provider,
         model: config.llm.model,
@@ -157,14 +156,14 @@ export async function orchestrateFeedback(
       });
       // LLM ran but failed. onLlmError → create unenriched; else ask (generic question).
       if (config.createAnyway.onLlmError) return create({ fields: {}, degraded: true, incomplete: true });
-      return { http: 200, body: { v: WIRE_VERSION, status: "follow_up", question: fallbackQuestion(config, template, missing), extracted: {} } };
+      return { http: 200, body: { v: WIRE_VERSION, status: "follow_up", question: fallbackQuestion(config, template, missing), extracted: {}, summary: result.summary } };
     }
     if (missing.length === 0) return create({}); // nothing required missing (extracted all, or no required fields) → create
     // Too many to reasonably ask → create-anyway (if allowed) instead of a wall of questions.
     if (result && missing.length > FIELD_CEILING && config.createAnyway.onIncomplete) return create({ incomplete: true });
     // Ask ONE follow-up: the model-composed question, or a label-based fallback.
     const question = (result?.followUpQuestion && result.followUpQuestion.trim()) || fallbackQuestion(config, template, missing);
-    return { http: 200, body: { v: WIRE_VERSION, status: "follow_up", question, extracted } };
+    return { http: 200, body: { v: WIRE_VERSION, status: "follow_up", question, extracted, summary: result?.summary } };
   }
 
   // ── POST-2: ONE re-extraction of the freetext answer, then create (single-shot) ──
@@ -183,7 +182,7 @@ export async function orchestrateFeedback(
     .map((f) => f.key);
   // Always create now — never a second question (ADR-012). The answer is folded
   // into the issue via `combined` so it's never lost even if re-extraction fails.
-  return finalizeCreate(env, loaded, payload, template, { fields: cleaned, message: combined, summary: reExtract?.summary, degraded: false, incomplete: stillMissing.length > 0, d1Degraded, now, newId, fetchImpl: deps.fetchImpl });
+  return finalizeCreate(env, loaded, payload, template, { fields: cleaned, message: combined, summary: reExtract?.summary ?? payload.summary, degraded: false, incomplete: stillMissing.length > 0, d1Degraded, now, newId, fetchImpl: deps.fetchImpl });
 }
 
 interface CreateOpts {
@@ -254,7 +253,6 @@ async function finalizeCreate(
     // Tracker failure NEVER loses feedback: persist the payload for admin retry.
     const reason = e instanceof TrackerError ? `tracker error ${e.status}` : "tracker request failed";
     console.error("feedbackkit tracker create failed", {
-      feedbackId: payload.feedbackId,
       projectId: config.projectId,
       repo,
       reason,

@@ -13,7 +13,10 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: "line",
   use: { baseURL: "http://localhost:8788", trace: "on-first-retry" },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "mobile-chromium", use: { ...devices["Pixel 5"] } },
+  ],
   webServer: {
     command: "node e2e/serve.mjs",
     port: 8788,
