@@ -99,7 +99,7 @@ textarea.fk-input { min-height: 92px; }
 .fk-media { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .fk-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fk-muted); cursor: pointer; }
 .fk-check-input { width: 16px; height: 16px; accent-color: var(--fk-primary); flex: none; }
-.fk-attach { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; border: 1px dashed var(--fk-border-strong); border-radius: 8px; padding: 8px 12px; font-size: 13px; color: var(--fk-text-soft); cursor: pointer; }
+.fk-attach { display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; background: none; font: inherit; border: 1px dashed var(--fk-border-strong); border-radius: 8px; padding: 8px 12px; font-size: 13px; color: var(--fk-text-soft); cursor: pointer; }
 .fk-attach:hover { border-style: solid; border-color: var(--fk-primary); }
 .fk-attach-name { font-family: var(--fk-font-mono); font-size: 11px; color: var(--fk-muted); }
 .fk-status { display: flex; align-items: center; gap: 10px; color: var(--fk-text-soft); font-size: 14px; }
@@ -108,6 +108,22 @@ textarea.fk-input { min-height: 92px; }
 .fk-done { text-align: center; padding: 8px 0; }
 .fk-done .fk-actions { justify-content: center; }
 .fk-done-icon { width: 56px; height: 56px; margin: 0 auto 8px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; background: color-mix(in srgb, var(--fk-primary) 18%, transparent); color: var(--fk-primary); }
+/* Screenshot annotator (#54). The panel widens while the editor is open so a
+   desktop capture is actually workable; the canvas wrap scrolls tall shots. */
+.fk-panel.fk-wide { width: min(92vw, 860px); }
+.fk-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.fk-tool { width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; font: 600 15px var(--fk-font); color: var(--fk-text-soft); background: var(--fk-bg-elev); border: 1px solid var(--fk-border); border-radius: 8px; cursor: pointer; }
+.fk-tool[aria-pressed="true"] { border-color: var(--fk-primary); color: var(--fk-primary); box-shadow: 0 0 0 1px var(--fk-primary); }
+.fk-tool[disabled] { opacity: .4; cursor: default; }
+.fk-tool-act { margin-inline-start: auto; }
+.fk-tool-act + .fk-tool-act { margin-inline-start: 0; }
+.fk-canvas-wrap { position: relative; overflow: auto; max-height: 56dvh; border: 1px solid var(--fk-border); border-radius: 8px; background: var(--fk-bg-elev); }
+.fk-canvas { display: block; touch-action: none; cursor: crosshair; }
+.fk-canvas-text { position: absolute; background: rgba(255,255,255,.92); color: #e5484d; border: 1px dashed #e5484d; border-radius: 4px; padding: 2px 6px; min-width: 120px; }
+.fk-canvas-text:focus-visible { outline: none; }
+.fk-shot-row { display: flex; align-items: center; gap: 8px; }
+.fk-shot-thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--fk-border-strong); flex: none; }
+.fk-shot-ready { font-size: 12px; color: var(--fk-primary); font-weight: 600; }
 .fk-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 [hidden] { display: none !important; }
 `;

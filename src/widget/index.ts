@@ -66,6 +66,8 @@ async function boot() {
   let feedbackId = "";
   let base1: FeedbackPayload | null = null; // POST-1 payload, reused for POST-2
   let attachedKeys: string[] = []; // R2 keys of manually attached files (uploaded on pick)
+  let editedShot: Blob | null = null; // annotated/cropped capture (#54); replaces the submit-time capture
+  let editedShotUrl = ""; // object URL backing the annotator's <img>, revoked on reset
   let bailed = false;
   let slowTimer: ReturnType<typeof setTimeout> | undefined;
   let gen = 0; // attempt generation: a stale async result (from a closed/superseded attempt) is ignored
@@ -75,6 +77,9 @@ async function boot() {
     feedbackId = "";
     base1 = null;
     bailed = false;
+    editedShot = null;
+    if (editedShotUrl) URL.revokeObjectURL(editedShotUrl);
+    editedShotUrl = "";
   }
 
   const ui = new WidgetUI(shadow, toUIConfig(cfg, script.dataset.label), {
@@ -97,6 +102,11 @@ async function boot() {
       resetAttempt();
       dispatch({ t: "retry" });
     },
+    onEditScreenshot: () => void editShot(),
+    onAnnotated: (blob) => {
+      editedShot = blob;
+      debug("screenshot annotated", { bytes: blob.size });
+    },
   });
 
   function dispatch(event: Parameters<typeof reduce>[1], after?: () => void) {
@@ -111,6 +121,34 @@ async function boot() {
   function clearSlow() {
     if (slowTimer) clearTimeout(slowTimer);
     slowTimer = undefined;
+  }
+
+  // "Mark up screenshot" (#54): capture now, hand the image to the in-panel
+  // annotator. 6s box (not the submit path's 3s — that one must stay under the
+  // 4s slowHint; here the user explicitly asked and is watching). Failure shows
+  // a hint — feedback itself is never blocked on a capture.
+  async function editShot() {
+    const myGen = gen;
+    const t0 = Date.now();
+    const shot = await Promise.race([captureScreenshot({ skip: host }), new Promise<null>((r) => setTimeout(() => r(null), 6000))]);
+    debug("edit capture", { ms: Date.now() - t0, ok: !!shot, bytes: shot?.size ?? 0 });
+    if (myGen !== gen || state.name !== "form") return; // closed/superseded while capturing
+    if (!shot) {
+      ui.captureFailed();
+      return;
+    }
+    if (editedShotUrl) URL.revokeObjectURL(editedShotUrl);
+    editedShotUrl = URL.createObjectURL(shot);
+    const img = new Image();
+    img.src = editedShotUrl;
+    try {
+      await img.decode();
+    } catch {
+      ui.captureFailed();
+      return;
+    }
+    if (myGen !== gen || state.name !== "form") return;
+    ui.openAnnotator(img);
   }
 
   async function submit(type: string, text: string, screenshot: boolean) {
@@ -128,14 +166,17 @@ async function boot() {
       // slow/hung capture never wedges the send). Manually attached files first.
       const attachmentKeys: string[] = [...attachedKeys];
       if (screenshot) {
-        // Time-boxed capture. Now that cacheBust is gone a full-page shot runs
-        // ~0.6-1s, so 3s is ample AND deliberately stays UNDER the 4s slowHint:
-        // that ordering keeps capture invisible to the "send now" escape hatch.
-        // (Raising it past 4s makes slowHint fire mid-capture, so "send now"
-        // appears to do nothing while submit() is still blocked here, and widens
-        // the close-during-capture drop window.) A page that still can't capture
-        // in 3s degrades to no screenshot — feedback itself is never blocked.
-        const shot = await Promise.race([captureScreenshot({ skip: host }), new Promise<null>((r) => setTimeout(() => r(null), 3000))]);
+        // An annotated/cropped shot (#54) wins over a fresh capture — what the
+        // user marked up is exactly what uploads (and reaches the LLM via #53).
+        // Otherwise: time-boxed capture. Now that cacheBust is gone a full-page
+        // shot runs ~0.6-1s, so 3s is ample AND deliberately stays UNDER the 4s
+        // slowHint: that ordering keeps capture invisible to the "send now"
+        // escape hatch. (Raising it past 4s makes slowHint fire mid-capture, so
+        // "send now" appears to do nothing while submit() is still blocked here,
+        // and widens the close-during-capture drop window.) A page that still
+        // can't capture in 3s degrades to no screenshot — feedback itself is
+        // never blocked.
+        const shot = editedShot ?? (await Promise.race([captureScreenshot({ skip: host }), new Promise<null>((r) => setTimeout(() => r(null), 3000))]));
         if (myGen !== gen) return; // superseded/closed while capturing
         if (shot) {
           const key = await api.uploadScreenshot(feedbackId, shot);
