@@ -41,6 +41,22 @@ describe("toPublicConfig", () => {
     expect(json).not.toContain("extractionHint");
   });
 
+  it("projects per-type guidance when present, omits the key when absent", () => {
+    const withGuidance = FeedbackConfig.parse({
+      projectId: "demo",
+      templates: [
+        { type: "bug", label: "Bug", guidance: "What you did, expected, and saw.", fields: [] },
+        { type: "idea", label: "Idea", fields: [] },
+      ],
+      llm: { provider: "openrouter", model: "m" },
+      tracker: { kind: "github", defaultRepo: "acme/site", patSecret: "GITHUB_PAT_default" },
+      auth: { origins: [] },
+    });
+    const types = toPublicConfig(withGuidance, 1).types;
+    expect(types[0]!.guidance).toBe("What you did, expected, and saw.");
+    expect("guidance" in types[1]!).toBe(false); // no guidance → key absent, not undefined
+  });
+
   it("carries select-field options so the widget can render them", () => {
     const withSelect = FeedbackConfig.parse({
       projectId: "demo",

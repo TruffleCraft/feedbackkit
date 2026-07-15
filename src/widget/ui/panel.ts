@@ -16,6 +16,7 @@ export interface UIField {
 export interface UIType {
   type: string;
   label: string;
+  guidance?: string; // inline "what's needed" hint, shown under the type selector
   fields: UIField[];
 }
 export interface UIConfig {
@@ -47,6 +48,7 @@ export class WidgetUI {
   private live!: HTMLDivElement;
   private views: Record<string, HTMLElement> = {};
   private typeButtons: HTMLButtonElement[] = [];
+  private guidanceEl!: HTMLParagraphElement;
   private textarea!: HTMLTextAreaElement;
   private shotCheck!: HTMLInputElement;
   private attachInput!: HTMLInputElement;
@@ -119,6 +121,10 @@ export class WidgetUI {
     });
     this.activeType = this.config.types[0]?.type ?? "";
 
+    // Inline guidance for the active type ("what a good report needs"). Empty →
+    // hidden, so types without guidance render exactly as before.
+    this.guidanceEl = el("p", { className: "fk-guidance" });
+
     const label = el("label", { className: "fk-label", htmlFor: "fk-text", textContent: this.tr("textLabel") });
     this.textarea = el("textarea", { className: "fk-input", id: "fk-text", placeholder: this.tr("textPlaceholder") });
 
@@ -139,9 +145,17 @@ export class WidgetUI {
 
     const send = el("button", { className: "fk-btn", type: "button", textContent: this.tr("send") });
     send.addEventListener("click", () => this.h.onSubmit(this.activeType, this.textarea.value.trim(), this.shotCheck.checked));
-    const view = el("div", {}, [types, label, this.textarea, media, el("div", { className: "fk-actions" }, [send])]);
+    const view = el("div", {}, [types, this.guidanceEl, label, this.textarea, media, el("div", { className: "fk-actions" }, [send])]);
     this.views["form"] = view;
+    this.applyGuidance();
     return view;
+  }
+
+  /** Patch the guidance line to the active type's hint (hidden when empty). */
+  private applyGuidance() {
+    const g = this.config.types.find((ty) => ty.type === this.activeType)?.guidance ?? "";
+    this.guidanceEl.textContent = g;
+    this.guidanceEl.hidden = !g;
   }
 
   private buildExtracting(): HTMLElement {
@@ -185,6 +199,7 @@ export class WidgetUI {
   private selectType(type: string) {
     this.activeType = type;
     this.config.types.forEach((ty, i) => this.typeButtons[i]?.setAttribute("aria-pressed", String(ty.type === type)));
+    this.applyGuidance();
   }
 
   private show(name: string) {

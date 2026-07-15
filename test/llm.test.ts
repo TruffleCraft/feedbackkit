@@ -131,6 +131,57 @@ describe("classifyAndExtract", () => {
   });
 });
 
+describe("classifyAndExtract — session context & vision", () => {
+  type Part = { type: string; text?: string; image_url?: { url: string } };
+  type Body = { messages: Array<{ role: string; content: string | Part[] }> };
+  function captureChat() {
+    let body: Body | undefined;
+    const chat: ChatFn = async (req) => {
+      body = JSON.parse((req as { init: { body: string } }).init.body) as Body;
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{"type":"bug","summary":"s","repro":"a","expected":"b","actual":"c"}' } }] }), { status: 200 });
+    };
+    return { chat, get: () => body!.messages[1]!.content };
+  }
+
+  it("feeds page URL, device and console messages into the user prompt", async () => {
+    const cap = captureChat();
+    await classifyAndExtract({
+      config,
+      template: bug,
+      message: "geht nicht",
+      apiKey: "k",
+      chat: cap.chat,
+      pageUrl: "https://acme.dev/settings",
+      deviceInfo: { browser: "Firefox 130", os: "macOS", viewport: { w: 1440, h: 900 }, language: "de" },
+      consoleErrors: [{ level: "error", msg: "TypeError: x is not a function", ts: 1 }],
+    });
+    const c = cap.get();
+    const text = typeof c === "string" ? c : c[0]!.text!;
+    expect(text).toContain("Session context:");
+    expect(text).toContain("https://acme.dev/settings");
+    expect(text).toContain("Firefox 130");
+    expect(text).toContain("TypeError: x is not a function");
+  });
+
+  it("attaches the screenshot as an image_url part when a data URL is given", async () => {
+    const cap = captureChat();
+    const dataUrl = "data:image/webp;base64,AAAA";
+    await classifyAndExtract({ config, template: bug, message: "x", apiKey: "k", chat: cap.chat, screenshotDataUrl: dataUrl });
+    const c = cap.get();
+    expect(Array.isArray(c)).toBe(true);
+    const img = (c as Part[]).find((p) => p.type === "image_url");
+    expect(img?.image_url?.url).toBe(dataUrl);
+  });
+
+  it("adds no Session context block for plain text-only feedback (behaviour unchanged)", async () => {
+    const cap = captureChat();
+    await classifyAndExtract({ config, template: bug, message: "just text", apiKey: "k", chat: cap.chat });
+    const c = cap.get();
+    expect(typeof c).toBe("string");
+    expect(c as string).not.toContain("Session context:");
+  });
+});
+
 describe("extraction eval corpus (contract, mock LLM)", () => {
   for (const fx of BUG_FIXTURES) {
     it(`fixture: ${fx.name}`, async () => {

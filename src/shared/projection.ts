@@ -13,6 +13,8 @@ export function toPublicConfig(config: FeedbackConfig, configVersion: number): P
     types: config.templates.map((t) => ({
       type: t.type,
       label: t.label,
+      // guidance is user-facing copy (not an internal), so it's part of the projection.
+      ...(t.guidance ? { guidance: t.guidance } : {}),
       fields: t.fields.map((f) => ({
         key: f.key,
         label: f.label,

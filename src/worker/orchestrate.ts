@@ -88,14 +88,26 @@ function fallbackQuestion(config: FeedbackConfig, template: TemplateDefinition, 
   return (de ? "Kurz noch: " : "One more thing: ") + labels.join(" · ");
 }
 
+interface ExtractExtras {
+  screenshotDataUrl?: string;
+  pageUrl?: string;
+  deviceInfo?: FeedbackPayload["deviceInfo"];
+  consoleErrors?: FeedbackPayload["consoleErrors"];
+}
+
 /** LLM extraction gated by the daily budget. Returns null when the LLM is
  * unavailable (provider off, no key, or budget spent) — the caller falls back. */
-async function extractWithBudget(env: Env, config: FeedbackConfig, template: TemplateDefinition, message: string, deps: OrchestrateDeps, screenshotUrl?: string): Promise<ExtractionResult | null> {
+async function extractWithBudget(env: Env, config: FeedbackConfig, template: TemplateDefinition, message: string, deps: OrchestrateDeps, extras: ExtractExtras = {}): Promise<ExtractionResult | null> {
   if (config.llm.provider === "off" || !deps.apiKey) return null;
   const now = deps.now ?? Date.now();
   const within = (await hitRateLimit(env, `llm:${config.projectId}`, dayWindow(now), config.llm.dailyBudget)).allowed;
   if (!within) return null;
-  return classifyAndExtract({ config, template, message, screenshotDataUrl: screenshotUrl, apiKey: deps.apiKey, chat: deps.chat });
+  return classifyAndExtract({ config, template, message, apiKey: deps.apiKey, chat: deps.chat, ...extras });
+}
+
+/** Session context (URL, device, console) fed to the extraction on both POSTs. */
+function extractionContext(payload: FeedbackPayload): ExtractExtras {
+  return { pageUrl: payload.pageUrl, deviceInfo: payload.deviceInfo, consoleErrors: payload.consoleErrors };
 }
 
 export async function orchestrateFeedback(
@@ -127,7 +139,8 @@ export async function orchestrateFeedback(
 
   // ── POST-1: extract → ask ONE conversational follow-up, or create ────────────
   if (!isCompletion) {
-    const result = await extractWithBudget(env, config, template, message, deps, firstAttachmentUrl(config, payload));
+    const shot = await screenshotDataUrl(env, payload);
+    const result = await extractWithBudget(env, config, template, message, deps, { screenshotDataUrl: shot, ...extractionContext(payload) });
     const extracted = result?.extracted ?? {};
     // LLM unavailable (off/no-key/over-budget) → treat all required as missing → ask one generic question.
     const missing = result && !result.degraded ? result.missing : requiredAskable(template).map((f) => f.key);
@@ -153,7 +166,7 @@ export async function orchestrateFeedback(
   // Only re-extract when there's actually a new answer to parse. An empty answer
   // (the "send now"/"send anyway" bail) skips the LLM entirely and just uses what
   // POST-1 already understood (echoed) — no redundant call, no lost extraction.
-  const reExtract = answer ? await extractWithBudget(env, config, template, combined, deps) : null; // text-only, no screenshot
+  const reExtract = answer ? await extractWithBudget(env, config, template, combined, deps, extractionContext(payload)) : null; // context, text-only (no screenshot)
   let fields: Record<string, string> = { ...(payload.extracted ?? {}) };
   if (reExtract && !reExtract.degraded) fields = { ...fields, ...reExtract.extracted };
   const cleaned: Record<string, string> = {};
@@ -236,9 +249,35 @@ async function finalizeCreate(
   }
 }
 
-function firstAttachmentUrl(config: FeedbackConfig, payload: FeedbackPayload): string | undefined {
-  const k = payload.attachmentKeys[0];
-  return k ? publicUrl(config.storage.publicBaseUrl, k) : undefined;
+const MAX_LLM_IMAGE_BYTES = 1_500_000; // guard the vision payload (upload path caps at 2 MB)
+
+/** Read the first uploaded attachment (the screenshot) from R2 and inline it as a
+ * base64 data URL for the LLM's vision input. Robust where a public bucket URL is
+ * not configured (or hasn't propagated) — that previously left the model blind to
+ * the image, so follow-ups leaned only on the text. Best-effort: any failure →
+ * undefined (extraction proceeds text-only, never blocks). */
+async function screenshotDataUrl(env: Env, payload: FeedbackPayload): Promise<string | undefined> {
+  const key = payload.attachmentKeys[0];
+  if (!key) return undefined;
+  try {
+    const obj = await env.UPLOADS.get(key);
+    if (!obj) return undefined;
+    const buf = await obj.arrayBuffer();
+    if (buf.byteLength > MAX_LLM_IMAGE_BYTES) return undefined;
+    const mime = obj.httpMetadata?.contentType || "image/webp";
+    return `data:${mime};base64,${base64FromBytes(new Uint8Array(buf))}`;
+  } catch (e) {
+    console.warn(`[feedbackkit] screenshot read for LLM vision failed (text-only): ${(e as Error).message}`);
+    return undefined;
+  }
+}
+
+/** ArrayBuffer bytes → base64, chunked so a large buffer can't blow the call stack. */
+function base64FromBytes(bytes: Uint8Array): string {
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  return btoa(binary);
 }
 
 // ── D1 journey (all best-effort: a write failure degrades, never blocks) ───────
