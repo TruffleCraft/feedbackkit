@@ -319,7 +319,7 @@ function impressumPage(): string {
   Deutschland</p>
 
   <h2>Kontakt</h2>
-  <p>E-Mail: <a href="mailto:hello@trufflecraft.com">hello@trufflecraft.com</a></p>
+  <p>E-Mail: <a href="mailto:michel@schieder.org">michel@schieder.org</a></p>
 
   <h2>Umsatzsteuer</h2>
   <p>Als Kleinunternehmer im Sinne von § 19 UStG wird keine Umsatzsteuer ausgewiesen; eine Umsatzsteuer-Identifikationsnummer liegt nicht vor.</p>
@@ -342,7 +342,7 @@ function datenschutzPage(): string {
 
   <h2>1. Verantwortlicher</h2>
   <p>Michel Schieder, TruffleCraft (Einzelunternehmen), Köpenicker Straße 40, 10179 Berlin, Deutschland.<br>
-  E-Mail: <a href="mailto:hello@trufflecraft.com">hello@trufflecraft.com</a></p>
+  E-Mail: <a href="mailto:michel@schieder.org">michel@schieder.org</a></p>
 
   <h2>2. Was diese Seite ist</h2>
   <p>Diese Website ist eine öffentlich erreichbare Produkt-Demo von FeedbackKit. Sie bindet das FeedbackKit-Feedback-Widget ein, das über eine separate Gateway-Infrastruktur (Cloudflare Worker) läuft.</p>
