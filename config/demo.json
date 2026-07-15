@@ -51,7 +51,7 @@
     "retentionDays": 30
   },
   "auth": {
-    "origins": ["https://feedbackkit-site.schieder-account.workers.dev"]
+    "origins": ["https://feedbackkit-site.trufflecraft.workers.dev"]
   },
   "rateLimit": { "perHour": 40 }
 }
