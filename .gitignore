@@ -4,6 +4,9 @@ dist/
 # Generated from wrangler.template.toml by `pnpm materialize` (ADR-004: operator-specific
 # bindings never live in the repo). Never commit this file.
 wrangler.toml
+# ...except the standalone site worker's config — it has no bindings/secrets
+# (account_id comes from CLOUDFLARE_ACCOUNT_ID at deploy), so it IS committed.
+!site/wrangler.toml
 # Local secrets for `wrangler dev`
 .dev.vars
 *.log

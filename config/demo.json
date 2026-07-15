@@ -1,0 +1,57 @@
+{
+  "publicKey": "fk_pub_64a564982de5",
+  "projectId": "feedbackkit-demo",
+  "locale": "en",
+  "enabled": true,
+  "askType": true,
+  "templates": [
+    {
+      "type": "bug",
+      "label": "Bug",
+      "fields": [
+        { "key": "repro", "label": "What did you do?", "kind": "longtext", "required": true, "extractionHint": "The steps that led to the problem." },
+        { "key": "expected", "label": "What did you expect?", "kind": "longtext", "required": true },
+        { "key": "actual", "label": "What happened instead?", "kind": "longtext", "required": true }
+      ],
+      "body": [
+        { "heading": "Steps to reproduce", "template": "{{repro}}" },
+        { "heading": "Expected vs actual", "template": "**Expected:** {{expected}}\n**Actual:** {{actual}}" }
+      ],
+      "tracker": { "labels": ["type/bug", "source/feedbackkit", "demo"] }
+    },
+    {
+      "type": "feature",
+      "label": "Feature request",
+      "fields": [{ "key": "problem", "label": "What problem would this solve?", "kind": "longtext", "required": true }],
+      "body": [{ "heading": "Problem", "template": "{{problem}}" }],
+      "tracker": { "labels": ["type/feature", "source/feedbackkit", "demo"] }
+    },
+    {
+      "type": "improvement",
+      "label": "Improvement",
+      "fields": [{ "key": "what", "label": "What could be better?", "kind": "longtext", "required": true }],
+      "body": [{ "heading": "Improvement", "template": "{{what}}" }],
+      "tracker": { "labels": ["type/improvement", "source/feedbackkit", "demo"] }
+    }
+  ],
+  "llm": {
+    "provider": "openrouter",
+    "model": "google/gemma-4-26b-a4b-it",
+    "dailyBudget": 100,
+    "structuredOutput": true
+  },
+  "tracker": {
+    "kind": "github",
+    "defaultRepo": "TruffleCraft/feedbackkit",
+    "patSecret": "GITHUB_PAT_default"
+  },
+  "storage": {
+    "kind": "r2",
+    "publicBaseUrl": "https://pub-478b50ba6d88448ab21c1c105c27d295.r2.dev",
+    "retentionDays": 30
+  },
+  "auth": {
+    "origins": ["https://feedbackkit-site.schieder-account.workers.dev"]
+  },
+  "rateLimit": { "perHour": 40 }
+}

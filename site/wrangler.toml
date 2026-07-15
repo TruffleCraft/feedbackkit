@@ -1,0 +1,9 @@
+# Standalone marketing/demo site worker. Separate from the FeedbackKit gateway
+# worker (which serves /widget.js + the APIs) so it can grow into the public
+# website on its own domain later. No bindings, no secrets — account_id is passed
+# via the CLOUDFLARE_ACCOUNT_ID env var at deploy time, so this file is safe to
+# commit (unlike the gateway's materialized wrangler.toml).
+name = "feedbackkit-site"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+workers_dev = true
