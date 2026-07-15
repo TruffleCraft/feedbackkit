@@ -106,6 +106,25 @@ describe("orchestrateFeedback — POST-1", () => {
     expect(db.dedup.has(UUID)).toBe(true); // terminal success is idempotency-stored
   });
 
+  it("reads the screenshot from R2 and sends it to the LLM as a base64 data URL + page context", async () => {
+    const db = fakeDb();
+    const gh = ghCapture();
+    const bytes = new Uint8Array([0x52, 0x49, 0x46, 0x46]);
+    const uploads = {
+      get: async (key: string) =>
+        key === "demo/shot.webp" ? { arrayBuffer: async () => bytes.buffer, httpMetadata: { contentType: "image/webp" } } : null,
+    };
+    let seen: { messages: Array<{ content: string | Array<{ type: string; text?: string; image_url?: { url: string } }> }> } | undefined;
+    const chat: ChatFn = async (req) => {
+      seen = JSON.parse((req as { init: { body: string } }).init.body);
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ type: "bug", summary: "s", repro: "k", expected: "e", actual: "a" }) } }] }), { status: 200 });
+    };
+    await orchestrateFeedback(env(db.db, { UPLOADS: uploads }), loaded(), payload({ attachmentKeys: ["demo/shot.webp"] }), { apiKey: "k", chat, fetchImpl: gh.fetchImpl });
+    const content = seen!.messages[1]!.content as Array<{ type: string; text?: string; image_url?: { url: string } }>;
+    expect(content.find((c) => c.type === "image_url")?.image_url?.url).toMatch(/^data:image\/webp;base64,/);
+    expect(content.find((c) => c.type === "text")?.text).toContain("https://acme.dev"); // pageUrl reached the model
+  });
+
   it("asks ONE conversational follow-up (follow_up), no issue yet", async () => {
     const db = fakeDb();
     const gh = ghCapture();

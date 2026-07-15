@@ -1,4 +1,4 @@
-import type { FeedbackConfig, TemplateDefinition } from "../../shared/contract.js";
+import type { ConsoleEntryT, DeviceInfoT, FeedbackConfig, TemplateDefinition } from "../../shared/contract.js";
 
 // One OpenAI-compatible client covers OpenRouter (default), LiteLLM, Ollama, vLLM,
 // local models (ADR-007). Structured output is requested best-effort; the HARD gate
@@ -25,11 +25,13 @@ export type ChatFn = (req: unknown, signal: AbortSignal) => Promise<Response>;
 
 const SYSTEM_PROMPT = [
   "You extract structured fields from a user's raw product feedback for a developer issue tracker.",
-  "Rules: extract ONLY what the user actually stated; never invent facts.",
-  "Keep values in the user's original language — never translate.",
+  "You are given the user's text and, when available, a SCREENSHOT of the page they were on plus session context (page URL, device, recent console messages).",
+  "Use ALL of these as evidence: read the screenshot for the visible UI state, any error message shown, and what the user is pointing at; treat the console messages and URL as corroborating technical detail.",
+  "Rules: extract ONLY what is supported by the user's text, the screenshot, or the session context — never invent facts that none of them show.",
+  "Keep values in the user's original language — never translate. Technical detail read verbatim from the screenshot or console (an error string, a URL) may be included as-is.",
   "Prefer verbatim spans; a short same-language paraphrase is allowed.",
-  "Return JSON only, matching the requested schema. Leave a field as an empty string if the user did not provide it.",
-  "followUpQuestion: if any REQUIRED field is empty, write ONE short, friendly question (in the user's language) asking for the most important missing info — combine multiple missing items into a single natural question. If nothing required is missing, use an empty string.",
+  "Return JSON only, matching the requested schema. Leave a field as an empty string if none of the inputs provide it.",
+  "followUpQuestion: if any REQUIRED field is still empty AFTER using every input, write ONE short, friendly question (in the user's language) for the single most important missing thing — combine multiple missing items into one natural question, and do NOT ask for anything the screenshot or context already answered. If nothing required is missing, use an empty string.",
 ].join(" ");
 
 // Models commonly wrap JSON in a ```json … ``` fence even when asked not to.
@@ -79,9 +81,38 @@ export interface ClassifyOpts {
   template: TemplateDefinition;
   message: string;
   screenshotDataUrl?: string;
+  // Session context fed to the model alongside the text + screenshot so the
+  // extraction and the follow-up question are grounded in more than the prose
+  // (fixes thin, text-only follow-ups). All optional — absent = omitted.
+  pageUrl?: string;
+  deviceInfo?: DeviceInfoT;
+  consoleErrors?: ConsoleEntryT[];
   apiKey: string;
   chat: ChatFn;
   timeoutMs?: number;
+}
+
+/** Render the optional session context as a compact block for the user message.
+ * Empty string when there's nothing to add (so text-only feedback is unchanged). */
+function renderContext(opts: ClassifyOpts): string {
+  const lines: string[] = [];
+  if (opts.pageUrl) lines.push(`Page URL: ${opts.pageUrl}`);
+  const d = opts.deviceInfo;
+  if (d) {
+    const parts: string[] = [];
+    if (d.browser) parts.push(d.browser);
+    if (d.os) parts.push(d.os);
+    if (d.viewport) parts.push(`viewport ${d.viewport.w}×${d.viewport.h}`);
+    if (d.language) parts.push(`lang ${d.language}`);
+    if (parts.length) lines.push(`Device: ${parts.join(", ")}`);
+  }
+  // Client-side PII-filtered and capped already; take the most recent few.
+  const errs = (opts.consoleErrors ?? []).slice(-8);
+  if (errs.length) {
+    lines.push("Recent console messages (may be unrelated — corroborate, don't assume):");
+    for (const e of errs) lines.push(`  [${e.level}] ${e.msg}`);
+  }
+  return lines.length ? `\n\nSession context:\n${lines.join("\n")}` : "";
 }
 
 export async function classifyAndExtract(opts: ClassifyOpts): Promise<ExtractionResult> {
@@ -93,7 +124,7 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
     .join("\n");
   // Naming the exact key set helps models that run WITHOUT json_schema (below).
   const keyList = ["type", "summary", "followUpQuestion", ...template.fields.map((f) => f.key)].join(", ");
-  const userText = `Feedback type: ${template.type}\nFields to extract:\n${fieldLines}\n\nReturn a JSON object with exactly these keys: ${keyList}.\n\nUser feedback:\n${message}`;
+  const userText = `Feedback type: ${template.type}\nFields to extract:\n${fieldLines}\n\nReturn a JSON object with exactly these keys: ${keyList}.${renderContext(opts)}\n\nUser feedback:\n${message}`;
 
   const content: unknown = screenshotDataUrl
     ? [
