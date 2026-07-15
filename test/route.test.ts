@@ -88,6 +88,21 @@ describe("GET /diag", () => {
   });
 });
 
+describe("GET /demo", () => {
+  it("serves the product one-pager with the embedded widget under a CSP", async () => {
+    const res = await app.request("/demo", {}, env(() => null));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("text/html");
+    const csp = res.headers.get("Content-Security-Policy") ?? "";
+    expect(csp).toContain("script-src 'self'"); // widget.js only, no inline JS
+    expect(csp).toContain("style-src 'unsafe-inline'"); // widget shadow styles
+    const html = await res.text();
+    expect(html).toContain('src="/widget.js"');
+    expect(html).toContain('data-project="fk_pub_'); // wired to the demo project
+    expect(html).toContain("FeedbackKit");
+  });
+});
+
 // ── Uploads (P1.8) ────────────────────────────────────────────────────────────
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
 const FID = "11111111-1111-4111-8111-111111111111";
