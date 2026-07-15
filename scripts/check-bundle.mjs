@@ -7,9 +7,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-// Whole all-in-one bundle incl. html-to-image. The 18 kB ceiling includes the
-// screenshot editor plus the attachment chips and context transparency UI.
-const BUDGET_GZ = 18 * 1024;
+// Whole all-in-one bundle incl. html-to-image. The 19 kB ceiling includes the
+// screenshot editor, bounded text layout, multi-attachment UI and context chips.
+const BUDGET_GZ = 19 * 1024;
 
 let buf;
 try {

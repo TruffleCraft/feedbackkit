@@ -59,6 +59,13 @@ async function boot() {
   const host = document.createElement("div");
   host.setAttribute("data-feedbackkit", "host");
   host.style.cssText = "all: initial;"; // isolate from page styles; shadow does the rest
+  const syncTheme = () => {
+    const theme = document.documentElement.getAttribute("data-theme");
+    if (theme === "dark" || theme === "light") host.setAttribute("data-theme", theme);
+    else host.removeAttribute("data-theme"); // CSS prefers-color-scheme fallback
+  };
+  syncTheme();
+  new MutationObserver(syncTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   document.body.appendChild(host);
   const shadow = host.attachShadow({ mode: "open" });
 
@@ -73,7 +80,7 @@ async function boot() {
   let feedbackId = "";
   let base1: FeedbackPayload | null = null; // POST-1 payload, reused for POST-2
   let attachedKeys: string[] = []; // R2 keys of manually attached files (uploaded on pick)
-  let pendingAttachments: Promise<boolean>[] = [];
+  let pendingAttachments: Promise<"uploaded" | "failed" | "limit">[] = [];
   let editedShot: Blob | null = null; // annotated/cropped capture (#54); replaces the submit-time capture
   let editedShotUrl = ""; // object URL backing the annotator's <img>, revoked on reset
   let bailed = false;
@@ -125,6 +132,10 @@ async function boot() {
     onRetry: () => {
       resetAttempt();
       dispatch({ t: "retry" });
+    },
+    onRestart: () => {
+      resetAttempt();
+      dispatch({ t: "restart" });
     },
     onEditScreenshot: () => void editShot(),
     onAnnotated: (blob) => {
@@ -191,7 +202,7 @@ async function boot() {
       // Wait for those uploads so the visible chip cannot be silently omitted.
       await Promise.allSettled([...pendingAttachments]);
       if (myGen !== gen) return;
-      const attachmentKeys: string[] = [...attachedKeys];
+      const attachmentKeys: string[] = [];
       if (screenshot) {
         // An annotated/cropped shot (#54) wins over a fresh capture — what the
         // user marked up is exactly what uploads (and reaches the LLM via #53).
@@ -211,6 +222,9 @@ async function boot() {
           if (key) attachmentKeys.push(key);
         }
       }
+      // Keep the page screenshot first: the worker uses attachment 0 as the
+      // bounded vision input. Manual evidence still follows in upload order.
+      attachmentKeys.push(...attachedKeys);
       base1 = {
         v: 1,
         feedbackId,
@@ -252,13 +266,13 @@ async function boot() {
   }
 
   // Manual file attach (picked in the form) → upload now, key rides along on submit.
-  async function attach(file: File): Promise<boolean> {
-    if (attachedKeys.length + pendingAttachments.length >= 4) return false; // leave room for the auto-screenshot (cap 5)
+  async function attach(file: File): Promise<"uploaded" | "failed" | "limit"> {
+    if (attachedKeys.length + pendingAttachments.length >= 4) return "limit"; // leave room for the auto-screenshot (cap 5)
     if (!feedbackId) feedbackId = uuid();
     const bucket = attachedKeys; // capture: a close→reopen (resetAttempt) rebinds attachedKeys,
     const key = await api.uploadScreenshot(feedbackId, file); // so a stale upload lands in the OLD bucket, not the new session
     if (key) bucket.push(key);
-    return Boolean(key);
+    return key ? "uploaded" : "failed";
   }
 
   ui.render(state);

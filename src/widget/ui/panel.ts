@@ -31,8 +31,9 @@ export interface UIHandlers {
   onSubmit(type: string, text: string, screenshot: boolean): void;
   onSendNow(): void;
   onComplete(type: string, answer: string): void;
-  onAttach(file: File): Promise<boolean>;
+  onAttach(file: File): Promise<"uploaded" | "failed" | "limit">;
   onRetry(): void;
+  onRestart(): void;
   /** "Mark up screenshot" clicked → index captures the page, then calls openAnnotator(). */
   onEditScreenshot(): void;
   /** Annotator finished → index uses this blob at submit instead of a fresh capture. */
@@ -65,6 +66,7 @@ export class WidgetUI {
   private questionEl!: HTMLParagraphElement;
   private answerBox!: HTMLTextAreaElement;
   private sendNowBtn!: HTMLButtonElement;
+  private statusText!: HTMLSpanElement;
   private issueLink!: HTMLAnchorElement;
   private doneMsg!: HTMLParagraphElement;
   private panel!: HTMLDivElement;
@@ -72,10 +74,11 @@ export class WidgetUI {
   private shotChip!: HTMLSpanElement;
   private shotLabelEl!: HTMLSpanElement;
   private shotMarkupBtn!: HTMLButtonElement;
+  private shotToggleBtn!: HTMLButtonElement;
   private ctxBrowserChip!: HTMLSpanElement;
   private ctxUrlChip!: HTMLSpanElement;
   private ctxConsoleChip!: HTMLSpanElement;
-  private fileChip!: HTMLSpanElement;
+  private fileChips!: HTMLDivElement;
   private mediaHint!: HTMLParagraphElement;
   private shotEnabled = true;
   private annotatorReturnFocus: HTMLElement | null = null;
@@ -154,43 +157,37 @@ export class WidgetUI {
     this.ctxConsoleChip = el("span", { className: "fk-chip readonly", hidden: true });
     this.ctxBrowserChip = el("span", { className: "fk-chip readonly", hidden: true });
     this.ctxUrlChip = el("span", { className: "fk-chip readonly", hidden: true });
-    this.fileChip = el("span", { className: "fk-chip readonly", hidden: true });
-    const chips = el("div", { className: "fk-chips" }, [this.shotChip, this.ctxConsoleChip, this.ctxBrowserChip, this.ctxUrlChip, this.fileChip]);
+    const contextChips = el("div", { className: "fk-chips fk-context" }, [this.ctxConsoleChip, this.ctxBrowserChip, this.ctxUrlChip]);
 
-    this.attachInput = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp,image/gif", hidden: true, id: "fk-file" });
+    this.attachInput = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp,image/gif", hidden: true, id: "fk-file", multiple: true });
     this.attachInput.addEventListener("change", () => {
-      const f = this.attachInput.files?.[0];
-      if (f) this.acceptFile(f);
+      this.acceptFiles(this.attachInput.files);
+      this.attachInput.value = "";
     });
-    const drop = el("div", { className: "fk-drop" }, [
+    const addImages = el("button", { className: "fk-media-add", type: "button", textContent: this.tr("addImages") });
+    addImages.addEventListener("click", () => this.attachInput.click());
+    this.fileChips = el("div", { className: "fk-chips fk-files" });
+    const media = el("div", { className: "fk-media" }, [
+      el("div", { className: "fk-media-head" }, [this.shotChip, addImages]),
       el("div", { className: "fk-drop-t" }, [el("b", { textContent: this.tr("dropTitleAccent") }), el("span", { textContent: this.tr("dropTitle") })]),
       el("div", { className: "fk-drop-s", textContent: this.tr("dropSub") }),
+      this.fileChips,
       this.attachInput,
     ]);
-    drop.setAttribute("role", "button");
-    drop.setAttribute("tabindex", "0");
-    drop.addEventListener("click", () => this.attachInput.click());
-    drop.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        this.attachInput.click();
-      }
-    });
-    for (const event of ["dragenter", "dragover"]) drop.addEventListener(event, (e) => { e.preventDefault(); drop.classList.add("fk-dragover"); });
-    for (const event of ["dragleave", "dragend"]) drop.addEventListener(event, () => drop.classList.remove("fk-dragover"));
-    drop.addEventListener("drop", (e) => {
+    for (const event of ["dragenter", "dragover"]) media.addEventListener(event, (e) => { e.preventDefault(); media.classList.add("fk-dragover"); });
+    for (const event of ["dragleave", "dragend"]) media.addEventListener(event, () => media.classList.remove("fk-dragover"));
+    media.addEventListener("drop", (e) => {
       e.preventDefault();
-      drop.classList.remove("fk-dragover");
-      const file = (e as DragEvent).dataTransfer?.files?.[0];
-      if (file) this.acceptFile(file);
+      media.classList.remove("fk-dragover");
+      this.acceptFiles((e as DragEvent).dataTransfer?.files);
     });
     this.mediaHint = el("p", { className: "fk-hint", hidden: true });
-    const media = el("div", { className: "fk-attach" }, [chips, drop, this.mediaHint]);
+    const attachments = el("div", { className: "fk-attach" }, [contextChips, media, this.mediaHint]);
 
     const send = el("button", { className: "fk-btn", type: "button", textContent: this.tr("send") });
     send.addEventListener("click", () => this.h.onSubmit(this.activeType, this.textarea.value.trim(), this.shotEnabled));
     const foot = el("div", { className: "fk-foot" }, [el("span", { className: "fk-privacy", textContent: this.tr("privacy") }), send]);
-    const view = el("div", { className: "fk-form" }, [types, this.guidanceEl, label, this.textarea, media, foot]);
+    const view = el("div", { className: "fk-form" }, [types, this.guidanceEl, label, this.textarea, attachments, foot]);
     this.views["form"] = view;
     this.applyGuidance();
     return view;
@@ -201,10 +198,10 @@ export class WidgetUI {
     this.shotMarkupBtn = el("button", { className: "act", type: "button", textContent: this.tr("editShot"), title: this.tr("editShot") });
     this.shotMarkupBtn.setAttribute("aria-label", this.tr("editShot"));
     this.shotMarkupBtn.addEventListener("click", () => this.h.onEditScreenshot());
-    const toggle = el("button", { className: "act icon", type: "button", textContent: "×", title: this.tr("removeShot") });
-    toggle.setAttribute("aria-label", this.tr("removeShot"));
-    toggle.addEventListener("click", () => this.toggleShot(toggle));
-    return el("span", { className: "fk-chip shot" }, [this.shotLabelEl, this.shotMarkupBtn, toggle]);
+    this.shotToggleBtn = el("button", { className: "act icon", type: "button", textContent: "×", title: this.tr("removeShot") });
+    this.shotToggleBtn.setAttribute("aria-label", this.tr("removeShot"));
+    this.shotToggleBtn.addEventListener("click", () => this.toggleShot(this.shotToggleBtn));
+    return el("span", { className: "fk-chip shot" }, [this.shotLabelEl, this.shotMarkupBtn, this.shotToggleBtn]);
   }
 
   private toggleShot(toggle: HTMLButtonElement) {
@@ -212,18 +209,29 @@ export class WidgetUI {
     this.shotChip.classList.toggle("off", !this.shotEnabled);
     this.shotMarkupBtn.disabled = !this.shotEnabled;
     toggle.textContent = this.shotEnabled ? "×" : "+";
-    toggle.setAttribute("aria-label", this.shotEnabled ? this.tr("removeShot") : this.tr("restoreShot"));
+    const label = this.shotEnabled ? this.tr("removeShot") : this.tr("restoreShot");
+    toggle.setAttribute("aria-label", label);
+    toggle.title = label;
   }
 
-  private acceptFile(file: File) {
-    this.fileChip.textContent = `📎 ${file.name}`;
-    this.fileChip.hidden = false;
-    void this.h.onAttach(file).then((uploaded) => {
-      if (!uploaded) this.fileChip.textContent = `⚠ ${file.name} · upload failed`;
-    });
+  private acceptFiles(files: FileList | undefined | null) {
+    for (const file of Array.from(files ?? [])) {
+      const chip = el("span", { className: "fk-chip file", textContent: `… ${file.name}` });
+      chip.dataset.status = "uploading";
+      this.fileChips.appendChild(chip);
+      void this.h.onAttach(file).then((status) => {
+        chip.dataset.status = status;
+        chip.textContent = status === "uploaded"
+          ? `✓ ${file.name}`
+          : `⚠ ${file.name} · ${this.tr(status === "limit" ? "uploadLimit" : "uploadFailed")}`;
+      });
+    }
   }
 
   setContext(ctx: UIContext) {
+    this.ctxBrowserChip.hidden = !ctx.browser;
+    this.ctxUrlChip.hidden = !ctx.url;
+    this.ctxConsoleChip.hidden = !ctx.consoleErrors;
     if (ctx.browser) { this.ctxBrowserChip.textContent = ctx.browser; this.ctxBrowserChip.hidden = false; }
     if (ctx.url) { this.ctxUrlChip.textContent = `Page ${ctx.url}`; this.ctxUrlChip.hidden = false; }
     if (ctx.consoleErrors && ctx.consoleErrors > 0) {
@@ -302,15 +310,18 @@ export class WidgetUI {
     this.shotMarkupBtn.textContent = this.tr("editShot");
   }
 
-  /** New attempt → drop the edited-shot affordances. */
+  /** New attempt → clear all transient form and media state without rebuilding DOM. */
   private resetShotUI() {
     this.shotEnabled = true;
     this.shotChip.classList.remove("off");
     this.shotLabelEl.textContent = this.tr("screenshotChip");
     this.shotMarkupBtn.disabled = false;
     this.shotMarkupBtn.textContent = this.tr("editShot");
-    this.fileChip.hidden = true;
-    this.fileChip.textContent = "";
+    this.shotToggleBtn.textContent = "×";
+    this.shotToggleBtn.setAttribute("aria-label", this.tr("removeShot"));
+    this.shotToggleBtn.title = this.tr("removeShot");
+    this.fileChips.replaceChildren();
+    this.attachInput.value = "";
     this.mediaHint.hidden = true;
     this.annotator.root.hidden = true;
     this.panel.removeAttribute("inert");
@@ -320,7 +331,8 @@ export class WidgetUI {
   private buildExtracting(): HTMLElement {
     this.sendNowBtn = el("button", { className: "fk-btn fk-ghost", type: "button", textContent: this.tr("sendNow") });
     this.sendNowBtn.addEventListener("click", () => this.h.onSendNow());
-    const view = el("div", { className: "fk-status" }, [el("span", { className: "fk-spinner" }), el("span", { textContent: this.tr("analyzing") }), this.sendNowBtn]);
+    this.statusText = el("span", { textContent: this.tr("analyzing") });
+    const view = el("div", { className: "fk-status" }, [el("span", { className: "fk-spinner" }), this.statusText, this.sendNowBtn]);
     this.views["extracting"] = view;
     return view;
   }
@@ -341,8 +353,10 @@ export class WidgetUI {
 
   private buildDone(): HTMLElement {
     this.doneMsg = el("p", { className: "fk-hint" });
+    const restart = el("button", { className: "fk-btn fk-ghost", type: "button", textContent: this.tr("sendAnother") });
+    restart.addEventListener("click", () => this.h.onRestart());
     this.issueLink = el("a", { className: "fk-btn", textContent: this.tr("viewIssue"), target: "_blank", rel: "noopener noreferrer" });
-    const view = el("div", { className: "fk-done" }, [el("div", { className: "fk-done-icon", textContent: "✓" }), el("h3", { className: "fk-title", textContent: this.tr("doneTitle") }), this.doneMsg, el("div", { className: "fk-actions", role: "group" }, [this.issueLink])]);
+    const view = el("div", { className: "fk-done" }, [el("div", { className: "fk-done-icon", textContent: "✓" }), el("h3", { className: "fk-title", textContent: this.tr("doneTitle") }), this.doneMsg, el("div", { className: "fk-actions", role: "group" }, [restart, this.issueLink])]);
     this.views["done"] = view;
     return view;
   }
@@ -400,6 +414,9 @@ export class WidgetUI {
     switch (state.name) {
       case "form":
         this.show("form");
+        this.textarea.value = "";
+        this.answerBox.value = "";
+        this.selectType(this.config.types[0]?.type ?? "");
         this.resetShotUI(); // "form" is only entered on a fresh attempt (open/retry)
         this.title.textContent = this.tr("title");
         this.live.textContent = this.tr("title");
@@ -407,7 +424,9 @@ export class WidgetUI {
         break;
       case "extracting":
         this.show("extracting");
-        // After the 4s slow-hint, "Send now" becomes a primary action.
+        // After the 4s slow-hint, skipping the follow-up becomes a primary action.
+        this.statusText.textContent = this.tr("analyzing");
+        this.sendNowBtn.hidden = false;
         this.sendNowBtn.className = state.sendNow ? "fk-btn" : "fk-btn fk-ghost";
         this.live.textContent = this.tr("analyzing");
         break;
@@ -420,8 +439,9 @@ export class WidgetUI {
         break;
       case "submitting":
         this.show("extracting");
-        this.sendNowBtn.className = "fk-btn fk-ghost";
-        this.live.textContent = this.tr("analyzing");
+        this.statusText.textContent = this.tr("finalizing");
+        this.sendNowBtn.hidden = true;
+        this.live.textContent = this.tr("finalizing");
         break;
       case "done": {
         this.show("done");

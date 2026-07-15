@@ -63,6 +63,12 @@ export function deriveTitle(template: TemplateDefinition, ctx: RenderContext): s
 export function renderIssueBody(template: TemplateDefinition, ctx: RenderContext, locale = "en"): string {
   const parts: string[] = [];
 
+  if (!ctx.degraded) {
+    parts.push(locale === "de"
+      ? "_AI-generierter Entwurf: Bitte strukturierte Felder gegen das unveränderte Originalfeedback prüfen._"
+      : "_AI-generated draft: verify structured fields against the unchanged original feedback._");
+  }
+
   if (template.body.length > 0) {
     for (const section of template.body) {
       const heading = section.heading ? `### ${labelText(section.heading, locale)}\n` : "";

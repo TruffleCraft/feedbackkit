@@ -8,7 +8,7 @@ export type Tool = "crop" | "rect" | "arrow" | "text" | "pen";
 export type Annotation =
   | { tool: "rect"; x: number; y: number; w: number; h: number }
   | { tool: "arrow"; x1: number; y1: number; x2: number; y2: number }
-  | { tool: "text"; x: number; y: number; text: string }
+  | { tool: "text"; x: number; y: number; text: string; size: number }
   | { tool: "pen"; points: number[] }; // [x0,y0,x1,y1,…]
 
 export interface Rect {
@@ -56,10 +56,37 @@ export interface Ctx2D {
   fill(): void;
   closePath(): void;
   strokeRect(x: number, y: number, w: number, h: number): void;
-  fillText(text: string, x: number, y: number): void;
+  measureText(text: string): { width: number };
+  fillText(text: string, x: number, y: number, maxWidth?: number): void;
 }
 
-export function drawAnnotation(ctx: Ctx2D, a: Annotation, imgW: number): void {
+/** Wrap words and hard-break long tokens to fit the available image width. */
+export function wrapText(ctx: Ctx2D, text: string, maxWidth: number): string[] {
+  const lines: string[] = [];
+  for (const paragraph of text.split("\n")) {
+    let line = "";
+    for (let word of paragraph.trim().split(/\s+/).filter(Boolean)) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (ctx.measureText(candidate).width <= maxWidth) {
+        line = candidate;
+        continue;
+      }
+      if (line) lines.push(line);
+      line = "";
+      while (word && ctx.measureText(word).width > maxWidth) {
+        let cut = 1;
+        while (cut < word.length && ctx.measureText(word.slice(0, cut + 1)).width <= maxWidth) cut++;
+        lines.push(word.slice(0, cut));
+        word = word.slice(cut);
+      }
+      line = word;
+    }
+    if (line || paragraph === "") lines.push(line);
+  }
+  return lines;
+}
+
+export function drawAnnotation(ctx: Ctx2D, a: Annotation, imgW: number, imgH = Number.POSITIVE_INFINITY): void {
   const s = strokeWidth(imgW);
   ctx.strokeStyle = ANNOT_COLOR;
   ctx.fillStyle = ANNOT_COLOR;
@@ -87,8 +114,19 @@ export function drawAnnotation(ctx: Ctx2D, a: Annotation, imgW: number): void {
       break;
     }
     case "text":
-      ctx.font = `600 ${fontSize(imgW)}px -apple-system, sans-serif`;
-      ctx.fillText(a.text, a.x, a.y);
+      ctx.font = `600 ${a.size}px -apple-system, sans-serif`;
+      {
+        const x = Math.min(Math.max(a.x, 0), Math.max(0, imgW - a.size));
+        const maxWidth = Math.max(1, imgW - x);
+        const lineHeight = a.size * 1.2;
+        const lines = wrapText(ctx, a.text, maxWidth);
+        const bottom = imgH - a.size * 0.25; // reserve room below the alphabetic baseline
+        const maxLines = Math.max(1, Math.floor((bottom - a.size) / lineHeight) + 1);
+        const visible = lines.slice(0, maxLines);
+        if (lines.length > visible.length) visible[visible.length - 1] = `${visible[visible.length - 1]?.slice(0, -1) ?? ""}…`;
+        const firstY = Math.min(Math.max(a.size, a.y), Math.max(a.size, bottom - (visible.length - 1) * lineHeight));
+        visible.forEach((line, index) => ctx.fillText(line, x, firstY + index * lineHeight, maxWidth));
+      }
       break;
     case "pen": {
       if (a.points.length < 4) break;
@@ -102,8 +140,8 @@ export function drawAnnotation(ctx: Ctx2D, a: Annotation, imgW: number): void {
 }
 
 /** Draw every committed annotation (the image itself is drawn by the caller). */
-export function drawScene(ctx: Ctx2D, annotations: readonly Annotation[], imgW: number): void {
-  for (const a of annotations) drawAnnotation(ctx, a, imgW);
+export function drawScene(ctx: Ctx2D, annotations: readonly Annotation[], imgW: number, imgH = Number.POSITIVE_INFINITY): void {
+  for (const a of annotations) drawAnnotation(ctx, a, imgW, imgH);
 }
 
 const MIN_CROP = 10; // px in image space — below this a drag is treated as a no-op

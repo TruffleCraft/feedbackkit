@@ -11,12 +11,14 @@ type Key =
   | "attachScreenshot"
   | "attachFile"
   | "analyzing"
+  | "finalizing"
   | "sendNow"
   | "followUpPlaceholder"
   | "sendAnyway"
   | "doneTitle"
   | "doneMsg"
   | "viewIssue"
+  | "sendAnother"
   | "failed"
   | "retry"
   | "editShot"
@@ -30,6 +32,9 @@ type Key =
   | "dropTitle"
   | "dropTitleAccent"
   | "dropSub"
+  | "addImages"
+  | "uploadFailed"
+  | "uploadLimit"
   | "privacy"
   | "annotateTitle"
   | "annotateHint"
@@ -37,6 +42,9 @@ type Key =
   | "toolRect"
   | "toolArrow"
   | "toolText"
+  | "textSmaller"
+  | "textLarger"
+  | "textSize"
   | "toolPen"
   | "undo"
   | "clear"
@@ -53,13 +61,15 @@ const STR: Record<Locale, Record<Key, string>> = {
     send: "Send",
     attachScreenshot: "Attach a screenshot of this page",
     attachFile: "Attach a file",
-    analyzing: "Analyzing…",
-    sendNow: "Send now",
+    analyzing: "AI is structuring your feedback…",
+    finalizing: "Finishing without a follow-up…",
+    sendNow: "Skip follow-up",
     followUpPlaceholder: "Your answer…",
     sendAnyway: "Send anyway",
     doneTitle: "Thanks!",
     doneMsg: "Your feedback was received.",
     viewIssue: "View issue",
+    sendAnother: "Send more feedback",
     failed: "Something went wrong. Please try again.",
     retry: "Try again",
     editShot: "Mark up",
@@ -70,9 +80,12 @@ const STR: Record<Locale, Record<Key, string>> = {
     screenshotChip: "Screenshot",
     removeShot: "Remove screenshot",
     restoreShot: "Restore screenshot",
-    dropTitleAccent: "Drop an image here",
-    dropTitle: " or click",
-    dropSub: "PNG, JPG, WebP or GIF · up to 2 MB",
+    dropTitleAccent: "Drop images here",
+    dropTitle: " or add them",
+    dropSub: "PNG, JPG, WebP or GIF · up to 4 files",
+    addImages: "Add images",
+    uploadFailed: "upload failed",
+    uploadLimit: "limit reached",
     privacy: "Screenshot may be included with page context",
     annotateTitle: "Mark up screenshot",
     annotateHint: "Drag to crop, or pick a tool to mark things up.",
@@ -80,6 +93,9 @@ const STR: Record<Locale, Record<Key, string>> = {
     toolRect: "Rectangle",
     toolArrow: "Arrow",
     toolText: "Text",
+    textSmaller: "Smaller text",
+    textLarger: "Larger text",
+    textSize: "Text size",
     toolPen: "Draw",
     undo: "Undo",
     clear: "Clear all",
@@ -95,13 +111,15 @@ const STR: Record<Locale, Record<Key, string>> = {
     send: "Senden",
     attachScreenshot: "Screenshot dieser Seite anhängen",
     attachFile: "Datei anhängen",
-    analyzing: "Wird analysiert…",
-    sendNow: "Jetzt senden",
+    analyzing: "AI strukturiert dein Feedback…",
+    finalizing: "Wird ohne Rückfrage abgeschlossen…",
+    sendNow: "Rückfrage überspringen",
     followUpPlaceholder: "Deine Antwort…",
     sendAnyway: "Trotzdem senden",
     doneTitle: "Danke!",
     doneMsg: "Dein Feedback ist angekommen.",
     viewIssue: "Zum Ticket",
+    sendAnother: "Weiteres Feedback",
     failed: "Etwas ist schiefgelaufen. Bitte erneut versuchen.",
     retry: "Erneut versuchen",
     editShot: "Markieren",
@@ -112,9 +130,12 @@ const STR: Record<Locale, Record<Key, string>> = {
     screenshotChip: "Screenshot",
     removeShot: "Screenshot entfernen",
     restoreShot: "Screenshot wiederherstellen",
-    dropTitleAccent: "Bild hierher ziehen",
-    dropTitle: " oder klicken",
-    dropSub: "PNG, JPG, WebP oder GIF · bis 2 MB",
+    dropTitleAccent: "Bilder hierher ziehen",
+    dropTitle: " oder hinzufügen",
+    dropSub: "PNG, JPG, WebP oder GIF · bis zu 4 Dateien",
+    addImages: "Bilder hinzufügen",
+    uploadFailed: "Upload fehlgeschlagen",
+    uploadLimit: "Limit erreicht",
     privacy: "Screenshot kann Seitenkontext enthalten",
     annotateTitle: "Screenshot markieren",
     annotateHint: "Ziehen zum Zuschneiden, oder ein Werkzeug zum Markieren wählen.",
@@ -122,6 +143,9 @@ const STR: Record<Locale, Record<Key, string>> = {
     toolRect: "Rechteck",
     toolArrow: "Pfeil",
     toolText: "Text",
+    textSmaller: "Text verkleinern",
+    textLarger: "Text vergrößern",
+    textSize: "Textgröße",
     toolPen: "Zeichnen",
     undo: "Rückgängig",
     clear: "Alles löschen",

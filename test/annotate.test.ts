@@ -1,7 +1,7 @@
 // #54: pure annotation model — geometry, scaling, and the draw command stream
 // (the DOM/canvas layer is covered by the Playwright annotate spec).
 import { describe, it, expect } from "vitest";
-import { normRect, clampPoint, strokeWidth, fontSize, validCrop, drawAnnotation, drawScene, ANNOT_COLOR, type Ctx2D, type Annotation } from "../src/widget/ui/annotate-model.js";
+import { normRect, clampPoint, strokeWidth, fontSize, validCrop, drawAnnotation, drawScene, wrapText, ANNOT_COLOR, type Ctx2D, type Annotation } from "../src/widget/ui/annotate-model.js";
 
 // Recorder fake: captures the command stream drawScene issues.
 function recorder() {
@@ -20,7 +20,8 @@ function recorder() {
     fill: () => void calls.push("fill"),
     closePath: () => void calls.push("closePath"),
     strokeRect: (x, y, w, h) => void calls.push(`strokeRect ${x},${y},${w},${h}`),
-    fillText: (t, x, y) => void calls.push(`fillText ${t} ${x},${y}`),
+    measureText: (text) => ({ width: text.length * 10 }),
+    fillText: (t, x, y, maxWidth) => void calls.push(`fillText ${t} ${x},${y} max=${maxWidth}`),
   };
   return { ctx, calls };
 }
@@ -74,9 +75,33 @@ describe("drawAnnotation", () => {
 
   it("text → fillText at the anchor with a scaled font", () => {
     const { ctx, calls } = recorder();
-    drawAnnotation(ctx, { tool: "text", x: 10, y: 20, text: "here!" }, 800);
-    expect(calls).toEqual(["fillText here! 10,20"]);
-    expect(ctx.font).toContain("25px");
+    drawAnnotation(ctx, { tool: "text", x: 10, y: 20, text: "here!", size: 18 }, 800);
+    expect(calls).toEqual(["fillText here! 10,20 max=790"]);
+    expect(ctx.font).toContain("18px");
+  });
+
+  it("text wraps and hard-breaks without crossing the image right boundary", () => {
+    const { ctx, calls } = recorder();
+    expect(wrapText(ctx, "two words abcdef", 35)).toEqual(["two", "wor", "ds", "abc", "def"]);
+    drawAnnotation(ctx, { tool: "text", x: 75, y: 20, text: "abcdef", size: 10 }, 100);
+    expect(calls).toEqual(["fillText ab 75,20 max=25", "fillText cd 75,32 max=25", "fillText ef 75,44 max=25"]);
+  });
+
+  it("moves wrapped text up so it stays inside the image bottom", () => {
+    const { ctx, calls } = recorder();
+    drawAnnotation(ctx, { tool: "text", x: 0, y: 95, text: "one two three", size: 10 }, 45, 100);
+    expect(calls).toEqual([
+      "fillText one 0,61.5 max=45",
+      "fillText two 0,73.5 max=45",
+      "fillText thre 0,85.5 max=45",
+      "fillText e 0,97.5 max=45",
+    ]);
+  });
+
+  it("marks text truncated by the image height", () => {
+    const { ctx, calls } = recorder();
+    drawAnnotation(ctx, { tool: "text", x: 0, y: 10, text: "one two three four", size: 10 }, 45, 22);
+    expect(calls).toEqual(["fillText on… 0,10 max=45"]);
   });
 
   it("pen → polyline through every point; a single point draws nothing", () => {
@@ -94,9 +119,9 @@ describe("drawScene", () => {
     const { ctx, calls } = recorder();
     const scene: Annotation[] = [
       { tool: "rect", x: 0, y: 0, w: 10, h: 10 },
-      { tool: "text", x: 1, y: 2, text: "a" },
+      { tool: "text", x: 1, y: 2, text: "a", size: 16 },
     ];
     drawScene(ctx, scene, 800);
-    expect(calls).toEqual(["strokeRect 0,0,10,10", "fillText a 1,2"]);
+    expect(calls).toEqual(["strokeRect 0,0,10,10", "fillText a 1,16 max=799"]);
   });
 });
