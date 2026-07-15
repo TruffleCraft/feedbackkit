@@ -20,6 +20,11 @@ test("annotate: capture → draw → use → flattened shot uploads and key ride
   await expect(page.locator(".fk-panel")).toHaveAttribute("inert", "");
   await expect(page.locator(".fk-backdrop")).toHaveAttribute("aria-hidden", "true");
   await expect(page.getByRole("button", { name: "Crop" })).toBeFocused();
+  await page.getByRole("button", { name: "Use screenshot" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(page.locator(".fk-editor .fk-x")).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.getByRole("button", { name: "Use screenshot" })).toBeFocused();
 
   // Draw a rectangle annotation (pointer drag on the canvas).
   await page.getByRole("button", { name: "Rectangle" }).click();

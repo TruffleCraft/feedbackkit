@@ -242,6 +242,26 @@ describe("orchestrateFeedback — POST-2 (freetext answer → one re-extraction)
     expect(gh.calls[0]!.body.title).toBe("[BUG] Images load slowly");
     expect(gh.calls[0]!.body.body).toContain("auf der Projekte-Seite"); // folded into the issue
   });
+
+  it("rejects non-canonical select values echoed by POST-2", async () => {
+    const config = baseConfig({
+      templates: [{
+        type: "bug",
+        label: "Bug",
+        fields: [{ key: "severity", label: "Schweregrad", kind: "select", required: true, options: [{ value: "high", label: "Hoch" }] }],
+        tracker: { labels: ["type/bug"] },
+      }],
+    });
+    const db = fakeDb();
+    const gh = ghCapture();
+    const result = await orchestrateFeedback(env(db.db), loaded(config), payload({ followUpText: "", extracted: { severity: "hoch" } }), {
+      chat: chatMustNotRun,
+      fetchImpl: gh.fetchImpl,
+    });
+    expect(result.body.status).toBe("accepted_incomplete");
+    expect(gh.calls[0]!.body.body).not.toContain("hoch");
+    expect(gh.calls[0]!.body.labels).toContain("needs-triage");
+  });
 });
 
 describe("orchestrateFeedback — create-anyway on tracker/D1 failure", () => {

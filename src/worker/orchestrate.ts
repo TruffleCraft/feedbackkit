@@ -176,7 +176,12 @@ export async function orchestrateFeedback(
   let fields: Record<string, string> = { ...(payload.extracted ?? {}) };
   if (reExtract && !reExtract.degraded) fields = { ...fields, ...reExtract.extracted };
   const cleaned: Record<string, string> = {};
-  for (const [k, v] of Object.entries(fields)) if (typeof v === "string" && v.trim()) cleaned[k] = v.trim();
+  for (const field of template.fields) {
+    const value = fields[field.key]?.trim();
+    if (!value) continue;
+    if (field.kind === "select" && field.options?.length && !field.options.some((option) => option.value === value)) continue;
+    cleaned[field.key] = value;
+  }
   const stillMissing = requiredAskable(template)
     .filter((f) => !cleaned[f.key])
     .map((f) => f.key);

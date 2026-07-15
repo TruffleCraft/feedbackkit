@@ -254,6 +254,14 @@ export class WidgetUI {
     this.annotator.root.hidden = true;
     this.annotator.root.addEventListener("keydown", (e) => {
       if (e.key === "Escape") this.closeAnnotator();
+      if (e.key === "Tab") {
+        const focusable = Array.from(this.annotator.root.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = this.shadow.activeElement;
+        if (e.shiftKey && active === first) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && active === last) { e.preventDefault(); first?.focus(); }
+      }
     });
   }
 
