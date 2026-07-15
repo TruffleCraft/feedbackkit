@@ -9,6 +9,7 @@ vi.mock("html-to-image", () => ({ toCanvas }));
 // Minimal DOM stubs: the capture path uses document.body, a scratch <canvas>,
 // its 2d context, and toBlob. The unit env is `node` (no DOM), so we fake them.
 const origDocument = (globalThis as { document?: unknown }).document;
+const origWindow = (globalThis as { window?: unknown }).window;
 // A single scratch <canvas> the code writes its output dimensions onto, so tests
 // can read back what size the final image was scaled to.
 let outCanvas: { width: number; height: number; getContext: () => unknown; toBlob: (cb: (b: Blob | null) => void) => void };
@@ -27,9 +28,11 @@ describe("captureScreenshot", () => {
     toCanvas.mockReset();
     toCanvas.mockResolvedValue({ width: 1600, height: 1200 });
     (globalThis as { document?: unknown }).document = { body: {}, createElement: () => makeOutCanvas() };
+    (globalThis as { window?: unknown }).window = { innerWidth: 1440, innerHeight: 900, scrollX: 20, scrollY: 300 };
   });
   afterEach(() => {
     (globalThis as { document?: unknown }).document = origDocument;
+    (globalThis as { window?: unknown }).window = origWindow;
   });
 
   // Root cause of issue #297: cacheBust:true forces html-to-image to re-fetch
@@ -50,6 +53,14 @@ describe("captureScreenshot", () => {
     expect(typeof opts.filter).toBe("function");
     expect(opts.filter!(host)).toBe(false); // host excluded
     expect(opts.filter!({ other: true })).toBe(true); // everything else kept
+  });
+
+  it("clips interactive captures to the visible viewport", async () => {
+    await captureScreenshot({ viewport: true, maxWidth: 1600 });
+    const opts = (toCanvas.mock.calls[0]![1] ?? {}) as { width?: number; height?: number; style?: Record<string, string> };
+    expect(opts.width).toBe(1440);
+    expect(opts.height).toBe(900);
+    expect(opts.style?.transform).toBe("translate(-20px, -300px)");
   });
 
   // A very tall full-page capture must stay bounded, else the webp can exceed the

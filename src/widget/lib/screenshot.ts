@@ -11,22 +11,26 @@ const MAX_WIDTH = 800; // token-thrift: the LLM reads a small image fine
 // under the cap instead of vanishing on a very long page.
 const MAX_HEIGHT = 4000;
 
-export async function captureScreenshot(opts: { root?: Element; skip?: Element } = {}): Promise<Blob | null> {
+export async function captureScreenshot(opts: { root?: Element; skip?: Element; maxWidth?: number; viewport?: boolean } = {}): Promise<Blob | null> {
   const root = (opts.root ?? document.body) as HTMLElement;
+  const maxW = opts.maxWidth ?? MAX_WIDTH;
   try {
-    // No cacheBust: it appends a unique query string to every image URL, forcing
-    // html-to-image to RE-FETCH every already-loaded image over the network to
-    // inline it. On image-heavy pages that adds 1-2s of highly variable latency
-    // (measured 1.3-2.7s on sctt.eu vs ~0.6s without) — enough to lose the
-    // caller's capture-timeout race and silently drop the screenshot (bug:
-    // sctt-website #297). Tradeoff: an image the host loaded cross-origin without
-    // a `crossorigin` attribute may inline as blank in the shot. A partial
-    // screenshot beats none, and the common same-origin case is a clean ~4x win.
+    const viewport = opts.viewport
+      ? {
+          width: window.innerWidth,
+          height: window.innerHeight,
+          style: {
+            transform: `translate(${-window.scrollX}px, ${-window.scrollY}px)`,
+            transformOrigin: "top left",
+          },
+        }
+      : {};
     const canvas = await toCanvas(root, {
       pixelRatio: 1,
       filter: opts.skip ? (node: HTMLElement) => node !== opts.skip : undefined,
+      ...viewport,
     });
-    const scale = Math.min(1, MAX_WIDTH / (canvas.width || MAX_WIDTH), MAX_HEIGHT / (canvas.height || MAX_HEIGHT));
+    const scale = Math.min(1, maxW / (canvas.width || maxW), MAX_HEIGHT / (canvas.height || MAX_HEIGHT));
     const out = document.createElement("canvas");
     out.width = Math.max(1, Math.round(canvas.width * scale));
     out.height = Math.max(1, Math.round(canvas.height * scale));

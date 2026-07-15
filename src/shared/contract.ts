@@ -138,6 +138,7 @@ export const FeedbackPayload = z.object({
   pageUrl: z.string().max(2048),
   followUpText: z.string().max(4000).optional(), // 2nd POST: freetext answer to the follow-up question
   extracted: z.record(z.string().max(4000)).optional(), // echoed back on 2nd POST — capped (no size-bypass)
+  summary: z.string().max(500).optional(), // LLM output echoed by the widget on POST-2
   attachmentKeys: z.array(z.string()).max(5).default([]),
   deviceInfo: DeviceInfo.optional(),
   consoleErrors: z.array(ConsoleEntry).max(10).default([]),
@@ -150,7 +151,7 @@ export type FeedbackResponse =
   | { v: 1; status: "created"; id: string; issueUrl?: string }
   // One conversational follow-up (ADR-012): a single natural-language question,
   // answered in freetext — not a multi-field form.
-  | { v: 1; status: "follow_up"; question: string; extracted: Record<string, string> }
+  | { v: 1; status: "follow_up"; question: string; extracted: Record<string, string>; summary?: string }
   | { v: 1; status: "accepted_incomplete"; id: string; issueUrl?: string }
   | { v: 1; status: "issue_failed"; id: string; reason: string }
   | { v: 1; status: "error"; error: string; degraded?: boolean };

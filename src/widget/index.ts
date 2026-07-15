@@ -62,10 +62,18 @@ async function boot() {
   document.body.appendChild(host);
   const shadow = host.attachShadow({ mode: "open" });
 
+  if (!document.querySelector("style[data-feedbackkit-font]")) {
+    const fontStyle = document.createElement("style");
+    fontStyle.setAttribute("data-feedbackkit-font", "");
+    fontStyle.textContent = `@font-face{font-family:"DM Sans";src:url("${base}/dm-sans.woff2") format("woff2");font-weight:100 1000;font-style:normal;font-display:swap}`;
+    document.head.appendChild(fontStyle);
+  }
+
   let state: WidgetState = { name: "closed" };
   let feedbackId = "";
   let base1: FeedbackPayload | null = null; // POST-1 payload, reused for POST-2
   let attachedKeys: string[] = []; // R2 keys of manually attached files (uploaded on pick)
+  let pendingAttachments: Promise<boolean>[] = [];
   let editedShot: Blob | null = null; // annotated/cropped capture (#54); replaces the submit-time capture
   let editedShotUrl = ""; // object URL backing the annotator's <img>, revoked on reset
   let bailed = false;
@@ -74,6 +82,7 @@ async function boot() {
 
   function resetAttempt() {
     attachedKeys = [];
+    pendingAttachments = [];
     feedbackId = "";
     base1 = null;
     bailed = false;
@@ -85,6 +94,12 @@ async function boot() {
   const ui = new WidgetUI(shadow, toUIConfig(cfg, script.dataset.label), {
     onOpen: () => {
       resetAttempt();
+      const device = collectDeviceInfo(window);
+      ui.setContext({
+        browser: device.viewport ? `${device.browser} · ${device.viewport.w}×${device.viewport.h}` : device.browser,
+        url: location.pathname,
+        consoleErrors: buffer.snapshot().length,
+      });
       dispatch({ t: "open", type: cfg.types[0]?.type ?? "" }, () => api.event("opened"));
     },
     onClose: () => {
@@ -97,7 +112,16 @@ async function boot() {
       dispatch({ t: "sendNow" }, () => api.event("sent_anyway"));
     },
     onComplete: (_type, answer) => void complete(answer),
-    onAttach: (file) => void attach(file),
+    onAttach: (file) => {
+      const bucket = pendingAttachments;
+      const upload = attach(file);
+      bucket.push(upload);
+      void upload.finally(() => {
+        const index = bucket.indexOf(upload);
+        if (index >= 0) bucket.splice(index, 1);
+      });
+      return upload;
+    },
     onRetry: () => {
       resetAttempt();
       dispatch({ t: "retry" });
@@ -130,7 +154,8 @@ async function boot() {
   async function editShot() {
     const myGen = gen;
     const t0 = Date.now();
-    const shot = await Promise.race([captureScreenshot({ skip: host }), new Promise<null>((r) => setTimeout(() => r(null), 6000))]);
+    ui.captureStarted();
+    const shot = await Promise.race([captureScreenshot({ skip: host, maxWidth: 1600, viewport: true }), new Promise<null>((r) => setTimeout(() => r(null), 6000))]);
     debug("edit capture", { ms: Date.now() - t0, ok: !!shot, bytes: shot?.size ?? 0 });
     if (myGen !== gen || state.name !== "form") return; // closed/superseded while capturing
     if (!shot) {
@@ -162,8 +187,10 @@ async function boot() {
 
     try {
       if (!feedbackId) feedbackId = uuid(); // reuse the id a pre-submit attach already created
-      // Screenshot (opt-out via the form checkbox; best-effort + time-boxed so a
-      // slow/hung capture never wedges the send). Manually attached files first.
+      // A user can click Send while an attachment upload is still in flight.
+      // Wait for those uploads so the visible chip cannot be silently omitted.
+      await Promise.allSettled([...pendingAttachments]);
+      if (myGen !== gen) return;
       const attachmentKeys: string[] = [...attachedKeys];
       if (screenshot) {
         // An annotated/cropped shot (#54) wins over a fresh capture — what the
@@ -176,7 +203,7 @@ async function boot() {
         // and widens the close-during-capture drop window.) A page that still
         // can't capture in 3s degrades to no screenshot — feedback itself is
         // never blocked.
-        const shot = editedShot ?? (await Promise.race([captureScreenshot({ skip: host }), new Promise<null>((r) => setTimeout(() => r(null), 3000))]));
+        const shot = editedShot ?? (await Promise.race([captureScreenshot({ skip: host, viewport: true }), new Promise<null>((r) => setTimeout(() => r(null), 3000))]));
         if (myGen !== gen) return; // superseded/closed while capturing
         if (shot) {
           const key = await api.uploadScreenshot(feedbackId, shot);
@@ -199,6 +226,7 @@ async function boot() {
       if (myGen !== gen) return;
       clearSlow();
       if (res.status === "follow_up") {
+        base1.summary = res.summary;
         api.event("need_fields");
         // User pre-chose "send now": skip the question, but keep POST-1's extraction.
         if (bailed) return complete("", res.extracted);
@@ -224,12 +252,13 @@ async function boot() {
   }
 
   // Manual file attach (picked in the form) → upload now, key rides along on submit.
-  async function attach(file: File) {
-    if (attachedKeys.length >= 4) return; // leave room for the auto-screenshot (cap 5)
+  async function attach(file: File): Promise<boolean> {
+    if (attachedKeys.length + pendingAttachments.length >= 4) return false; // leave room for the auto-screenshot (cap 5)
     if (!feedbackId) feedbackId = uuid();
     const bucket = attachedKeys; // capture: a close→reopen (resetAttempt) rebinds attachedKeys,
     const key = await api.uploadScreenshot(feedbackId, file); // so a stale upload lands in the OLD bucket, not the new session
     if (key) bucket.push(key);
+    return Boolean(key);
   }
 
   ui.render(state);

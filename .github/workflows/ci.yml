@@ -19,7 +19,14 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build:widget
+      - run: git diff --exit-code -- site/src/widget-ver.ts
       - run: pnpm check:bundle
+      - run: pnpm exec wrangler deploy --config site/wrangler.toml --dry-run
+      - run: pnpm materialize && pnpm exec wrangler deploy --dry-run
+        env:
+          CLOUDFLARE_ACCOUNT_ID: 00000000000000000000000000000000
+          FK_D1_ID: 00000000-0000-0000-0000-000000000000
+          FK_R2_BUCKET: feedbackkit-ci
 
   e2e:
     runs-on: ubuntu-latest

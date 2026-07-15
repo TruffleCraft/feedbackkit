@@ -7,10 +7,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-// Whole all-in-one bundle incl. html-to-image. Deliberate bump 15 → 17 kB for
-// #54: the screenshot annotator (crop + rect/arrow/text/pen + undo) costs
-// ~3.4 kB gz — the headline P2 UX is worth it. Do not creep past this silently.
-const BUDGET_GZ = 17 * 1024;
+// Whole all-in-one bundle incl. html-to-image. The 18 kB ceiling includes the
+// screenshot editor plus the attachment chips and context transparency UI.
+const BUDGET_GZ = 18 * 1024;
 
 let buf;
 try {

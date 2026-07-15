@@ -5,6 +5,7 @@ export interface Env {
   UPLOADS: R2Bucket;
   ASSETS: Fetcher;
   FK_ENV: string;
+  WIDGET_VERSION: string;
   // Secrets (set via `wrangler secret put`): ADMIN_TOKEN, GITHUB_PAT_<name>,
   // LLM_API_KEY, FEEDBACKKIT_CONFIG_JSON (optional). Indexed dynamically.
   [key: string]: unknown;

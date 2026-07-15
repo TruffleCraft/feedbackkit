@@ -20,6 +20,7 @@ function env(handler: (sql: string, params: unknown[]) => unknown, extra: Record
     UPLOADS: { get: async () => null } as unknown as R2Bucket,
     ASSETS: { fetch: async () => new Response("") } as unknown as Fetcher,
     FK_ENV: "test",
+    WIDGET_VERSION: "testver",
     ADMIN_TOKEN: "s3cret",
     ...extra,
   } as unknown as Env;
@@ -72,7 +73,7 @@ describe("POST /api/admin/config/import", () => {
     const body = (await res.json()) as { status: string; publicKey: string; snippet: string; testPage: string; configVersion: number };
     expect(body.status).toBe("imported");
     expect(body.publicKey).toMatch(/^fk_pub_[0-9a-f]{12}$/);
-    expect(body.snippet).toBe(`<script src="https://fk.example.com/widget.js" data-project="${body.publicKey}"></script>`);
+    expect(body.snippet).toBe(`<script src="https://fk.example.com/widget.js?v=testver" data-project="${body.publicKey}"></script>`);
     expect(body.testPage).toBe(`https://fk.example.com/t/${body.publicKey}`);
 
     // The stored blob never contains the publicKey (it lives in its own column).

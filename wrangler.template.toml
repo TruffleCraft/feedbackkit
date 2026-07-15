@@ -29,3 +29,4 @@ crons = ["0 3 * * *"]
 
 [vars]
 FK_ENV = "production"
+WIDGET_VERSION = "${WIDGET_VERSION}"

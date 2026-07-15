@@ -408,7 +408,7 @@ app.post("/api/admin/config/import", async (c) => {
     projectId: id,
     publicKey: key,
     configVersion: Number(row?.config_version ?? 1),
-    snippet: `<script src="${origin}/widget.js" data-project="${key}"></script>`,
+    snippet: `<script src="${origin}/widget.js?v=${c.env.WIDGET_VERSION ?? "unversioned"}" data-project="${key}"></script>`,
     testPage: `${origin}/t/${key}`,
   });
 });

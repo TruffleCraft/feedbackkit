@@ -15,6 +15,7 @@
 // 'self' for the self-hosted woff2 — no Google Fonts or other CDN.
 
 import { DM_SANS_WOFF2_B64 } from "./font.js";
+import { WIDGET_VER } from "./widget-ver.js";
 
 const GATEWAY = "https://feedbackkit.trufflecraft.workers.dev";
 const DEMO_PROJECT_KEY = "fk_pub_64a564982de5";
@@ -91,7 +92,8 @@ header{position:sticky;top:0;z-index:10;background:var(--nav-bg);backdrop-filter
 .snippet .p{color:var(--muted);user-select:none}
 .hint{font-size:13px;color:var(--muted);margin-top:14px}
 
-/* widget mockup (hero + step 1) */
+/* Static examples used below the fold. The hero deliberately does not fake the
+   live widget; having both visible created a misleading double-widget stack. */
 .widget-mock{width:min(440px,100%);margin:0 auto;background:var(--bg);border:1px solid var(--line);border-radius:16px;box-shadow:0 24px 56px -24px rgba(12,17,23,.4);padding:20px;display:flex;flex-direction:column;gap:14px}
 .widget-mock .head{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px}
 .widget-mock .head .close{margin-left:auto;color:var(--muted);font-size:16px}
@@ -105,6 +107,13 @@ header{position:sticky;top:0;z-index:10;background:var(--nav-bg);backdrop-filter
 .mockbox{border:1px solid var(--line-2);border-radius:10px;padding:12px 14px;font-size:14px;background:var(--soft);min-height:56px}
 .mocktags{display:flex;flex-wrap:wrap;gap:6px}
 .tagchip{font-family:var(--mono);font-size:10.5px;color:var(--ink-2);border:1px solid var(--line-2);border-radius:6px;padding:2px 8px}
+.hero-signal{width:min(440px,100%);margin:0 auto;padding:22px;border:1px solid var(--panel-line);border-radius:18px;background:var(--panel);color:#fff;box-shadow:0 30px 70px -32px rgba(12,17,23,.72)}
+.signal-head{display:flex;align-items:center;gap:10px;font-weight:700}.signal-head span{margin-left:auto;color:#8b5cf6;font:11px var(--mono)}
+.signal-line{height:1px;margin:18px 0;background:linear-gradient(90deg,#8b5cf6,rgba(139,92,246,.08))}
+.signal-flow{display:grid;gap:9px}.signal-step{display:grid;grid-template-columns:28px 1fr auto;align-items:center;gap:10px;padding:11px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.035)}
+.signal-step .n{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:rgba(139,92,246,.15);color:#a78bfa;font:600 11px var(--mono)}
+.signal-step b{font-size:13px}.signal-step em{color:#7dd3fc;font:normal 10px var(--mono)}
+.signal-foot{margin-top:16px;color:rgba(255,255,255,.5);font:11px/1.5 var(--mono)}
 
 /* stats */
 .stats{border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
@@ -313,7 +322,7 @@ function shell(opts: { title: string; description: string; body: string; widget?
 ${HEADER}
 ${opts.body}
 ${FOOTER}
-${opts.widget ? `<script src="${GATEWAY}/widget.js" data-project="${DEMO_PROJECT_KEY}"></script>` : ""}
+${opts.widget ? `<script src="${GATEWAY}/widget.js?v=${WIDGET_VER}" data-project="${DEMO_PROJECT_KEY}"></script>` : ""}
 </body></html>`;
 }
 
@@ -351,21 +360,22 @@ function homePage(): string {
     <p class="hint">Exactly 2 attributes — all config comes from the gateway. The snippet never goes stale.</p>
   </div>
 
-  <div class="widget-mock">
-    <div class="head">${logoMark(20)}Feedback<span class="close">✕</span></div>
-    <div class="tabs"><span class="wtab active">Bug</span><span class="wtab">Idea</span><span class="wtab">Improvement</span></div>
-    <div class="mockbox">everything is GONE again?!? i wrote a whole page and when i came back it just wasnt there. this happens all the time, im so annoyed</div>
-    <div class="mocktags">
-      <span class="tagchip">🖼 screenshot</span><span class="tagchip">console · PII redacted</span><span class="tagchip">Chrome 149 · 1440×900</span><span class="tagchip">/editor/draft-7</span>
+  <div class="hero-signal">
+    <div class="signal-head">${logoMark(22)} FeedbackKit <span>LIVE PIPELINE</span></div>
+    <div class="signal-line"></div>
+    <div class="signal-flow">
+      <div class="signal-step"><span class="n">01</span><b>Capture the user's context</b><em>viewport · console · URL</em></div>
+      <div class="signal-step"><span class="n">02</span><b>Ask only what is missing</b><em>structured LLM</em></div>
+      <div class="signal-step"><span class="n">03</span><b>Create an agent-ready issue</b><em>GitHub · private infra</em></div>
     </div>
-    <div class="foot"><span class="send">Send</span></div>
+    <div class="signal-foot">Your gateway and storage stay in your Cloudflare account. Configured LLM and tracker providers receive the workflow data they need.</div>
   </div>
 </div></div></section>
 
 <div class="stats"><div class="wrap"><div class="grid">
   <div class="stat"><div class="v">2</div><div class="l">attributes — the whole snippet</div></div>
-  <div class="stat"><div class="v">≤ 10 kB</div><div class="l">widget bundle budget, gzipped</div></div>
-  <div class="stat"><div class="v">1</div><div class="l">LLM call per feedback</div></div>
+  <div class="stat"><div class="v">&lt; 18 kB</div><div class="l">widget bundle budget, gzipped</div></div>
+  <div class="stat"><div class="v">≤ 2</div><div class="l">LLM calls per feedback</div></div>
   <div class="stat"><div class="v">0</div><div class="l">cookies &amp; trackers</div></div>
   <div class="stat"><div class="v">MIT</div><div class="l">license, self-hosted</div></div>
 </div></div></div>

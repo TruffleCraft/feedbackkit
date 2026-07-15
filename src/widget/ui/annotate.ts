@@ -42,6 +42,10 @@ export class AnnotatorUI {
     private h: AnnotatorHandlers,
   ) {
     this.root = document.createElement("div");
+    this.root.className = "fk-editor";
+    this.root.setAttribute("role", "dialog");
+    this.root.setAttribute("aria-modal", "true");
+    this.root.setAttribute("aria-labelledby", "fk-editor-title");
     this.root.hidden = true;
     this.build();
   }
@@ -51,6 +55,18 @@ export class AnnotatorUI {
   }
 
   private build() {
+    const title = document.createElement("h2");
+    title.id = "fk-editor-title";
+    title.textContent = this.tr("annotateTitle");
+    const hint = document.createElement("span");
+    hint.className = "fk-editor-hint";
+    hint.textContent = this.tr("annotateHint");
+    const close = btn("fk-x", "×", this.tr("close"));
+    close.addEventListener("click", () => this.h.onCancel());
+    const head = document.createElement("div");
+    head.className = "fk-editor-head";
+    head.append(title, hint, close);
+
     const bar = document.createElement("div");
     bar.className = "fk-toolbar";
     const tools: [Tool, string, Parameters<typeof t>[1]][] = [
@@ -67,21 +83,23 @@ export class AnnotatorUI {
       this.toolBtns.set(tool, b);
       bar.appendChild(b);
     }
-    this.undoBtn = btn("fk-tool fk-tool-act", "↶", this.tr("undo"));
+    const sep = document.createElement("span");
+    sep.className = "fk-tool-sep";
+    this.undoBtn = btn("fk-tool", "↶", this.tr("undo"));
     this.undoBtn.title = this.tr("undo");
     this.undoBtn.addEventListener("click", () => {
       if (this.annotations.length) this.annotations.pop();
       else this.crop = null; // nothing drawn → undo releases the crop
       this.redraw();
     });
-    this.clearBtn = btn("fk-tool fk-tool-act", "🗑", this.tr("clear"));
+    this.clearBtn = btn("fk-tool", "⌫", this.tr("clear"));
     this.clearBtn.title = this.tr("clear");
     this.clearBtn.addEventListener("click", () => {
       this.annotations = [];
       this.crop = null;
       this.redraw();
     });
-    bar.append(this.undoBtn, this.clearBtn);
+    bar.append(sep, this.undoBtn, this.clearBtn);
 
     this.canvas = document.createElement("canvas");
     this.canvas.className = "fk-canvas";
@@ -97,15 +115,11 @@ export class AnnotatorUI {
     cancel.addEventListener("click", () => this.h.onCancel());
     const use = btn("fk-btn", this.tr("useShot"), this.tr("useShot"));
     use.addEventListener("click", () => void this.flatten());
-    const actions = document.createElement("div");
-    actions.className = "fk-actions";
-    actions.append(use, cancel);
+    const foot = document.createElement("div");
+    foot.className = "fk-editor-foot";
+    foot.append(cancel, use);
 
-    const hint = document.createElement("p");
-    hint.className = "fk-hint";
-    hint.textContent = this.tr("annotateHint");
-
-    this.root.append(bar, this.wrap, hint, actions);
+    this.root.append(head, bar, this.wrap, foot);
 
     this.canvas.addEventListener("pointerdown", (e) => this.pointerDown(e));
     this.canvas.addEventListener("pointermove", (e) => this.pointerMove(e));
@@ -117,6 +131,10 @@ export class AnnotatorUI {
       if (e.key === "Escape") this.hideTextInput();
     });
     this.textInput.addEventListener("blur", () => this.commitText());
+  }
+
+  focusInitial() {
+    this.toolBtns.get(this.tool)?.focus();
   }
 
   /** (Re)target the editor at a freshly captured image and reset all state. */
@@ -133,8 +151,9 @@ export class AnnotatorUI {
   /** Size the canvas: CSS-fit into the panel, backing store at devicePixelRatio. */
   private fit() {
     if (!this.img) return;
-    const maxW = Math.min(this.wrap.clientWidth || 640, this.img.naturalWidth);
-    this.scale = maxW / this.img.naturalWidth;
+    const availW = this.wrap.clientWidth || 640;
+    const availH = this.wrap.clientHeight || 480;
+    this.scale = Math.min(1, availW / this.img.naturalWidth, availH / this.img.naturalHeight);
     const cssW = Math.round(this.img.naturalWidth * this.scale);
     const cssH = Math.round(this.img.naturalHeight * this.scale);
     const dpr = Math.min(window.devicePixelRatio || 1, 3);
@@ -214,8 +233,8 @@ export class AnnotatorUI {
   private showTextInput(x: number, y: number) {
     this.textInput.hidden = false;
     this.textInput.value = "";
-    this.textInput.style.left = `${x * this.scale}px`;
-    this.textInput.style.top = `${y * this.scale}px`;
+    this.textInput.style.left = `${this.canvas.offsetLeft + x * this.scale}px`;
+    this.textInput.style.top = `${this.canvas.offsetTop + y * this.scale}px`;
     this.textInput.style.font = `600 ${Math.max(12, fontSize(this.img?.naturalWidth ?? 800) * this.scale)}px inherit`;
     this.textInput.dataset["x"] = String(x);
     this.textInput.dataset["y"] = String(y);

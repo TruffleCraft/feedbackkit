@@ -28,8 +28,7 @@ const SYSTEM_PROMPT = [
   "You are given the user's text and, when available, a SCREENSHOT of the page they were on plus session context (page URL, device, recent console messages).",
   "Use ALL of these as evidence: read the screenshot for the visible UI state, any error message shown, and what the user is pointing at; treat the console messages and URL as corroborating technical detail.",
   "Rules: extract ONLY what is supported by the user's text, the screenshot, or the session context — never invent facts that none of them show.",
-  "Keep values in the user's original language — never translate. Technical detail read verbatim from the screenshot or console (an error string, a URL) may be included as-is.",
-  "Prefer verbatim spans; a short same-language paraphrase is allowed.",
+  "Write summary and free-text issue fields in the requested issue language. Preserve technical strings such as errors, URLs and identifiers verbatim. Select fields must use their configured value exactly and must never be translated.",
   "Return JSON only, matching the requested schema. Leave a field as an empty string if none of the inputs provide it.",
   "followUpQuestion: if any REQUIRED field is still empty AFTER using every input, write ONE short, friendly question (in the user's language) for the single most important missing thing — combine multiple missing items into one natural question, and do NOT ask for anything the screenshot or context already answered. If nothing required is missing, use an empty string.",
 ].join(" ");
@@ -120,11 +119,14 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
   const allTypes = config.templates.map((t) => t.type);
 
   const fieldLines = template.fields
-    .map((f) => `- ${f.key} (${labelText(f.label, config.locale)})${f.extractionHint ? `: ${f.extractionHint}` : ""}`)
+    .map((f) => {
+      const allowed = f.kind === "select" && f.options?.length ? ` Allowed exact values: ${f.options.map((option) => option.value).join(", ")}.` : "";
+      return `- ${f.key} (${labelText(f.label, config.locale)})${f.extractionHint ? `: ${f.extractionHint}` : ""}${allowed}`;
+    })
     .join("\n");
   // Naming the exact key set helps models that run WITHOUT json_schema (below).
   const keyList = ["type", "summary", "followUpQuestion", ...template.fields.map((f) => f.key)].join(", ");
-  const userText = `Feedback type: ${template.type}\nFields to extract:\n${fieldLines}\n\nReturn a JSON object with exactly these keys: ${keyList}.${renderContext(opts)}\n\nUser feedback:\n${message}`;
+  const userText = `Feedback type: ${template.type}\nIssue language: ${config.locale}\nTranslate summary and extracted issue fields into that language when needed. Keep followUpQuestion in the user's language.${"\n"}Fields to extract:\n${fieldLines}\n\nReturn a JSON object with exactly these keys: ${keyList}.${renderContext(opts)}\n\nUser feedback:\n${message}`;
 
   const content: unknown = screenshotDataUrl
     ? [
@@ -199,7 +201,10 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
   const extracted: Record<string, string> = {};
   for (const f of template.fields) {
     const v = obj[f.key];
-    if (typeof v === "string" && v.trim()) extracted[f.key] = v.trim();
+    if (typeof v !== "string" || !v.trim()) continue;
+    const value = v.trim();
+    if (f.kind === "select" && f.options?.length && !f.options.some((option) => option.value === value)) continue;
+    extracted[f.key] = value;
   }
   const missing = template.fields.filter((f) => f.required && f.askIfMissing && !extracted[f.key]).map((f) => f.key);
   const typeVal = typeof obj["type"] === "string" && allTypes.includes(obj["type"] as string) ? (obj["type"] as string) : undefined;

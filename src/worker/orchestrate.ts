@@ -145,19 +145,25 @@ export async function orchestrateFeedback(
     // LLM unavailable (off/no-key/over-budget) → treat all required as missing → ask one generic question.
     const missing = result && !result.degraded ? result.missing : requiredAskable(template).map((f) => f.key);
     const create = (o: Partial<CreateOpts>) =>
-      finalizeCreate(env, loaded, payload, template, { fields: extracted, degraded: false, incomplete: false, d1Degraded, now, newId, fetchImpl: deps.fetchImpl, ...o });
+      finalizeCreate(env, loaded, payload, template, { fields: extracted, summary: result?.summary, degraded: false, incomplete: false, d1Degraded, now, newId, fetchImpl: deps.fetchImpl, ...o });
 
     if (result?.degraded) {
+      console.warn("feedbackkit llm degraded", {
+        projectId: config.projectId,
+        provider: config.llm.provider,
+        model: config.llm.model,
+        reason: result.degradeReason,
+      });
       // LLM ran but failed. onLlmError → create unenriched; else ask (generic question).
       if (config.createAnyway.onLlmError) return create({ fields: {}, degraded: true, incomplete: true });
-      return { http: 200, body: { v: WIRE_VERSION, status: "follow_up", question: fallbackQuestion(config, template, missing), extracted: {} } };
+      return { http: 200, body: { v: WIRE_VERSION, status: "follow_up", question: fallbackQuestion(config, template, missing), extracted: {}, summary: result.summary } };
     }
     if (missing.length === 0) return create({}); // nothing required missing (extracted all, or no required fields) → create
     // Too many to reasonably ask → create-anyway (if allowed) instead of a wall of questions.
     if (result && missing.length > FIELD_CEILING && config.createAnyway.onIncomplete) return create({ incomplete: true });
     // Ask ONE follow-up: the model-composed question, or a label-based fallback.
     const question = (result?.followUpQuestion && result.followUpQuestion.trim()) || fallbackQuestion(config, template, missing);
-    return { http: 200, body: { v: WIRE_VERSION, status: "follow_up", question, extracted } };
+    return { http: 200, body: { v: WIRE_VERSION, status: "follow_up", question, extracted, summary: result?.summary } };
   }
 
   // ── POST-2: ONE re-extraction of the freetext answer, then create (single-shot) ──
@@ -170,18 +176,24 @@ export async function orchestrateFeedback(
   let fields: Record<string, string> = { ...(payload.extracted ?? {}) };
   if (reExtract && !reExtract.degraded) fields = { ...fields, ...reExtract.extracted };
   const cleaned: Record<string, string> = {};
-  for (const [k, v] of Object.entries(fields)) if (typeof v === "string" && v.trim()) cleaned[k] = v.trim();
+  for (const field of template.fields) {
+    const value = fields[field.key]?.trim();
+    if (!value) continue;
+    if (field.kind === "select" && field.options?.length && !field.options.some((option) => option.value === value)) continue;
+    cleaned[field.key] = value;
+  }
   const stillMissing = requiredAskable(template)
     .filter((f) => !cleaned[f.key])
     .map((f) => f.key);
   // Always create now — never a second question (ADR-012). The answer is folded
   // into the issue via `combined` so it's never lost even if re-extraction fails.
-  return finalizeCreate(env, loaded, payload, template, { fields: cleaned, message: combined, degraded: false, incomplete: stillMissing.length > 0, d1Degraded, now, newId, fetchImpl: deps.fetchImpl });
+  return finalizeCreate(env, loaded, payload, template, { fields: cleaned, message: combined, summary: reExtract?.summary ?? payload.summary, degraded: false, incomplete: stillMissing.length > 0, d1Degraded, now, newId, fetchImpl: deps.fetchImpl });
 }
 
 interface CreateOpts {
   fields: Record<string, string>;
   message?: string; // effective message for rendering (POST-2 folds in the follow-up answer)
+  summary?: string;
   degraded: boolean; // LLM unenriched
   incomplete: boolean; // required fields still missing
   d1Degraded: boolean;
@@ -202,6 +214,7 @@ async function finalizeCreate(
 
   const ctx: RenderContext = {
     message: opts.message ?? payload.message ?? "",
+    summary: opts.summary,
     fields: opts.fields,
     pageUrl: payload.pageUrl,
     deviceInfo: payload.deviceInfo,
@@ -244,6 +257,11 @@ async function finalizeCreate(
   } catch (e) {
     // Tracker failure NEVER loses feedback: persist the payload for admin retry.
     const reason = e instanceof TrackerError ? `tracker error ${e.status}` : "tracker request failed";
+    console.error("feedbackkit tracker create failed", {
+      projectId: config.projectId,
+      repo,
+      reason,
+    });
     await persistFeedback(env, { id, projectId: config.projectId, outcome: "issue_failed", payload, issueUrl: null, now: opts.now });
     return { http: 200, body: { v: WIRE_VERSION, status: "issue_failed", id, reason } };
   }

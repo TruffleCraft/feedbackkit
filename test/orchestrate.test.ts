@@ -95,13 +95,13 @@ describe("orchestrateFeedback — POST-1", () => {
     const gh = ghCapture();
     const r = await orchestrateFeedback(env(db.db), loaded(), payload(), {
       apiKey: "k",
-      chat: chatReturning({ type: "bug", summary: "Speichern kaputt", repro: "klick", expected: "gespeichert", actual: "hängt" }),
+      chat: chatReturning({ type: "bug", summary: "Saving fails", repro: "klick", expected: "gespeichert", actual: "hängt" }),
       fetchImpl: gh.fetchImpl,
       now: 1000,
       newId: () => "fid1",
     });
     expect(r.body).toMatchObject({ status: "created", issueUrl: "https://github.com/acme/site/issues/1" });
-    expect(gh.calls[0]!.body.title).toBe("[BUG] Speichern kaputt");
+    expect(gh.calls[0]!.body.title).toBe("[BUG] Saving fails");
     expect(db.feedback[0]).toMatchObject({ outcome: "created" });
     expect(db.dedup.has(UUID)).toBe(true); // terminal success is idempotency-stored
   });
@@ -135,6 +135,7 @@ describe("orchestrateFeedback — POST-1", () => {
     });
     expect(r.body.status).toBe("follow_up");
     expect((r.body as { question: string }).question).toBe("Was hast du erwartet und was ist passiert?");
+    expect((r.body as { summary?: string }).summary).toBe("s");
     expect(gh.calls).toHaveLength(0);
     expect(db.dedup.size).toBe(0); // follow_up is NOT terminal
   });
@@ -220,24 +221,46 @@ describe("orchestrateFeedback — POST-2 (freetext answer → one re-extraction)
   it("empty answer (send-now/anyway bail) → NO re-extraction, uses echoed extraction", async () => {
     const db = fakeDb();
     const gh = ghCapture();
-    const r = await orchestrateFeedback(env(db.db), loaded(), payload({ followUpText: "", extracted: { repro: "klick", expected: "e", actual: "a" } }), {
+    const r = await orchestrateFeedback(env(db.db), loaded(), payload({ followUpText: "", extracted: { repro: "klick", expected: "e", actual: "a" }, summary: "POST-1 summary" }), {
       apiKey: "k",
       chat: chatMustNotRun, // empty answer must not trigger a redundant LLM call
       fetchImpl: gh.fetchImpl,
     });
     expect(r.body.status).toBe("created");
+    expect(gh.calls[0]!.body.title).toBe("[BUG] POST-1 summary");
     expect(gh.calls[0]!.body.body).toContain("klick"); // POST-1's extraction preserved
   });
 
   it("preserves the answer in the issue even if re-extraction is unavailable (no key)", async () => {
     const db = fakeDb();
     const gh = ghCapture();
-    const r = await orchestrateFeedback(env(db.db), loaded(), payload({ message: "Bilder langsam", followUpText: "auf der Projekte-Seite", extracted: {} }), {
+    const r = await orchestrateFeedback(env(db.db), loaded(), payload({ message: "Bilder langsam", followUpText: "auf der Projekte-Seite", extracted: {}, summary: "Images load slowly" }), {
       chat: chatMustNotRun, // no apiKey → no re-extraction
       fetchImpl: gh.fetchImpl,
     });
     expect(["created", "accepted_incomplete"]).toContain(r.body.status);
+    expect(gh.calls[0]!.body.title).toBe("[BUG] Images load slowly");
     expect(gh.calls[0]!.body.body).toContain("auf der Projekte-Seite"); // folded into the issue
+  });
+
+  it("rejects non-canonical select values echoed by POST-2", async () => {
+    const config = baseConfig({
+      templates: [{
+        type: "bug",
+        label: "Bug",
+        fields: [{ key: "severity", label: "Schweregrad", kind: "select", required: true, options: [{ value: "high", label: "Hoch" }] }],
+        tracker: { labels: ["type/bug"] },
+      }],
+    });
+    const db = fakeDb();
+    const gh = ghCapture();
+    const result = await orchestrateFeedback(env(db.db), loaded(config), payload({ followUpText: "", extracted: { severity: "hoch" } }), {
+      chat: chatMustNotRun,
+      fetchImpl: gh.fetchImpl,
+    });
+    expect(result.body.status).toBe("accepted_incomplete");
+    expect(gh.calls[0]!.body.body).not.toContain("hoch");
+    expect(gh.calls[0]!.body.labels).toContain("needs-triage");
   });
 });
 

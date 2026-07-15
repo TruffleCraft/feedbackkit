@@ -31,12 +31,18 @@ export interface UIHandlers {
   onSubmit(type: string, text: string, screenshot: boolean): void;
   onSendNow(): void;
   onComplete(type: string, answer: string): void;
-  onAttach(file: File): void;
+  onAttach(file: File): Promise<boolean>;
   onRetry(): void;
   /** "Mark up screenshot" clicked → index captures the page, then calls openAnnotator(). */
   onEditScreenshot(): void;
   /** Annotator finished → index uses this blob at submit instead of a fresh capture. */
   onAnnotated(blob: Blob): void;
+}
+
+export interface UIContext {
+  browser?: string;
+  url?: string;
+  consoleErrors?: number;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> = {}, kids: Node[] = []): HTMLElementTagNameMap[K] {
@@ -55,9 +61,7 @@ export class WidgetUI {
   private typeButtons: HTMLButtonElement[] = [];
   private guidanceEl!: HTMLParagraphElement;
   private textarea!: HTMLTextAreaElement;
-  private shotCheck!: HTMLInputElement;
   private attachInput!: HTMLInputElement;
-  private attachName!: HTMLSpanElement;
   private questionEl!: HTMLParagraphElement;
   private answerBox!: HTMLTextAreaElement;
   private sendNowBtn!: HTMLButtonElement;
@@ -65,9 +69,16 @@ export class WidgetUI {
   private doneMsg!: HTMLParagraphElement;
   private panel!: HTMLDivElement;
   private annotator!: AnnotatorUI;
-  private shotThumb!: HTMLImageElement;
-  private shotReady!: HTMLSpanElement;
+  private shotChip!: HTMLSpanElement;
+  private shotLabelEl!: HTMLSpanElement;
+  private shotMarkupBtn!: HTMLButtonElement;
+  private ctxBrowserChip!: HTMLSpanElement;
+  private ctxUrlChip!: HTMLSpanElement;
+  private ctxConsoleChip!: HTMLSpanElement;
+  private fileChip!: HTMLSpanElement;
   private mediaHint!: HTMLParagraphElement;
+  private shotEnabled = true;
+  private annotatorReturnFocus: HTMLElement | null = null;
   private scrollLock = "";
   private locked = false;
   private hasOpened = false;
@@ -90,7 +101,7 @@ export class WidgetUI {
 
     // Expanding pill trigger: icon disc + label revealed on hover/focus.
     const triggerLabel = this.config.triggerLabel || this.tr("trigger");
-    const icon = el("span", { className: "fk-trigger-icon", textContent: "✎" });
+    const icon = el("span", { className: "fk-trigger-icon", textContent: "✦" });
     const label = el("span", { className: "fk-trigger-label", textContent: triggerLabel });
     this.trigger = el("button", { className: "fk-trigger", type: "button", ariaLabel: triggerLabel }, [icon, label]);
     this.trigger.setAttribute("aria-haspopup", "dialog");
@@ -106,7 +117,7 @@ export class WidgetUI {
     closeBtn.addEventListener("click", () => this.h.onClose());
     const head = el("div", { className: "fk-head" }, [this.title, closeBtn]);
 
-    this.panel = el("div", { className: "fk-panel", role: "dialog" }, [head, this.buildForm(), this.buildAnnotate(), this.buildExtracting(), this.buildAsking(), this.buildDone(), this.buildFailed()]);
+    this.panel = el("div", { className: "fk-panel", role: "dialog" }, [head, this.buildForm(), this.buildExtracting(), this.buildAsking(), this.buildDone(), this.buildFailed()]);
     this.panel.setAttribute("aria-modal", "true");
     this.panel.setAttribute("aria-labelledby", "fk-title");
     this.panel.addEventListener("click", (e) => e.stopPropagation());
@@ -117,11 +128,12 @@ export class WidgetUI {
       if ((e as KeyboardEvent).key === "Escape") this.h.onClose();
     });
 
-    this.shadow.append(this.trigger, this.backdrop, this.live);
+    this.buildAnnotate();
+    this.shadow.append(this.trigger, this.backdrop, this.annotator.root, this.live);
   }
 
   private buildForm(): HTMLElement {
-    const types = el("div", { className: "fk-types" });
+    const types = el("div", { className: "fk-tabs" });
     this.config.types.forEach((ty, i) => {
       const b = el("button", { className: "fk-type", type: "button", textContent: ty.label });
       b.setAttribute("aria-pressed", String(i === 0));
@@ -138,34 +150,86 @@ export class WidgetUI {
     const label = el("label", { className: "fk-label", htmlFor: "fk-text", textContent: this.tr("textLabel") });
     this.textarea = el("textarea", { className: "fk-input", id: "fk-text", placeholder: this.tr("textPlaceholder") });
 
-    // Media row: visible, opt-out screenshot + a simple image attach.
-    this.shotCheck = el("input", { className: "fk-check-input", type: "checkbox", id: "fk-shot", checked: true });
-    const shotLabel = el("label", { className: "fk-check", htmlFor: "fk-shot" }, [this.shotCheck, el("span", { textContent: this.tr("attachScreenshot") })]);
-    this.attachInput = el("input", { type: "file", accept: "image/*", hidden: true, id: "fk-file" });
-    this.attachName = el("span", { className: "fk-attach-name" });
-    const attachBtn = el("label", { className: "fk-attach", htmlFor: "fk-file" }, [el("span", { textContent: `📎 ${this.tr("attachFile")}` }), this.attachName, this.attachInput]);
+    this.shotChip = this.buildShotChip();
+    this.ctxConsoleChip = el("span", { className: "fk-chip readonly", hidden: true });
+    this.ctxBrowserChip = el("span", { className: "fk-chip readonly", hidden: true });
+    this.ctxUrlChip = el("span", { className: "fk-chip readonly", hidden: true });
+    this.fileChip = el("span", { className: "fk-chip readonly", hidden: true });
+    const chips = el("div", { className: "fk-chips" }, [this.shotChip, this.ctxConsoleChip, this.ctxBrowserChip, this.ctxUrlChip, this.fileChip]);
+
+    this.attachInput = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp,image/gif", hidden: true, id: "fk-file" });
     this.attachInput.addEventListener("change", () => {
       const f = this.attachInput.files?.[0];
-      if (f) {
-        this.attachName.textContent = f.name;
-        this.h.onAttach(f);
+      if (f) this.acceptFile(f);
+    });
+    const drop = el("div", { className: "fk-drop" }, [
+      el("div", { className: "fk-drop-t" }, [el("b", { textContent: this.tr("dropTitleAccent") }), el("span", { textContent: this.tr("dropTitle") })]),
+      el("div", { className: "fk-drop-s", textContent: this.tr("dropSub") }),
+      this.attachInput,
+    ]);
+    drop.setAttribute("role", "button");
+    drop.setAttribute("tabindex", "0");
+    drop.addEventListener("click", () => this.attachInput.click());
+    drop.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        this.attachInput.click();
       }
     });
-    // Screenshot editing (#54): capture → preview → crop/annotate in the panel.
-    const editBtn = el("button", { className: "fk-attach", type: "button" }, [el("span", { textContent: `✏️ ${this.tr("editShot")}` })]);
-    editBtn.addEventListener("click", () => this.h.onEditScreenshot());
-    this.shotThumb = el("img", { className: "fk-shot-thumb", hidden: true, alt: this.tr("shotReady") });
-    this.shotReady = el("span", { className: "fk-shot-ready", hidden: true, textContent: this.tr("shotReady") });
-    const editRow = el("div", { className: "fk-shot-row" }, [editBtn, this.shotThumb, this.shotReady]);
+    for (const event of ["dragenter", "dragover"]) drop.addEventListener(event, (e) => { e.preventDefault(); drop.classList.add("fk-dragover"); });
+    for (const event of ["dragleave", "dragend"]) drop.addEventListener(event, () => drop.classList.remove("fk-dragover"));
+    drop.addEventListener("drop", (e) => {
+      e.preventDefault();
+      drop.classList.remove("fk-dragover");
+      const file = (e as DragEvent).dataTransfer?.files?.[0];
+      if (file) this.acceptFile(file);
+    });
     this.mediaHint = el("p", { className: "fk-hint", hidden: true });
-    const media = el("div", { className: "fk-media" }, [shotLabel, editRow, attachBtn, this.mediaHint]);
+    const media = el("div", { className: "fk-attach" }, [chips, drop, this.mediaHint]);
 
     const send = el("button", { className: "fk-btn", type: "button", textContent: this.tr("send") });
-    send.addEventListener("click", () => this.h.onSubmit(this.activeType, this.textarea.value.trim(), this.shotCheck.checked));
-    const view = el("div", {}, [types, this.guidanceEl, label, this.textarea, media, el("div", { className: "fk-actions" }, [send])]);
+    send.addEventListener("click", () => this.h.onSubmit(this.activeType, this.textarea.value.trim(), this.shotEnabled));
+    const foot = el("div", { className: "fk-foot" }, [el("span", { className: "fk-privacy", textContent: this.tr("privacy") }), send]);
+    const view = el("div", { className: "fk-form" }, [types, this.guidanceEl, label, this.textarea, media, foot]);
     this.views["form"] = view;
     this.applyGuidance();
     return view;
+  }
+
+  private buildShotChip(): HTMLSpanElement {
+    this.shotLabelEl = el("span", { className: "txt", textContent: this.tr("screenshotChip") });
+    this.shotMarkupBtn = el("button", { className: "act", type: "button", textContent: this.tr("editShot"), title: this.tr("editShot") });
+    this.shotMarkupBtn.setAttribute("aria-label", this.tr("editShot"));
+    this.shotMarkupBtn.addEventListener("click", () => this.h.onEditScreenshot());
+    const toggle = el("button", { className: "act icon", type: "button", textContent: "×", title: this.tr("removeShot") });
+    toggle.setAttribute("aria-label", this.tr("removeShot"));
+    toggle.addEventListener("click", () => this.toggleShot(toggle));
+    return el("span", { className: "fk-chip shot" }, [this.shotLabelEl, this.shotMarkupBtn, toggle]);
+  }
+
+  private toggleShot(toggle: HTMLButtonElement) {
+    this.shotEnabled = !this.shotEnabled;
+    this.shotChip.classList.toggle("off", !this.shotEnabled);
+    this.shotMarkupBtn.disabled = !this.shotEnabled;
+    toggle.textContent = this.shotEnabled ? "×" : "+";
+    toggle.setAttribute("aria-label", this.shotEnabled ? this.tr("removeShot") : this.tr("restoreShot"));
+  }
+
+  private acceptFile(file: File) {
+    this.fileChip.textContent = `📎 ${file.name}`;
+    this.fileChip.hidden = false;
+    void this.h.onAttach(file).then((uploaded) => {
+      if (!uploaded) this.fileChip.textContent = `⚠ ${file.name} · upload failed`;
+    });
+  }
+
+  setContext(ctx: UIContext) {
+    if (ctx.browser) { this.ctxBrowserChip.textContent = ctx.browser; this.ctxBrowserChip.hidden = false; }
+    if (ctx.url) { this.ctxUrlChip.textContent = `Page ${ctx.url}`; this.ctxUrlChip.hidden = false; }
+    if (ctx.consoleErrors && ctx.consoleErrors > 0) {
+      this.ctxConsoleChip.textContent = `console · ${ctx.consoleErrors}`;
+      this.ctxConsoleChip.hidden = false;
+    }
   }
 
   /** Patch the guidance line to the active type's hint (hidden when empty). */
@@ -175,51 +239,82 @@ export class WidgetUI {
     this.guidanceEl.hidden = !g;
   }
 
-  // Annotator view (#54): persistent element like every other view; the editor
-  // stays UI-local (submission state remains "form" while it is open).
-  private buildAnnotate(): HTMLElement {
+  private buildAnnotate() {
     this.annotator = new AnnotatorUI(this.config.locale, {
-      onDone: (blob, thumbUrl) => {
-        this.shotThumb.src = thumbUrl;
-        this.shotThumb.hidden = false;
-        this.shotReady.hidden = false;
-        this.shotCheck.checked = true; // an edited shot implies "send it"
+      onDone: (blob) => {
+        this.shotEnabled = true;
+        this.shotChip.classList.remove("off");
+        this.shotMarkupBtn.disabled = false;
+        this.shotLabelEl.textContent = `${this.tr("screenshotChip")} ${this.tr("shotReady")}`;
         this.closeAnnotator();
         this.h.onAnnotated(blob);
       },
       onCancel: () => this.closeAnnotator(),
     });
-    this.views["annotate"] = this.annotator.root;
-    return this.annotator.root;
+    this.annotator.root.hidden = true;
+    this.annotator.root.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") this.closeAnnotator();
+      if (e.key === "Tab") {
+        const focusable = Array.from(this.annotator.root.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = this.shadow.activeElement;
+        if (e.shiftKey && active === first) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && active === last) { e.preventDefault(); first?.focus(); }
+      }
+    });
   }
 
   /** Called by index once the page capture is ready. */
   openAnnotator(img: HTMLImageElement) {
     this.mediaHint.hidden = true;
-    this.panel.classList.add("fk-wide");
-    this.show("annotate");
-    this.annotator.load(img); // after show(): fit() needs a laid-out wrap width
+    this.shotMarkupBtn.disabled = false;
+    this.shotMarkupBtn.textContent = this.tr("editShot");
+    this.panel.setAttribute("inert", "");
+    this.backdrop.setAttribute("aria-hidden", "true");
+    this.annotator.root.hidden = false;
+    this.annotator.load(img);
+    this.annotator.focusInitial();
     this.live.textContent = this.tr("annotateHint");
   }
 
   private closeAnnotator() {
-    this.panel.classList.remove("fk-wide");
-    this.show("form");
+    this.annotator.root.hidden = true;
+    this.panel.removeAttribute("inert");
+    this.backdrop.removeAttribute("aria-hidden");
+    this.annotatorReturnFocus?.focus();
+    this.annotatorReturnFocus = null;
+  }
+
+  captureStarted() {
+    this.annotatorReturnFocus = this.shadow.activeElement as HTMLElement | null;
+    this.mediaHint.textContent = this.tr("captureStarted");
+    this.mediaHint.hidden = false;
+    this.shotMarkupBtn.disabled = true;
+    this.shotMarkupBtn.textContent = this.tr("capturing");
   }
 
   /** Capture failed — tell the user, feedback itself is never blocked. */
   captureFailed() {
     this.mediaHint.textContent = this.tr("captureFailed");
     this.mediaHint.hidden = false;
+    this.shotMarkupBtn.disabled = false;
+    this.shotMarkupBtn.textContent = this.tr("editShot");
   }
 
   /** New attempt → drop the edited-shot affordances. */
   private resetShotUI() {
-    this.shotThumb.hidden = true;
-    this.shotThumb.removeAttribute("src");
-    this.shotReady.hidden = true;
+    this.shotEnabled = true;
+    this.shotChip.classList.remove("off");
+    this.shotLabelEl.textContent = this.tr("screenshotChip");
+    this.shotMarkupBtn.disabled = false;
+    this.shotMarkupBtn.textContent = this.tr("editShot");
+    this.fileChip.hidden = true;
+    this.fileChip.textContent = "";
     this.mediaHint.hidden = true;
-    this.panel.classList.remove("fk-wide");
+    this.annotator.root.hidden = true;
+    this.panel.removeAttribute("inert");
+    this.backdrop.removeAttribute("aria-hidden");
   }
 
   private buildExtracting(): HTMLElement {
