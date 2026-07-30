@@ -1,0 +1,60 @@
+{
+  "publicKey": "fk_pub_dcb6b8179e0e",
+  "projectId": "kebabmaster",
+  "locale": "de",
+  "enabled": true,
+  "askType": true,
+  "templates": [
+    {
+      "type": "bug",
+      "label": "Fehler",
+      "fields": [
+        { "key": "repro", "label": "Was hast du gemacht?", "kind": "longtext", "required": true, "extractionHint": "Die Schritte, die zum Problem geführt haben." },
+        { "key": "expected", "label": "Was hast du erwartet?", "kind": "longtext", "required": true },
+        { "key": "actual", "label": "Was ist stattdessen passiert?", "kind": "longtext", "required": true }
+      ],
+      "body": [
+        { "heading": "Schritte zum Reproduzieren", "template": "{{repro}}" },
+        { "heading": "Erwartet vs. tatsächlich", "template": "**Erwartet:** {{expected}}\n**Tatsächlich:** {{actual}}" }
+      ],
+      "tracker": { "labels": ["type/bug", "source/feedbackkit"] }
+    },
+    {
+      "type": "feature",
+      "label": "Idee",
+      "fields": [{ "key": "problem", "label": "Welches Problem würde das lösen?", "kind": "longtext", "required": true }],
+      "body": [{ "heading": "Problem", "template": "{{problem}}" }],
+      "tracker": { "labels": ["type/idea", "source/feedbackkit"] }
+    },
+    {
+      "type": "improvement",
+      "label": "Verbesserung",
+      "fields": [{ "key": "what", "label": "Was könnte besser sein?", "kind": "longtext", "required": true }],
+      "body": [{ "heading": "Verbesserung", "template": "{{what}}" }],
+      "tracker": { "labels": ["type/improvement", "source/feedbackkit"] }
+    }
+  ],
+  "llm": {
+    "provider": "openrouter",
+    "model": "google/gemma-4-26b-a4b-it",
+    "dailyBudget": 100,
+    "structuredOutput": true
+  },
+  "tracker": {
+    "kind": "github",
+    "defaultRepo": "madsbergstroem/KebabMaster",
+    "patSecret": "GITHUB_PAT_default"
+  },
+  "storage": {
+    "kind": "r2",
+    "publicBaseUrl": "https://pub-478b50ba6d88448ab21c1c105c27d295.r2.dev",
+    "retentionDays": 30
+  },
+  "auth": {
+    "origins": [
+      "http://localhost:3000",
+      "https://kebabmaster.pages.dev"
+    ]
+  },
+  "rateLimit": { "perHour": 75 }
+}
