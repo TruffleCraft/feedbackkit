@@ -3,6 +3,7 @@ import { classifyAndExtract, type ChatFn, type ExtractionResult } from "./llm/cl
 import { createIssue, TrackerError, type FetchFn } from "./providers/github.js";
 import { deriveTitle, renderIssueBody, type RenderContext } from "../shared/render.js";
 import { publicUrl } from "./storage/r2.js";
+import { redactPageUrl } from "../shared/page-url.js";
 import { hitRateLimit, dayWindow } from "./security/ratelimit.js";
 import type { LoadedProject } from "./config.js";
 import type { Env } from "./env.js";
@@ -105,7 +106,21 @@ async function extractWithBudget(env: Env, config: FeedbackConfig, template: Tem
   return classifyAndExtract({ config, template, message, apiKey: deps.apiKey, chat: deps.chat, ...extras });
 }
 
-/** Session context (URL, device, console) fed to the extraction on both POSTs. */
+/** Enforce the project's capture policy server-side too (older widget builds, or a
+ * hand-made request): page URL reduced to origin + path, console dropped when
+ * the project switched it off, Turnstile token never persisted. Runs before
+ * anything is rendered, sent to the LLM or stored. */
+export function applyCapturePolicy(config: FeedbackConfig, payload: FeedbackPayload): FeedbackPayload {
+  const { turnstileToken: _token, ...rest } = payload;
+  return {
+    ...rest,
+    pageUrl: redactPageUrl(payload.pageUrl),
+    consoleErrors: config.capture.console ? payload.consoleErrors : [],
+  };
+}
+
+/** Session context (URL, device, console) fed to the extraction on both POSTs.
+ * The host context is deliberately NOT part of it: it stays out of the LLM. */
 function extractionContext(payload: FeedbackPayload): ExtractExtras {
   return { pageUrl: payload.pageUrl, deviceInfo: payload.deviceInfo, consoleErrors: payload.consoleErrors };
 }
@@ -119,6 +134,7 @@ export async function orchestrateFeedback(
   const config = loaded.config;
   const now = deps.now ?? Date.now();
   const newId = deps.newId ?? (() => crypto.randomUUID());
+  payload = applyCapturePolicy(config, payload);
 
   // Idempotency: replay a stored TERMINAL response (created/accepted_incomplete).
   // A D1 read failure here is a create-anyway signal, not a blocker.
@@ -219,6 +235,7 @@ async function finalizeCreate(
     pageUrl: payload.pageUrl,
     deviceInfo: payload.deviceInfo,
     consoleErrors: payload.consoleErrors,
+    hostContext: payload.context,
     attachments: buildAttachments(config, payload),
     degraded: opts.degraded,
   };

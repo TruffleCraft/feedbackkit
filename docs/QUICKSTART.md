@@ -136,6 +136,93 @@ Make sure your site's origin is in the project's `auth.origins` (re-seed if you
 change it). Debug an integration with `?fkdebug=1` on the page URL, or
 `data-debug` on the script tag.
 
+### Host CSP
+
+If your site sends a Content-Security-Policy, allow the gateway origin
+(`<gw>`) and what the widget injects:
+
+| Directive | Value | Why |
+|---|---|---|
+| `script-src` | `<gw>` | `widget.js` |
+| `connect-src` | `<gw>` | config, upload, feedback, events |
+| `font-src` | `<gw>` | DM Sans `@font-face` |
+| `style-src` | `'unsafe-inline'` | the widget injects `<style>` (no nonce support yet) |
+| `img-src` | `blob: data:` | screenshot preview and annotator |
+| `script-src`, `frame-src` | `https://challenges.cloudflare.com` | only with Turnstile |
+
+A custom domain keeps these entries stable: set the build variable
+`FK_CUSTOM_DOMAIN=feedback.example.com` (zone in the same Cloudflare account)
+and deploy; `pnpm materialize` adds the custom-domain route.
+
+### Privacy and capture settings (project config)
+
+```jsonc
+{
+  "capture": { "screenshot": "off", "console": false }, // default: "optional", true
+  "privacyUrl": "https://example.com/privacy",          // linked from the widget
+  "storage": { "kind": "r2", "retentionDays": 90 }      // R2 objects AND D1 rows
+}
+```
+
+- `capture.screenshot: "off"` removes the page capture (the gateway also refuses
+  it); users can still attach images themselves. Use it when pages show
+  sensitive content. `capture.console: false` never hooks the console.
+- The page URL is always reported as origin + path; query strings and fragments
+  are dropped (they carry login tokens).
+- With `retentionDays`, the daily cron deletes attachments, stored submissions
+  and funnel events older than that.
+
+### Context from a signed-in app
+
+```html
+<script>
+  // object, or a function read at submit time; flat values only, max 20 keys
+  window.FeedbackKitContext = () => ({ userId: currentUser?.id, appVersion: "1.4.2" });
+</script>
+```
+
+It lands in the issue as "App context (not verified)" and is never sent to the
+LLM. Prefer opaque ids over e-mail addresses.
+
+### Own button and lazy loading
+
+`data-trigger="none"` hides the floating button; `window.FeedbackKit.open()`
+opens the panel once the widget has booted, `data-autoopen` opens it right
+after boot. Load the script only on click when a page must not contact any
+server before the user asks to:
+
+```html
+<button id="feedback">Feedback</button>
+<script>
+  document.getElementById("feedback").addEventListener("click", () => {
+    if (window.FeedbackKit) return window.FeedbackKit.open();
+    const s = document.createElement("script");
+    s.src = "https://<gw>/widget.js";
+    s.dataset.project = "<public-key>";
+    s.dataset.trigger = "none";
+    s.dataset.autoopen = "";
+    document.body.appendChild(s);
+  });
+</script>
+```
+
+### Turnstile (open sites)
+
+Create a Turnstile widget for your site's hostnames, then:
+
+```bash
+wrangler secret put TURNSTILE_SECRET_main
+```
+
+```jsonc
+{ "turnstile": { "siteKey": "0x4AAAA…", "secret": "TURNSTILE_SECRET_main" } }
+```
+
+The widget loads Turnstile on first open (`interaction-only`: invisible unless a
+check is needed) and sends a fresh token with every POST. The gateway redeems
+it at Siteverify and requires success, action `feedback` and a hostname from
+`auth.origins`; anything else gets a 403.
+
 ## Fork + auto-deploy (recommended for updates)
 
 After step 1–5 work locally: fork the repo, connect it to **Cloudflare Workers

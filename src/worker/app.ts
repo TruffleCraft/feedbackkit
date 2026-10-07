@@ -8,6 +8,7 @@ import { renderLanding, LANDING_CSP } from "./landing.js";
 import { loadProject } from "./config.js";
 import { originAllowed } from "./security/origin.js";
 import { hitRateLimit, hourWindow } from "./security/ratelimit.js";
+import { verifyTurnstile } from "./security/turnstile.js";
 import { checkRepoAccess } from "./providers/github.js";
 import { sniffImage, storeAttachment, deleteAssetsForFeedback, publicUrl, MAX_UPLOAD_BYTES } from "./storage/r2.js";
 import { ConfigError } from "./errors.js";
@@ -304,6 +305,11 @@ app.post("/api/upload", async (c) => {
     return c.json({ v: WIRE_VERSION, status: "error", error: "missing or invalid feedbackId" }, 400);
   }
   const kind = c.req.query("kind") === "screenshot" ? "screenshot" : "upload";
+  // Page captures are refused for projects that switched them off; files the user
+  // picked themselves stay allowed.
+  if (kind === "screenshot" && config.capture.screenshot === "off") {
+    return c.json({ v: WIRE_VERSION, status: "error", error: "screenshots disabled for this project" }, 409);
+  }
 
   // Courtesy early-out for honest clients; the real ceiling is enforced during
   // the streaming read below (a lying/absent Content-Length can't get past it).
@@ -460,7 +466,8 @@ app.post("/api/feedback", async (c) => {
   if (!loaded) return c.json({ v: WIRE_VERSION, status: "error", error: "unknown project" }, 404);
 
   const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
-  const rl = await hitRateLimit(c.env, `fb:${ip}`, hourWindow(), loaded.config.rateLimit.perHour);
+  // Keyed per project: each project's perHour applies to its own traffic only.
+  const rl = await hitRateLimit(c.env, `fb:${loaded.config.projectId}:${ip}`, hourWindow(), loaded.config.rateLimit.perHour);
   if (!rl.allowed) return c.json({ v: WIRE_VERSION, status: "error", error: "rate limited" }, 429);
 
   const origin = c.req.header("Origin");
@@ -474,6 +481,19 @@ app.post("/api/feedback", async (c) => {
   }
 
   if (!loaded.config.enabled) return c.json({ v: WIRE_VERSION, status: "error", error: "feedback disabled" }, 403);
+
+  // Optional bot gate: every POST (both legs of the follow-up loop) carries a
+  // fresh, single-use Turnstile token. Checked after the cheap gates above.
+  const ts = loaded.config.turnstile;
+  if (ts) {
+    const ok = await verifyTurnstile({
+      secret: c.env[ts.secret] as string | undefined,
+      token: parsed.data.turnstileToken,
+      remoteIp: ip,
+      origins: loaded.config.auth.origins,
+    });
+    if (!ok) return c.json({ v: WIRE_VERSION, status: "error", error: "verification failed" }, 403);
+  }
 
   const apiKey = c.env["LLM_API_KEY"] as string | undefined;
   try {

@@ -34,11 +34,13 @@ export class Api {
     }
   }
 
-  /** Upload one screenshot; returns its key or null (never throws — attachments
-   * are best-effort, feedback proceeds without them). */
-  async uploadScreenshot(feedbackId: string, blob: Blob): Promise<string | null> {
+  /** Upload one image — the page capture ("screenshot") or a user-picked file
+   * ("upload"); returns its key or null (never throws — attachments are
+   * best-effort, feedback proceeds without them). The kind lets the gateway
+   * refuse page captures for projects that switched them off. */
+  async uploadScreenshot(feedbackId: string, blob: Blob, kind: "screenshot" | "upload" = "screenshot"): Promise<string | null> {
     try {
-      const r = await this.f(this.url("/api/upload", { feedbackId, kind: "screenshot" }), {
+      const r = await this.f(this.url("/api/upload", { feedbackId, kind }), {
         method: "POST",
         headers: { "Content-Type": blob.type || "image/webp" },
         body: blob,

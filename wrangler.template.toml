@@ -2,11 +2,13 @@
 # variables and is gitignored (ADR-004). Set these before deploy:
 #   CLOUDFLARE_ACCOUNT_ID, FK_D1_ID, FK_R2_BUCKET
 # (as Workers Builds build variables, or in your shell for a local deploy).
+# Optional: FK_CUSTOM_DOMAIN (bare hostname) adds a custom-domain route.
 name = "feedbackkit"
 main = "src/worker/index.ts"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 account_id = "${CLOUDFLARE_ACCOUNT_ID}"
+${FK_ROUTES}
 # Release channels (ADR-013, docs/RELEASES.md): production serves stable; the
 # "dev" preview alias (dev-<name>.<subdomain>.workers.dev) serves the dev build.
 workers_dev = true

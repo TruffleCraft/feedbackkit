@@ -10,6 +10,7 @@ export interface RenderContext {
   pageUrl: string;
   deviceInfo?: { browser?: string; os?: string; viewport?: { w: number; h: number }; language?: string };
   consoleErrors?: Array<{ level: string; msg: string; ts: number }>;
+  hostContext?: Record<string, string | number | boolean>; // set by the embedding app, unverified
   attachments?: Array<{ url: string; kind: string }>;
   degraded?: boolean; // LLM unenriched → mark for triage
 }
@@ -99,6 +100,14 @@ export function renderIssueBody(template: TemplateDefinition, ctx: RenderContext
     parts.push(`### Environment\n${rows.join("\n")}`);
   } else {
     parts.push(`### Environment\nURL: ${mdInline(ctx.pageUrl)}`);
+  }
+
+  const hostEntries = Object.entries(ctx.hostContext ?? {});
+  if (hostEntries.length) {
+    // Whatever the embedding page set (e.g. user id, app version). The page is
+    // public JavaScript, so a visitor could forge it — labelled as unverified.
+    const rows = hostEntries.map(([k, v]) => `${mdInline(k)}: ${mdInline(String(v))}`);
+    parts.push(`### App context\n_Set by the embedding app, not verified._\n${rows.join("\n")}`);
   }
 
   if (ctx.consoleErrors?.length) {

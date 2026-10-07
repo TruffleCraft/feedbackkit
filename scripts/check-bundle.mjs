@@ -7,9 +7,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-// Whole all-in-one bundle incl. html-to-image. The 19 kB ceiling includes the
-// screenshot editor, bounded text layout, multi-attachment UI and context chips.
-const BUDGET_GZ = 19 * 1024;
+// Whole all-in-one bundle incl. html-to-image. The 20 kB ceiling includes the
+// screenshot editor, bounded text layout, multi-attachment UI, context chips,
+// the capture policy, host context, open() API and the Turnstile loader.
+const BUDGET_GZ = 20 * 1024;
 
 let buf;
 try {
