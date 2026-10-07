@@ -145,7 +145,7 @@ If your site sends a Content-Security-Policy, allow the gateway origin
 |---|---|---|
 | `script-src` | `<gw>` | `widget.js` |
 | `connect-src` | `<gw>` | config, upload, feedback, events |
-| `font-src` | `<gw>` | DM Sans `@font-face` |
+| `font-src` | `<gw>` | Urbanist `@font-face` (`/urbanist.woff2`) |
 | `style-src` | `'unsafe-inline'` | the widget injects `<style>` (no nonce support yet) |
 | `img-src` | `blob: data:` | screenshot preview and annotator |
 | `script-src`, `frame-src` | `https://challenges.cloudflare.com` | only with Turnstile |

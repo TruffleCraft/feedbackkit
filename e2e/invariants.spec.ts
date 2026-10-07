@@ -96,7 +96,7 @@ test("host theme follows document data-theme and falls back to color scheme", as
   const host = page.locator('[data-feedbackkit="host"]');
   await expect(host).not.toHaveAttribute("data-theme");
   await page.getByRole("button", feedbackBtn).click();
-  await expect(page.locator(".fk-panel")).toHaveCSS("background-color", "rgb(12, 17, 23)");
+  await expect(page.locator(".fk-panel")).toHaveCSS("background-color", "rgb(32, 32, 34)"); // dark --fk-bg #202022
 
   await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
   await expect(host).toHaveAttribute("data-theme", "light");

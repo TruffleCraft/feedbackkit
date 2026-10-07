@@ -93,7 +93,7 @@ async function boot() {
   if (!document.querySelector("style[data-feedbackkit-font]")) {
     const fontStyle = document.createElement("style");
     fontStyle.setAttribute("data-feedbackkit-font", "");
-    fontStyle.textContent = `@font-face{font-family:"DM Sans";src:url("${base}/dm-sans.woff2") format("woff2");font-weight:100 1000;font-style:normal;font-display:swap}`;
+    fontStyle.textContent = `@font-face{font-family:"FK Urbanist";src:url("${base}/urbanist.woff2") format("woff2");font-weight:100 900;font-style:normal;font-display:swap}`;
     document.head.appendChild(fontStyle);
   }
 
