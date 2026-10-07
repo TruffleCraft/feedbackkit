@@ -38,8 +38,9 @@
     }
   ],
   "llm": {
-    "provider": "openrouter",
-    "model": "google/gemma-4-26b-a4b-it",
+    "provider": "custom",
+    "baseUrl": "https://litellm.trufflecraft.de/v1",
+    "model": "opencode-go/deepseek-v4.1-flash",
     "dailyBudget": 100,
     "structuredOutput": true
   },

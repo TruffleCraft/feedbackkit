@@ -1,0 +1,85 @@
+name: Release (dev channel)
+
+# Every merge to main becomes a dev build (ADR-013, docs/RELEASES.md):
+# version vX.Y.Z-dev.N from the tags, uploaded as a new Worker version behind the
+# "dev" preview alias (production stays on stable), plus a GitHub prerelease.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Start a new line instead of the next patch"
+        type: choice
+        options: [none, minor, major]
+        default: none
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  dev:
+    # Upstream only: forks deploy their own instance with Workers Builds.
+    if: github.repository == 'TruffleCraft/feedbackkit'
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      FK_D1_ID: ${{ vars.FK_D1_ID }}
+      FK_R2_BUCKET: ${{ vars.FK_R2_BUCKET }}
+      BUMP: ${{ inputs.bump || 'none' }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the version is derived from the tags
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck && pnpm test
+
+      - name: Version
+        id: v
+        run: |
+          tag="$(node scripts/release-version.mjs next-dev "$BUMP")"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: pnpm build:widget && pnpm materialize
+        env:
+          FK_RELEASE: ${{ steps.v.outputs.version }}
+          FK_CHANNEL: dev
+
+      # Production and the dev alias share one D1. Migrations are expand/contract
+      # (backward-compatible for one release), so stable keeps working on them.
+      - name: Apply D1 migrations
+        run: pnpm exec wrangler d1 migrations apply feedbackkit --remote
+
+      - name: Upload dev version
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+        run: pnpm exec wrangler versions upload --preview-alias dev --tag "$TAG" --message "dev ${TAG} (${GITHUB_SHA::7})"
+
+      - name: Smoke check
+        if: vars.FK_DEV_URL != ''
+        run: node scripts/smoke-check.mjs "${{ vars.FK_DEV_URL }}" "${{ steps.v.outputs.version }}" dev
+
+      - name: Prerelease
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+        run: gh release create "$TAG" dist/widget.js --prerelease --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+
+      - name: Keep the newest 3 dev builds
+        run: |
+          node scripts/release-version.mjs prune-dev 3 | while read -r old; do
+            gh release delete "$old" --yes --cleanup-tag || git push origin --delete "refs/tags/$old" || true
+          done

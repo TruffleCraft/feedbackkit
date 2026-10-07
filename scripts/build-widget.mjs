@@ -36,6 +36,9 @@ if (existsSync(entry)) {
     outfile: join(dist, "widget.js"),
     metafile: true,
     legalComments: "none",
+    // The release workflows set FK_RELEASE (ADR-013); local and CI builds stay
+    // "0.0.0-local" so the committed widget-ver.ts hash is reproducible.
+    define: { __FK_RELEASE__: JSON.stringify(process.env.FK_RELEASE || "0.0.0-local") },
   });
   const bytes = Object.values(result.metafile.outputs)[0]?.bytes ?? 0;
   const buf = readFileSync(join(dist, "widget.js"));
