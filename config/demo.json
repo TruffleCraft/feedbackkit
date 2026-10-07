@@ -9,100 +9,32 @@
       "type": "bug",
       "label": "Bug",
       "fields": [
-        {
-          "key": "repro",
-          "label": "What did you do?",
-          "kind": "longtext",
-          "required": true,
-          "extractionHint": "The steps that led to the problem."
-        },
-        {
-          "key": "expected",
-          "label": "What did you expect?",
-          "kind": "longtext",
-          "required": true
-        },
-        {
-          "key": "actual",
-          "label": "What happened instead?",
-          "kind": "longtext",
-          "required": true
-        }
+        { "key": "repro", "label": "What did you do?", "kind": "longtext", "required": true, "extractionHint": "The steps that led to the problem." },
+        { "key": "expected", "label": "What did you expect?", "kind": "longtext", "required": true },
+        { "key": "actual", "label": "What happened instead?", "kind": "longtext", "required": true }
       ],
       "body": [
-        {
-          "heading": "Steps to reproduce",
-          "template": "{{repro}}"
-        },
-        {
-          "heading": "Expected vs actual",
-          "template": "**Expected:** {{expected}}\n**Actual:** {{actual}}"
-        }
+        { "heading": "Steps to reproduce", "template": "{{repro}}" },
+        { "heading": "Expected vs actual", "template": "**Expected:** {{expected}}\n**Actual:** {{actual}}" }
       ],
-      "tracker": {
-        "labels": [
-          "type/bug",
-          "source/feedbackkit",
-          "demo"
-        ]
-      }
+      "tracker": { "labels": ["type/bug", "source/feedbackkit", "demo"] }
     },
     {
       "type": "feature",
       "label": "Feature request",
-      "fields": [
-        {
-          "key": "problem",
-          "label": "What problem would this solve?",
-          "kind": "longtext",
-          "required": true
-        }
-      ],
-      "body": [
-        {
-          "heading": "Problem",
-          "template": "{{problem}}"
-        }
-      ],
-      "tracker": {
-        "labels": [
-          "type/feature",
-          "source/feedbackkit",
-          "demo"
-        ]
-      }
+      "fields": [{ "key": "problem", "label": "What problem would this solve?", "kind": "longtext", "required": true }],
+      "body": [{ "heading": "Problem", "template": "{{problem}}" }],
+      "tracker": { "labels": ["type/feature", "source/feedbackkit", "demo"] }
     },
     {
       "type": "improvement",
       "label": "Improvement",
       "fields": [
-        {
-          "key": "what",
-          "label": "What could be better?",
-          "kind": "longtext",
-          "required": true
-        },
-        {
-          "key": "desired",
-          "label": "What would feel better instead?",
-          "kind": "longtext",
-          "required": true,
-          "extractionHint": "The concrete desired behavior, wording, or outcome."
-        }
+        { "key": "what", "label": "What could be better?", "kind": "longtext", "required": true },
+        { "key": "desired", "label": "What would feel better instead?", "kind": "longtext", "required": true, "extractionHint": "The concrete desired behavior, wording, or outcome." }
       ],
-      "body": [
-        {
-          "heading": "Improvement",
-          "template": "{{what}}\n\n**Desired outcome:** {{desired}}"
-        }
-      ],
-      "tracker": {
-        "labels": [
-          "type/improvement",
-          "source/feedbackkit",
-          "demo"
-        ]
-      }
+      "body": [{ "heading": "Improvement", "template": "{{what}}\n\n**Desired outcome:** {{desired}}" }],
+      "tracker": { "labels": ["type/improvement", "source/feedbackkit", "demo"] }
     }
   ],
   "llm": {
@@ -123,11 +55,7 @@
     "retentionDays": 30
   },
   "auth": {
-    "origins": [
-      "https://feedbackkit-site.trufflecraft.workers.dev"
-    ]
+    "origins": ["https://feedbackkit-site.trufflecraft.workers.dev"]
   },
-  "rateLimit": {
-    "perHour": 40
-  }
+  "rateLimit": { "perHour": 40 }
 }
