@@ -64,6 +64,9 @@ async function readJsonBounded(c: import("hono").Context, max: number): Promise<
 }
 
 export const VERSION = "0.0.0";
+// The running release and channel (ADR-013): baked in per build by the release
+// workflows via FK_RELEASE / FK_CHANNEL; VERSION is the fallback for local runs.
+const releaseOf = (env: Env) => ({ version: env.FK_RELEASE || VERSION, channel: env.FK_CHANNEL || "local" });
 
 // Length-independent compare for the admin token (avoids leaking a match via
 // early-return timing). Length itself is not treated as secret. Full admin-auth
@@ -122,7 +125,7 @@ app.get("/diag", async (c) => {
     const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
     const rl = await hitRateLimit(c.env, `diag:${ip}`, hourWindow(), 60);
     if (!rl.allowed) {
-      return c.json({ service: "feedbackkit", version: VERSION, error: "rate limited" }, 429);
+      return c.json({ service: "feedbackkit", ...releaseOf(c.env), error: "rate limited" }, 429);
     }
     const loaded = await loadProject(c.env, project).catch((e) => {
       tracker = llm = `config error: ${(e as Error).message}`;
@@ -177,7 +180,7 @@ app.get("/diag", async (c) => {
   return c.json(
     {
       service: "feedbackkit",
-      version: VERSION,
+      ...releaseOf(c.env),
       wireVersion: WIRE_VERSION,
       schema: { expected: SCHEMA_VERSION, ...schema },
       bindings,
