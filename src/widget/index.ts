@@ -1,12 +1,24 @@
 import { reduce, type WidgetState } from "./core/state.js";
-import { installConsoleBuffer } from "./core/console-buffer.js";
+import { createConsoleBuffer, installConsoleBuffer } from "./core/console-buffer.js";
 import { collectDeviceInfo } from "./lib/device-info.js";
 import { captureScreenshot } from "./lib/screenshot.js";
 import { uuid } from "./lib/uuid.js";
 import { Api } from "./lib/api.js";
+import { readHostContext } from "./lib/host-context.js";
+import { TurnstileGate } from "./lib/turnstile.js";
 import { WidgetUI, type UIConfig } from "./ui/panel.js";
 import type { Locale } from "./ui/i18n.js";
+import { redactPageUrl } from "../shared/page-url.js";
 import type { PublicConfig, FeedbackPayload } from "../shared/contract.js";
+
+declare global {
+  interface Window {
+    /** Host-supplied debug context (object, or a function read at submit time). */
+    FeedbackKitContext?: unknown;
+    /** Set by the widget once booted: open the panel from the host's own UI. */
+    FeedbackKit?: { open(): void };
+  }
+}
 
 const DOC = "https://github.com/TruffleCraft/feedbackkit#readme";
 
@@ -15,11 +27,16 @@ function label(l: Label, locale: string): string {
   return typeof l === "string" ? l : (l[locale] ?? Object.values(l)[0] ?? "");
 }
 
-function toUIConfig(cfg: PublicConfig, triggerLabel: string | undefined): UIConfig {
+function toUIConfig(cfg: PublicConfig, triggerLabel: string | undefined, hideTrigger: boolean): UIConfig {
   const locale = (cfg.locale === "de" ? "de" : "en") as Locale;
+  // https-only: a server value never goes into an href unchecked.
+  const privacyUrl = cfg.privacyUrl && /^https:\/\//i.test(cfg.privacyUrl) ? cfg.privacyUrl : undefined;
   return {
     locale,
     triggerLabel,
+    hideTrigger,
+    screenshot: cfg.capture?.screenshot !== "off",
+    privacyUrl,
     types: cfg.types.map((ty) => ({
       type: ty.type,
       label: label(ty.label, locale),
@@ -53,8 +70,12 @@ async function boot() {
   }
   debug("config loaded", { types: cfg.types.length, locale: cfg.locale });
 
-  // Auto-context collection.
-  const { buffer } = installConsoleBuffer();
+  // Auto-context collection. A project can switch the console capture off (its
+  // error messages may echo page content); the hook is then never installed.
+  const consoleOn = cfg.capture?.console !== false;
+  const buffer = consoleOn ? installConsoleBuffer().buffer : createConsoleBuffer(0);
+  const screenshotOn = cfg.capture?.screenshot !== "off";
+  const gate = cfg.turnstileSiteKey ? new TurnstileGate(cfg.turnstileSiteKey) : null;
 
   const host = document.createElement("div");
   host.setAttribute("data-feedbackkit", "host");
@@ -98,17 +119,26 @@ async function boot() {
     editedShotUrl = "";
   }
 
-  const ui = new WidgetUI(shadow, toUIConfig(cfg, script.dataset.label), {
-    onOpen: () => {
-      resetAttempt();
-      const device = collectDeviceInfo(window);
-      ui.setContext({
-        browser: device.viewport ? `${device.browser} · ${device.viewport.w}×${device.viewport.h}` : device.browser,
-        url: location.pathname,
-        consoleErrors: buffer.snapshot().length,
-      });
-      dispatch({ t: "open", type: cfg.types[0]?.type ?? "" }, () => api.event("opened"));
-    },
+  // <script … data-trigger="none">: no floating button; the host opens the panel
+  // via window.FeedbackKit.open() (own button, or right after a lazy load with
+  // data-autoopen).
+  const hideTrigger = script.dataset.trigger === "none";
+
+  const open = () => {
+    if (state.name !== "closed") return;
+    resetAttempt();
+    gate?.preload();
+    const device = collectDeviceInfo(window);
+    ui.setContext({
+      browser: device.viewport ? `${device.browser} · ${device.viewport.w}×${device.viewport.h}` : device.browser,
+      url: location.pathname,
+      consoleErrors: buffer.snapshot().length,
+    });
+    dispatch({ t: "open", type: cfg.types[0]?.type ?? "" }, () => api.event("opened"));
+  };
+
+  const ui = new WidgetUI(shadow, toUIConfig(cfg, script.dataset.label, hideTrigger), {
+    onOpen: open,
     onClose: () => {
       gen++; // abandon any in-flight attempt
       dispatch({ t: "close" });
@@ -163,6 +193,7 @@ async function boot() {
   // 4s slowHint; here the user explicitly asked and is watching). Failure shows
   // a hint — feedback itself is never blocked on a capture.
   async function editShot() {
+    if (!screenshotOn) return;
     const myGen = gen;
     const t0 = Date.now();
     ui.captureStarted();
@@ -197,13 +228,15 @@ async function boot() {
     }, 4000);
 
     try {
+      // Turnstile (if enabled) runs alongside the capture; awaited before the POST.
+      const tokenP = gate?.token();
       if (!feedbackId) feedbackId = uuid(); // reuse the id a pre-submit attach already created
       // A user can click Send while an attachment upload is still in flight.
       // Wait for those uploads so the visible chip cannot be silently omitted.
       await Promise.allSettled([...pendingAttachments]);
       if (myGen !== gen) return;
       const attachmentKeys: string[] = [];
-      if (screenshot) {
+      if (screenshot && screenshotOn) {
         // An annotated/cropped shot (#54) wins over a fresh capture — what the
         // user marked up is exactly what uploads (and reaches the LLM via #53).
         // Otherwise: time-boxed capture. Now that cacheBust is gone a full-page
@@ -230,13 +263,17 @@ async function boot() {
         feedbackId,
         type,
         message: text,
-        pageUrl: location.href,
+        pageUrl: redactPageUrl(location.href), // origin + path only: queries/fragments carry tokens
         attachmentKeys: attachmentKeys.slice(0, 5), // contract cap
         deviceInfo: collectDeviceInfo(window),
         consoleErrors: buffer.snapshot(),
         hpField: "",
       };
-      const res = await api.submit(base1);
+      const context = readHostContext(window.FeedbackKitContext);
+      if (context) base1.context = context;
+      const turnstileToken = await tokenP;
+      if (myGen !== gen) return;
+      const res = await api.submit({ ...base1, turnstileToken });
       if (myGen !== gen) return;
       clearSlow();
       if (res.status === "follow_up") {
@@ -259,7 +296,9 @@ async function boot() {
     const echoed = extractedOverride ?? (state.name === "asking" ? state.extracted : {}); // what POST-1 already understood
     const myGen = gen; // stay bound to the current attempt (complete() doesn't start a new one)
     dispatch({ t: "answer" }, () => api.event("completed"));
-    const payload: FeedbackPayload = { ...base1, followUpText: answer, extracted: echoed };
+    const turnstileToken = gate ? await gate.token() : undefined; // tokens are single-use: fresh one for POST-2
+    if (myGen !== gen) return;
+    const payload: FeedbackPayload = { ...base1, followUpText: answer, extracted: echoed, turnstileToken };
     const res = await api.submit(payload);
     if (myGen !== gen) return; // closed/superseded while POST-2 in flight
     dispatch({ t: "response", res });
@@ -270,12 +309,15 @@ async function boot() {
     if (attachedKeys.length + pendingAttachments.length >= 4) return "limit"; // leave room for the auto-screenshot (cap 5)
     if (!feedbackId) feedbackId = uuid();
     const bucket = attachedKeys; // capture: a close→reopen (resetAttempt) rebinds attachedKeys,
-    const key = await api.uploadScreenshot(feedbackId, file); // so a stale upload lands in the OLD bucket, not the new session
+    const key = await api.uploadScreenshot(feedbackId, file, "upload"); // so a stale upload lands in the OLD bucket, not the new session
     if (key) bucket.push(key);
     return key ? "uploaded" : "failed";
   }
 
   ui.render(state);
+
+  window.FeedbackKit = { open };
+  if (script.dataset.autoopen != null) open();
 }
 
 if (typeof document !== "undefined") {

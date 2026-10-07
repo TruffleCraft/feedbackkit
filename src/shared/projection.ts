@@ -10,6 +10,11 @@ export function toPublicConfig(config: FeedbackConfig, configVersion: number): P
     locale: config.locale,
     askType: config.askType,
     configVersion,
+    // What the widget may auto-collect, the host's privacy link and the public
+    // Turnstile site key are user-facing by nature; the Turnstile secret name is not.
+    capture: { screenshot: config.capture.screenshot, console: config.capture.console },
+    ...(config.privacyUrl ? { privacyUrl: config.privacyUrl } : {}),
+    ...(config.turnstile ? { turnstileSiteKey: config.turnstile.siteKey } : {}),
     types: config.templates.map((t) => ({
       type: t.type,
       label: t.label,

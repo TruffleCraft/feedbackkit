@@ -82,6 +82,7 @@ export const STYLES = `
 .fk-drop-t b { color:var(--fk-accent); }
 .fk-drop-s,.fk-hint,.fk-privacy { color:var(--fk-muted); font-size:11px; }
 .fk-hint { margin:0; }
+.fk-privacy a { color:inherit; text-decoration:underline; }
 .fk-foot { display:flex; align-items:center; gap:12px; }
 .fk-btn { margin-left:auto; padding:9px 18px; border:1px solid var(--fk-accent); border-radius:8px;
   background:var(--fk-accent); color:#fff; font:600 13.5px var(--fk-font); cursor:pointer; }

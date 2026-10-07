@@ -23,6 +23,12 @@ export interface UIType {
 export interface UIConfig {
   locale: Locale;
   triggerLabel?: string;
+  /** data-trigger="none": no floating button, the host opens the panel itself. */
+  hideTrigger?: boolean;
+  /** false when the project switched the page capture off (capture.screenshot). */
+  screenshot?: boolean;
+  /** Host privacy policy, linked from the privacy line (https only, checked by caller). */
+  privacyUrl?: string;
   types: UIType[];
 }
 export interface UIHandlers {
@@ -82,6 +88,7 @@ export class WidgetUI {
   private mediaHint!: HTMLParagraphElement;
   private shotEnabled = true;
   private annotatorReturnFocus: HTMLElement | null = null;
+  private hostReturnFocus: HTMLElement | null = null; // focus to restore when there is no trigger
   private scrollLock = "";
   private locked = false;
   private hasOpened = false;
@@ -132,7 +139,12 @@ export class WidgetUI {
     });
 
     this.buildAnnotate();
+    this.trigger.hidden = !!this.config.hideTrigger;
     this.shadow.append(this.trigger, this.backdrop, this.annotator.root, this.live);
+  }
+
+  private get shotAllowed() {
+    return this.config.screenshot !== false;
   }
 
   private buildForm(): HTMLElement {
@@ -154,6 +166,7 @@ export class WidgetUI {
     this.textarea = el("textarea", { className: "fk-input", id: "fk-text", placeholder: this.tr("textPlaceholder") });
 
     this.shotChip = this.buildShotChip();
+    this.shotChip.hidden = !this.shotAllowed;
     this.ctxConsoleChip = el("span", { className: "fk-chip readonly", hidden: true });
     this.ctxBrowserChip = el("span", { className: "fk-chip readonly", hidden: true });
     this.ctxUrlChip = el("span", { className: "fk-chip readonly", hidden: true });
@@ -185,8 +198,12 @@ export class WidgetUI {
     const attachments = el("div", { className: "fk-attach" }, [contextChips, media, this.mediaHint]);
 
     const send = el("button", { className: "fk-btn", type: "button", textContent: this.tr("send") });
-    send.addEventListener("click", () => this.h.onSubmit(this.activeType, this.textarea.value.trim(), this.shotEnabled));
-    const foot = el("div", { className: "fk-foot" }, [el("span", { className: "fk-privacy", textContent: this.tr("privacy") }), send]);
+    send.addEventListener("click", () => this.h.onSubmit(this.activeType, this.textarea.value.trim(), this.shotAllowed && this.shotEnabled));
+    const privacy = el("span", { className: "fk-privacy", textContent: this.tr(this.shotAllowed ? "privacy" : "privacyNoShot") });
+    if (this.config.privacyUrl) {
+      privacy.append(" · ", el("a", { href: this.config.privacyUrl, target: "_blank", rel: "noopener noreferrer", textContent: this.tr("privacyLink") }));
+    }
+    const foot = el("div", { className: "fk-foot" }, [privacy, send]);
     const view = el("div", { className: "fk-form" }, [types, this.guidanceEl, label, this.textarea, attachments, foot]);
     this.views["form"] = view;
     this.applyGuidance();
@@ -396,16 +413,18 @@ export class WidgetUI {
   render(state: WidgetState) {
     if (state.name === "closed") {
       this.backdrop.hidden = true;
-      this.trigger.hidden = false;
+      this.trigger.hidden = !!this.config.hideTrigger;
       // Only on a genuine close (not the initial mount) do we unlock scroll and
       // restore focus — otherwise we'd steal the host page's initial focus and
       // wipe its inline overflow on every page load.
       if (this.hasOpened) {
         this.lockScroll(false);
-        this.trigger.focus();
+        if (this.config.hideTrigger) this.hostReturnFocus?.focus(); // back to the host's own button
+        else this.trigger.focus();
       }
       return;
     }
+    if (this.backdrop.hidden) this.hostReturnFocus = document.activeElement as HTMLElement | null; // opening now
     this.hasOpened = true;
     this.trigger.hidden = true;
     this.backdrop.hidden = false;

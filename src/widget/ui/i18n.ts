@@ -36,6 +36,8 @@ type Key =
   | "uploadFailed"
   | "uploadLimit"
   | "privacy"
+  | "privacyNoShot"
+  | "privacyLink"
   | "annotateTitle"
   | "annotateHint"
   | "toolCrop"
@@ -87,6 +89,8 @@ const STR: Record<Locale, Record<Key, string>> = {
     uploadFailed: "upload failed",
     uploadLimit: "limit reached",
     privacy: "Screenshot may be included with page context",
+    privacyNoShot: "Sent with browser and page address, no screenshot",
+    privacyLink: "Privacy",
     annotateTitle: "Mark up screenshot",
     annotateHint: "Drag to crop, or pick a tool to mark things up.",
     toolCrop: "Crop",
@@ -137,6 +141,8 @@ const STR: Record<Locale, Record<Key, string>> = {
     uploadFailed: "Upload fehlgeschlagen",
     uploadLimit: "Limit erreicht",
     privacy: "Screenshot kann Seitenkontext enthalten",
+    privacyNoShot: "Wird mit Browser und Seitenadresse gesendet, ohne Screenshot",
+    privacyLink: "Datenschutz",
     annotateTitle: "Screenshot markieren",
     annotateHint: "Ziehen zum Zuschneiden, oder ein Werkzeug zum Markieren wählen.",
     toolCrop: "Zuschneiden",

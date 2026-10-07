@@ -2,6 +2,7 @@
 // worker, and admin exchange. Zod stays internal (never in exported signatures
 // of the public API); this module is the hard validation gate.
 import { z } from "zod";
+import { CONTEXT_KEY_RE, MAX_CONTEXT_KEYS, MAX_CONTEXT_VALUE } from "./limits.js";
 
 export const WIRE_VERSION = 1 as const;
 export const SCHEMA_VERSION = 1 as const;
@@ -86,6 +87,20 @@ export const FeedbackConfig = z.object({
     .default({ kind: "r2" }),
   auth: z.object({ origins: z.array(z.string()).default([]) }),
   rateLimit: z.object({ perHour: z.number().int().positive().default(75) }).default({ perHour: 75 }),
+  // What the widget may collect automatically. Apps whose pages show sensitive
+  // content (health data, private answers) turn the page screenshot and/or the
+  // console capture off; user-picked image attachments stay possible.
+  capture: z
+    .object({
+      screenshot: z.enum(["optional", "off"]).default("optional"),
+      console: z.boolean().default(true),
+    })
+    .default({ screenshot: "optional", console: true }),
+  // Linked from the widget's privacy line (the host's own privacy policy).
+  privacyUrl: z.string().url().startsWith("https://").optional(),
+  // Optional Cloudflare Turnstile gate on POST /api/feedback. `secret` names the
+  // TURNSTILE_SECRET_<name> worker secret (like tracker.patSecret).
+  turnstile: z.object({ siteKey: z.string().min(1), secret: z.string().regex(/^TURNSTILE_SECRET_[A-Za-z0-9_]+$/) }).optional(),
 });
 export type FeedbackConfig = z.infer<typeof FeedbackConfig>;
 
@@ -96,6 +111,10 @@ export const PublicConfig = z.object({
   locale: z.string(),
   askType: z.boolean(),
   configVersion: z.number().int(),
+  // Optional for compatibility with gateways that predate these fields.
+  capture: z.object({ screenshot: z.enum(["optional", "off"]), console: z.boolean() }).optional(),
+  privacyUrl: z.string().optional(),
+  turnstileSiteKey: z.string().optional(),
   types: z.array(
     z.object({
       type: z.string(),
@@ -130,6 +149,14 @@ export const ConsoleEntry = z.object({ level: z.string().max(24), msg: z.string(
 export type DeviceInfoT = z.infer<typeof DeviceInfo>;
 export type ConsoleEntryT = z.infer<typeof ConsoleEntry>;
 
+// Host-supplied debug context (e.g. an opaque user id, app version), set by the
+// embedding page via window.FeedbackKitContext. Flat, bounded, never verified —
+// rendered into the issue as such and NEVER sent to the LLM.
+export const HostContext = z
+  .record(z.union([z.string().max(MAX_CONTEXT_VALUE), z.number().finite(), z.boolean()]))
+  .refine((o) => Object.keys(o).length <= MAX_CONTEXT_KEYS && Object.keys(o).every((k) => CONTEXT_KEY_RE.test(k)), "invalid context");
+export type HostContextT = Record<string, string | number | boolean>;
+
 export const FeedbackPayload = z.object({
   v: z.literal(WIRE_VERSION),
   feedbackId: z.string().uuid(),
@@ -142,6 +169,8 @@ export const FeedbackPayload = z.object({
   attachmentKeys: z.array(z.string()).max(5).default([]),
   deviceInfo: DeviceInfo.optional(),
   consoleErrors: z.array(ConsoleEntry).max(10).default([]),
+  context: HostContext.optional(),
+  turnstileToken: z.string().max(2048).optional(), // fresh token per POST when the project enables Turnstile
   hpField: z.string().max(0).optional(), // honeypot: must be empty
 });
 export type FeedbackPayload = z.infer<typeof FeedbackPayload>;
