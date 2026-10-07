@@ -139,7 +139,9 @@ change it). Debug an integration with `?fkdebug=1` on the page URL, or
 ## Fork + auto-deploy (recommended for updates)
 
 After step 1–5 work locally: fork the repo, connect it to **Cloudflare Workers
-Builds** with build command `pnpm deploy` and the three build variables from
-step 1. Then pulling upstream (GitHub "Sync fork") redeploys you automatically —
+Builds** with production branch **`stable`**, build command `pnpm deploy` and the
+three build variables from step 1. Then syncing the `stable` branch with upstream
+(GitHub "Sync fork") redeploys you automatically with the latest stable release
+([RELEASES.md](RELEASES.md)) —
 the repo stays commit-identical with upstream because all your state lives in
 D1 + secrets, never in tracked files (ADR-004).

@@ -7,6 +7,10 @@ main = "src/worker/index.ts"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
 account_id = "${CLOUDFLARE_ACCOUNT_ID}"
+# Release channels (ADR-013, docs/RELEASES.md): production serves stable; the
+# "dev" preview alias (dev-<name>.<subdomain>.workers.dev) serves the dev build.
+workers_dev = true
+preview_urls = true
 
 # Widget bundle + admin assets are served from ./dist by the Worker.
 [assets]
@@ -29,4 +33,6 @@ crons = ["0 3 * * *"]
 
 [vars]
 FK_ENV = "production"
+FK_RELEASE = "${FK_RELEASE}"
+FK_CHANNEL = "${FK_CHANNEL}"
 WIDGET_VERSION = "${WIDGET_VERSION}"

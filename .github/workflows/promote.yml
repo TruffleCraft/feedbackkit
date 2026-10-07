@@ -1,0 +1,97 @@
+name: Promote to stable
+
+# A tested dev build becomes vX.Y.Z (ADR-013, docs/RELEASES.md): the same commit,
+# rebuilt with the stable version, deployed to production, released as latest,
+# and the `stable` branch fast-forwarded to it for self-hosters.
+on:
+  workflow_dispatch:
+    inputs:
+      dev_tag:
+        description: "Tested dev build, e.g. v0.1.0-dev.3"
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  stable:
+    if: github.repository == 'TruffleCraft/feedbackkit'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      FK_D1_ID: ${{ vars.FK_D1_ID }}
+      FK_R2_BUCKET: ${{ vars.FK_R2_BUCKET }}
+      FK_CUSTOM_DOMAIN: ${{ vars.FK_CUSTOM_DOMAIN }}
+      DEV_TAG: ${{ inputs.dev_tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Validates the input (format, exists, not yet released, newer than stable)
+      # before it is used anywhere else.
+      - name: Version
+        id: v
+        run: |
+          tag="$(node scripts/release-version.mjs promote "$DEV_TAG")"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "previous=$(node scripts/release-version.mjs latest-stable)" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-list -n 1 "refs/tags/$DEV_TAG")" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the dev build's commit
+        run: git checkout --detach "${{ steps.v.outputs.sha }}"
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck && pnpm test
+
+      - name: Build
+        run: pnpm build:widget && pnpm materialize
+        env:
+          FK_RELEASE: ${{ steps.v.outputs.version }}
+          FK_CHANNEL: stable
+
+      - name: Apply D1 migrations
+        run: pnpm exec wrangler d1 migrations apply feedbackkit --remote
+
+      - name: Deploy to production
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+        run: pnpm exec wrangler deploy --message "stable ${TAG} (${DEV_TAG})"
+
+      - name: Smoke check
+        if: vars.FK_GATEWAY_URL != ''
+        run: node scripts/smoke-check.mjs "${{ vars.FK_GATEWAY_URL }}" "${{ steps.v.outputs.version }}" stable
+
+      - name: Release
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+          SHA: ${{ steps.v.outputs.sha }}
+          PREVIOUS: ${{ steps.v.outputs.previous }}
+        run: |
+          gh release create "$TAG" dist/widget.js --latest --target "$SHA" --title "$TAG" --generate-notes ${PREVIOUS:+--notes-start-tag "$PREVIOUS"}
+
+      # Fast-forward only: promoting an older commit than the current stable fails here.
+      - name: Move the stable branch
+        run: git push origin "${{ steps.v.outputs.sha }}:refs/heads/stable"
+
+      - name: Remove this version's dev builds
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+        run: |
+          node scripts/release-version.mjs dev-of "$TAG" | while read -r old; do
+            gh release delete "$old" --yes --cleanup-tag || true
+          done

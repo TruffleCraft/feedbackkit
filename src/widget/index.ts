@@ -9,6 +9,9 @@ import type { Locale } from "./ui/i18n.js";
 import type { PublicConfig, FeedbackPayload } from "../shared/contract.js";
 
 const DOC = "https://github.com/TruffleCraft/feedbackkit#readme";
+// Release of this bundle (ADR-013), injected by scripts/build-widget.mjs.
+declare const __FK_RELEASE__: string;
+const RELEASE = typeof __FK_RELEASE__ === "string" ? __FK_RELEASE__ : "0.0.0-local";
 
 type Label = string | Record<string, string>;
 function label(l: Label, locale: string): string {
@@ -39,7 +42,7 @@ async function boot() {
   const base = script.dataset.base ?? new URL(script.src).origin;
   // Verbose logging for integrators: <script … data-debug> or ?fkdebug=1.
   const debug: (...a: unknown[]) => void = script.dataset.debug != null || /[?&]fkdebug=1\b/.test(location.search) ? (...a) => console.info("[feedbackkit]", ...a) : () => {};
-  debug("booting", { project, base });
+  debug("booting", { project, base, release: RELEASE });
   const api = new Api(base, project);
 
   const cfg = await api.config();
