@@ -68,7 +68,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEl
 }
 
 // Static, trusted SVG markup only (never user input).
-const SPARK = '<path fill="currentColor" stroke="none" d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>';
+// The FeedbackKit mark (two chat lines) for the trigger and the avatar; the panel head uses MARK in brand colours.
+const LOGO = '<g fill="currentColor" stroke="none"><rect x="1.5" y="4" width="15" height="7" rx="3.5"/><rect x="7.5" y="13" width="15" height="7" rx="3.5" opacity=".6"/></g>';
 const IC = {
   close: '<path d="M18 6 6 18M6 6l12 12"/>',
   image: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
@@ -77,7 +78,7 @@ const IC = {
   eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
   ext: '<path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/>',
-  spark: SPARK,
+  logo: LOGO,
 };
 function icon(name: keyof typeof IC, cls = "fk-ic"): HTMLSpanElement {
   const s = el("span", { className: cls });
@@ -85,8 +86,8 @@ function icon(name: keyof typeof IC, cls = "fk-ic"): HTMLSpanElement {
   s.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${IC[name]}</svg>`;
   return s;
 }
-// FeedbackKit mark: speech bubble with a spark.
-const MARK = '<svg viewBox="0 0 32 32"><rect x="2" y="3" width="28" height="22" rx="7" fill="#7c3aed"/><path d="M9 23v8l9-8z" fill="#7c3aed"/><path d="M16 7l1.9 5.1L23 14l-5.1 1.9L16 21l-1.9-5.1L9 14l5.1-1.9z" fill="#fff"/></svg>';
+// FeedbackKit mark: two chat lines, the message and the reply.
+const MARK = '<svg viewBox="0 0 48 48"><rect x="3" y="8" width="30" height="14" rx="7" fill="#7c3aed"/><rect x="15" y="26" width="30" height="14" rx="7" fill="#a78bfa"/></svg>';
 
 export class WidgetUI {
   private trigger!: HTMLButtonElement;
@@ -159,7 +160,7 @@ export class WidgetUI {
     this.shadow.appendChild(el("style", { textContent: STYLES }));
 
     const triggerLabel = this.config.triggerLabel || this.tr("trigger");
-    this.trigger = el("button", { className: "fk-trigger", type: "button", ariaLabel: triggerLabel }, [icon("spark", "fk-trigger-icon"), el("span", { className: "fk-trigger-label", textContent: triggerLabel })]);
+    this.trigger = el("button", { className: "fk-trigger", type: "button", ariaLabel: triggerLabel }, [icon("logo", "fk-trigger-icon"), el("span", { className: "fk-trigger-label", textContent: triggerLabel })]);
     this.trigger.setAttribute("aria-haspopup", "dialog");
     this.trigger.addEventListener("click", () => this.h.onOpen());
 
@@ -379,7 +380,7 @@ export class WidgetUI {
   // question with a single freetext answer (ADR-012). Also hosts the busy states.
   private buildThread(): HTMLElement {
     this.meBubble = el("div", { className: "fk-me" });
-    const avatar = icon("spark", "fk-avatar");
+    const avatar = icon("logo", "fk-avatar");
     this.statusText = el("span");
     this.typeTag = el("span", { className: "fk-tag" });
     this.botRow = el("div", { className: "fk-bot" }, [avatar, this.statusText, this.typeTag]);

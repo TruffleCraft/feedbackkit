@@ -281,12 +281,13 @@ document.addEventListener('DOMContentLoaded',function(){
 })();`;
 
 function logoMark(size = 26): string {
-  return `<svg viewBox="0 0 32 32" width="${size}" height="${size}" style="display:block;flex-shrink:0" aria-hidden="true"><rect x="2" y="3" width="28" height="22" rx="7" fill="var(--accent)"></rect><path d="M9 23v8l9-8z" fill="var(--accent)"></path><path d="M16 7l1.9 5.1L23 14l-5.1 1.9L16 21l-1.9-5.1L9 14l5.1-1.9z" fill="#fff"></path></svg>`;
+  return `<svg viewBox="0 0 48 48" width="${size}" height="${size}" style="display:block;flex-shrink:0" aria-hidden="true"><rect x="3" y="8" width="30" height="14" rx="7" fill="var(--accent)"></rect><rect x="15" y="26" width="30" height="14" rx="7" fill="#a78bfa"></rect></svg>`;
 }
 
 function head(title: string, description: string): string {
   return `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title}</title><meta name="description" content="${description}">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect x='3' y='8' width='30' height='14' rx='7' fill='%237c3aed'/%3E%3Crect x='15' y='26' width='30' height='14' rx='7' fill='%23a78bfa'/%3E%3C/svg%3E">
 <style>${CSS}</style>
 <script src="/theme.js"></script>`;
 }
