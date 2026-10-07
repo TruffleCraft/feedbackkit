@@ -24,9 +24,20 @@ const widgetVersion = existsSync(verFile)
   ? readFileSync(verFile, "utf8").trim()
   : "unversioned";
 
+// Optional: serve the gateway on a custom domain (zone in the same account),
+// e.g. FK_CUSTOM_DOMAIN=feedback.example.com. A stable hostname keeps snippets
+// and host CSPs valid even if the workers.dev subdomain is renamed.
+const customDomain = process.env.FK_CUSTOM_DOMAIN?.trim();
+if (customDomain && !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(customDomain)) {
+  console.error(`materialize: FK_CUSTOM_DOMAIN must be a bare hostname, got "${customDomain}"`);
+  process.exit(1);
+}
+const routes = customDomain ? `routes = [{ pattern = "${customDomain}", custom_domain = true }]` : "";
+
 const template = readFileSync(join(root, "wrangler.template.toml"), "utf8");
 const rendered = template.replace(/\$\{(\w+)\}/g, (_, name) => {
   if (name === "WIDGET_VERSION") return widgetVersion;
+  if (name === "FK_ROUTES") return routes;
   const v = process.env[name];
   if (v === undefined) {
     console.error(`materialize: unresolved variable \${${name}} in template`);
