@@ -3,11 +3,12 @@ import { STYLES } from "./styles.js";
 import { AnnotatorUI } from "./annotate.js";
 import { t, type Locale } from "./i18n.js";
 
-// Shadow-DOM view. Built ONCE; render() toggles view visibility and patches text
-// (never innerHTML-replaces a subtree carrying user input — the re-render ban).
+// Shadow-DOM view, design "Gespräch": one composer, then a short thread (the
+// user's text, how it was understood, ONE follow-up question), then a done card.
+// Built ONCE; render() toggles view visibility and patches text (never
+// innerHTML-replaces a subtree carrying user input — the re-render ban).
 // Implements the four vanilla invariants: shadowRoot focus + restore, one
 // persistent aria-live region, body-append + dvh + scroll-lock, no re-render.
-// Follow-up is a SINGLE conversational question (state `asking`), not a form.
 
 export interface UIField {
   key: string;
@@ -17,7 +18,7 @@ export interface UIField {
 export interface UIType {
   type: string;
   label: string;
-  guidance?: string; // inline "what's needed" hint, shown under the type selector
+  guidance?: string; // inline "what's needed" hint, shown under the type picker
   fields: UIField[];
 }
 export interface UIConfig {
@@ -27,20 +28,23 @@ export interface UIConfig {
   hideTrigger?: boolean;
   /** false when the project switched the page capture off (capture.screenshot). */
   screenshot?: boolean;
-  /** Host privacy policy, linked from the privacy line (https only, checked by caller). */
+  /** Host privacy policy, linked from the footer (https only, checked by caller). */
   privacyUrl?: string;
+  /** The gateway classifies the feedback itself: no type picker. */
+  autoType?: boolean;
   types: UIType[];
 }
 export interface UIHandlers {
   onOpen(): void;
   onClose(): void;
+  /** type is "" when the gateway classifies (autoType). */
   onSubmit(type: string, text: string, screenshot: boolean): void;
   onSendNow(): void;
-  onComplete(type: string, answer: string): void;
+  onComplete(answer: string): void;
   onAttach(file: File): Promise<"uploaded" | "failed" | "limit">;
   onRetry(): void;
   onRestart(): void;
-  /** "Mark up screenshot" clicked → index captures the page, then calls openAnnotator(). */
+  /** "Mark up" clicked → index captures the page, then calls openAnnotator(). */
   onEditScreenshot(): void;
   /** Annotator finished → index uses this blob at submit instead of a fresh capture. */
   onAnnotated(blob: Blob): void;
@@ -49,44 +53,77 @@ export interface UIHandlers {
 export interface UIContext {
   browser?: string;
   url?: string;
+  /** Console capture is on; the count is what would be sent now. */
+  console?: boolean;
   consoleErrors?: number;
+  /** Keys of the host's FeedbackKitContext (values stay out of the UI). */
+  contextKeys?: string[];
 }
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> = {}, kids: Node[] = []): HTMLElementTagNameMap[K] {
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> = {}, kids: (Node | string)[] = []): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
   Object.assign(node, props);
-  for (const k of kids) node.appendChild(k);
+  node.append(...kids);
   return node;
 }
+
+// Static, trusted SVG markup only (never user input).
+// The FeedbackKit mark (two chat lines) for the trigger and the avatar; the panel head uses MARK in brand colours.
+const LOGO = '<g fill="currentColor" stroke="none"><rect x="1.5" y="4" width="15" height="7" rx="3.5"/><rect x="7.5" y="13" width="15" height="7" rx="3.5" opacity=".6"/></g>';
+const IC = {
+  close: '<path d="M18 6 6 18M6 6l12 12"/>',
+  image: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
+  shot: '<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>',
+  up: '<path d="M12 19V5M5 12l7-7 7 7"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  ext: '<path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/>',
+  logo: LOGO,
+};
+function icon(name: keyof typeof IC, cls = "fk-ic"): HTMLSpanElement {
+  const s = el("span", { className: cls });
+  s.setAttribute("aria-hidden", "true");
+  s.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${IC[name]}</svg>`;
+  return s;
+}
+// FeedbackKit mark: two chat lines, the message and the reply.
+const MARK = '<svg viewBox="0 0 48 48"><rect x="3" y="8" width="30" height="14" rx="7" fill="#7c3aed"/><rect x="15" y="26" width="30" height="14" rx="7" fill="#a78bfa"/></svg>';
 
 export class WidgetUI {
   private trigger!: HTMLButtonElement;
   private backdrop!: HTMLDivElement;
-  private title!: HTMLHeadingElement;
+  private panel!: HTMLDivElement;
   private live!: HTMLDivElement;
   private views: Record<string, HTMLElement> = {};
   private typeButtons: HTMLButtonElement[] = [];
   private guidanceEl!: HTMLParagraphElement;
   private textarea!: HTMLTextAreaElement;
   private attachInput!: HTMLInputElement;
-  private questionEl!: HTMLParagraphElement;
-  private answerBox!: HTMLTextAreaElement;
-  private sendNowBtn!: HTMLButtonElement;
-  private statusText!: HTMLSpanElement;
-  private issueLink!: HTMLAnchorElement;
-  private doneMsg!: HTMLParagraphElement;
-  private panel!: HTMLDivElement;
-  private annotator!: AnnotatorUI;
-  private shotChip!: HTMLSpanElement;
-  private shotLabelEl!: HTMLSpanElement;
-  private shotMarkupBtn!: HTMLButtonElement;
-  private shotToggleBtn!: HTMLButtonElement;
-  private ctxBrowserChip!: HTMLSpanElement;
-  private ctxUrlChip!: HTMLSpanElement;
-  private ctxConsoleChip!: HTMLSpanElement;
   private fileChips!: HTMLDivElement;
   private mediaHint!: HTMLParagraphElement;
-  private shotEnabled = true;
+  private shotBtn!: HTMLButtonElement;
+  private shotLabelEl!: HTMLSpanElement;
+  private shotMarkupBtn!: HTMLButtonElement;
+  private discloseBtn!: HTMLButtonElement;
+  private sentList!: HTMLUListElement;
+  private sentShotLi!: HTMLLIElement;
+  // thread view
+  private meBubble!: HTMLDivElement;
+  private botRow!: HTMLDivElement;
+  private statusText!: HTMLSpanElement;
+  private typeTag!: HTMLSpanElement;
+  private questionEl!: HTMLParagraphElement;
+  private answerWrap!: HTMLDivElement;
+  private answerBox!: HTMLInputElement;
+  private askFoot!: HTMLDivElement;
+  private sendNowBtn!: HTMLButtonElement;
+  // done view
+  private card!: HTMLDivElement;
+  private summaryEl!: HTMLParagraphElement;
+  private doneTag!: HTMLSpanElement;
+  private issueLink!: HTMLAnchorElement;
+  private annotator!: AnnotatorUI;
+  private shotOn = false; // opt-in: the page is only captured when the user asks for it
   private annotatorReturnFocus: HTMLElement | null = null;
   private hostReturnFocus: HTMLElement | null = null; // focus to restore when there is no trigger
   private scrollLock = "";
@@ -106,14 +143,24 @@ export class WidgetUI {
     return t(this.config.locale, k);
   }
 
+  private get shotAllowed() {
+    return this.config.screenshot !== false;
+  }
+
+  /** A type picker only when the user must choose (no auto-typing, several types). */
+  private get showTypes() {
+    return !this.config.autoType && this.config.types.length > 1;
+  }
+
+  private typeLabel(type?: string) {
+    return this.config.types.find((ty) => ty.type === type)?.label ?? "";
+  }
+
   private build() {
     this.shadow.appendChild(el("style", { textContent: STYLES }));
 
-    // Expanding pill trigger: icon disc + label revealed on hover/focus.
     const triggerLabel = this.config.triggerLabel || this.tr("trigger");
-    const icon = el("span", { className: "fk-trigger-icon", textContent: "✦" });
-    const label = el("span", { className: "fk-trigger-label", textContent: triggerLabel });
-    this.trigger = el("button", { className: "fk-trigger", type: "button", ariaLabel: triggerLabel }, [icon, label]);
+    this.trigger = el("button", { className: "fk-trigger", type: "button", ariaLabel: triggerLabel }, [icon("logo", "fk-trigger-icon"), el("span", { className: "fk-trigger-label", textContent: triggerLabel })]);
     this.trigger.setAttribute("aria-haspopup", "dialog");
     this.trigger.addEventListener("click", () => this.h.onOpen());
 
@@ -122,12 +169,14 @@ export class WidgetUI {
     this.live.setAttribute("aria-live", "polite");
     this.live.setAttribute("role", "status");
 
-    this.title = el("h2", { className: "fk-title", id: "fk-title", textContent: this.tr("title") });
-    const closeBtn = el("button", { className: "fk-x", type: "button", textContent: "×", ariaLabel: this.tr("close") });
+    const mark = el("span", { className: "fk-mark" });
+    mark.setAttribute("aria-hidden", "true");
+    mark.innerHTML = MARK;
+    const closeBtn = el("button", { className: "fk-x", type: "button", ariaLabel: this.tr("close") }, [icon("close")]);
     closeBtn.addEventListener("click", () => this.h.onClose());
-    const head = el("div", { className: "fk-head" }, [this.title, closeBtn]);
+    const head = el("div", { className: "fk-head" }, [mark, el("span", { className: "fk-brand", id: "fk-title", textContent: this.tr("title") }), closeBtn]);
 
-    this.panel = el("div", { className: "fk-panel", role: "dialog" }, [head, this.buildForm(), this.buildExtracting(), this.buildAsking(), this.buildDone(), this.buildFailed()]);
+    this.panel = el("div", { className: "fk-panel", role: "dialog" }, [head, this.buildForm(), this.buildThread(), this.buildDone(), this.buildFailed()]);
     this.panel.setAttribute("aria-modal", "true");
     this.panel.setAttribute("aria-labelledby", "fk-title");
     this.panel.addEventListener("click", (e) => e.stopPropagation());
@@ -143,92 +192,87 @@ export class WidgetUI {
     this.shadow.append(this.trigger, this.backdrop, this.annotator.root, this.live);
   }
 
-  private get shotAllowed() {
-    return this.config.screenshot !== false;
+  private submit() {
+    const text = this.textarea.value.trim();
+    if (!text) return this.textarea.focus(); // nothing to send yet
+    this.h.onSubmit(this.config.autoType ? "" : this.activeType, text, this.shotAllowed && this.shotOn);
   }
 
   private buildForm(): HTMLElement {
-    const types = el("div", { className: "fk-tabs" });
-    this.config.types.forEach((ty, i) => {
+    const types = el("div", { className: "fk-tabs", hidden: !this.showTypes });
+    this.config.types.forEach((ty) => {
       const b = el("button", { className: "fk-type", type: "button", textContent: ty.label });
-      b.setAttribute("aria-pressed", String(i === 0));
       b.addEventListener("click", () => this.selectType(ty.type));
       this.typeButtons.push(b);
       types.appendChild(b);
     });
-    this.activeType = this.config.types[0]?.type ?? "";
-
-    // Inline guidance for the active type ("what a good report needs"). Empty →
-    // hidden, so types without guidance render exactly as before.
+    // Inline guidance for the active type ("what a good report needs"), picker only.
     this.guidanceEl = el("p", { className: "fk-guidance" });
 
-    const label = el("label", { className: "fk-label", htmlFor: "fk-text", textContent: this.tr("textLabel") });
-    this.textarea = el("textarea", { className: "fk-input", id: "fk-text", placeholder: this.tr("textPlaceholder") });
-
-    this.shotChip = this.buildShotChip();
-    this.shotChip.hidden = !this.shotAllowed;
-    this.ctxConsoleChip = el("span", { className: "fk-chip readonly", hidden: true });
-    this.ctxBrowserChip = el("span", { className: "fk-chip readonly", hidden: true });
-    this.ctxUrlChip = el("span", { className: "fk-chip readonly", hidden: true });
-    const contextChips = el("div", { className: "fk-chips fk-context" }, [this.ctxConsoleChip, this.ctxBrowserChip, this.ctxUrlChip]);
+    this.textarea = el("textarea", { className: "fk-text", id: "fk-text", placeholder: this.tr("textPlaceholder") });
+    this.textarea.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) this.submit();
+    });
 
     this.attachInput = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp,image/gif", hidden: true, id: "fk-file", multiple: true });
     this.attachInput.addEventListener("change", () => {
       this.acceptFiles(this.attachInput.files);
       this.attachInput.value = "";
     });
-    const addImages = el("button", { className: "fk-media-add", type: "button", textContent: this.tr("addImages") });
+    const addImages = el("button", { className: "fk-icon-btn", type: "button", ariaLabel: this.tr("addImages"), title: this.tr("addImages") }, [icon("image")]);
     addImages.addEventListener("click", () => this.attachInput.click());
-    this.fileChips = el("div", { className: "fk-chips fk-files" });
-    const media = el("div", { className: "fk-media" }, [
-      el("div", { className: "fk-media-head" }, [this.shotChip, addImages]),
-      el("div", { className: "fk-drop-t" }, [el("b", { textContent: this.tr("dropTitleAccent") }), el("span", { textContent: this.tr("dropTitle") })]),
-      el("div", { className: "fk-drop-s", textContent: this.tr("dropSub") }),
+
+    this.shotLabelEl = el("span", { className: "txt", textContent: this.tr("screenshotChip") });
+    this.shotBtn = el("button", { className: "fk-pill fk-shot", type: "button", hidden: !this.shotAllowed }, [icon("shot"), this.shotLabelEl]);
+    this.shotBtn.addEventListener("click", () => this.setShot(!this.shotOn));
+    this.shotMarkupBtn = el("button", { className: "fk-pill", type: "button", textContent: this.tr("editShot"), hidden: true });
+    this.shotMarkupBtn.addEventListener("click", () => this.h.onEditScreenshot());
+
+    const send = el("button", { className: "fk-send", type: "button", ariaLabel: this.tr("send") }, [icon("up")]);
+    send.addEventListener("click", () => this.submit());
+
+    this.fileChips = el("div", { className: "fk-files" });
+    this.mediaHint = el("p", { className: "fk-hint", hidden: true });
+    const composer = el("div", { className: "fk-composer" }, [
+      el("label", { className: "fk-sr", htmlFor: "fk-text", textContent: this.tr("textLabel") }),
+      this.textarea,
       this.fileChips,
+      this.mediaHint,
+      el("div", { className: "fk-tools" }, [addImages, this.shotBtn, this.shotMarkupBtn, send]),
       this.attachInput,
     ]);
-    for (const event of ["dragenter", "dragover"]) media.addEventListener(event, (e) => { e.preventDefault(); media.classList.add("fk-dragover"); });
-    for (const event of ["dragleave", "dragend"]) media.addEventListener(event, () => media.classList.remove("fk-dragover"));
-    media.addEventListener("drop", (e) => {
+    for (const event of ["dragenter", "dragover"]) composer.addEventListener(event, (e) => { e.preventDefault(); composer.classList.add("fk-dragover"); });
+    for (const event of ["dragleave", "dragend"]) composer.addEventListener(event, () => composer.classList.remove("fk-dragover"));
+    composer.addEventListener("drop", (e) => {
       e.preventDefault();
-      media.classList.remove("fk-dragover");
+      composer.classList.remove("fk-dragover");
       this.acceptFiles((e as DragEvent).dataTransfer?.files);
     });
-    this.mediaHint = el("p", { className: "fk-hint", hidden: true });
-    const attachments = el("div", { className: "fk-attach" }, [contextChips, media, this.mediaHint]);
 
-    const send = el("button", { className: "fk-btn", type: "button", textContent: this.tr("send") });
-    send.addEventListener("click", () => this.h.onSubmit(this.activeType, this.textarea.value.trim(), this.shotAllowed && this.shotEnabled));
-    const privacy = el("span", { className: "fk-privacy", textContent: this.tr(this.shotAllowed ? "privacy" : "privacyNoShot") });
-    if (this.config.privacyUrl) {
-      privacy.append(" · ", el("a", { href: this.config.privacyUrl, target: "_blank", rel: "noopener noreferrer", textContent: this.tr("privacyLink") }));
-    }
-    const foot = el("div", { className: "fk-foot" }, [privacy, send]);
-    const view = el("div", { className: "fk-form" }, [types, this.guidanceEl, label, this.textarea, attachments, foot]);
+    // "What gets sent?" — the auto-collected context, listed before sending.
+    this.sentList = el("ul", { className: "fk-sent", id: "fk-sent", hidden: true });
+    this.discloseBtn = el("button", { className: "fk-disclose", type: "button" }, [icon("eye"), this.tr("whatSent")]);
+    this.discloseBtn.setAttribute("aria-controls", "fk-sent");
+    this.discloseBtn.addEventListener("click", () => this.setDisclosure(this.sentList.hidden));
+    const foot = el("div", { className: "fk-foot" }, [this.discloseBtn]);
+    if (this.config.privacyUrl) foot.append(el("a", { className: "fk-privacy", href: this.config.privacyUrl, target: "_blank", rel: "noopener noreferrer", textContent: this.tr("privacyLink") }));
+
+    const view = el("div", { className: "fk-view" }, [el("h2", { className: "fk-h", textContent: this.tr("heading") }), types, this.guidanceEl, composer, foot, this.sentList]);
     this.views["form"] = view;
-    this.applyGuidance();
+    this.selectType(this.config.types[0]?.type ?? "");
     return view;
   }
 
-  private buildShotChip(): HTMLSpanElement {
-    this.shotLabelEl = el("span", { className: "txt", textContent: this.tr("screenshotChip") });
-    this.shotMarkupBtn = el("button", { className: "act", type: "button", textContent: this.tr("editShot"), title: this.tr("editShot") });
-    this.shotMarkupBtn.setAttribute("aria-label", this.tr("editShot"));
-    this.shotMarkupBtn.addEventListener("click", () => this.h.onEditScreenshot());
-    this.shotToggleBtn = el("button", { className: "act icon", type: "button", textContent: "×", title: this.tr("removeShot") });
-    this.shotToggleBtn.setAttribute("aria-label", this.tr("removeShot"));
-    this.shotToggleBtn.addEventListener("click", () => this.toggleShot(this.shotToggleBtn));
-    return el("span", { className: "fk-chip shot" }, [this.shotLabelEl, this.shotMarkupBtn, this.shotToggleBtn]);
+  private setDisclosure(open: boolean) {
+    this.sentList.hidden = !open;
+    this.discloseBtn.setAttribute("aria-expanded", String(open));
   }
 
-  private toggleShot(toggle: HTMLButtonElement) {
-    this.shotEnabled = !this.shotEnabled;
-    this.shotChip.classList.toggle("off", !this.shotEnabled);
-    this.shotMarkupBtn.disabled = !this.shotEnabled;
-    toggle.textContent = this.shotEnabled ? "×" : "+";
-    const label = this.shotEnabled ? this.tr("removeShot") : this.tr("restoreShot");
-    toggle.setAttribute("aria-label", label);
-    toggle.title = label;
+  private setShot(on: boolean) {
+    this.shotOn = on;
+    this.shotBtn.setAttribute("aria-pressed", String(on));
+    this.shotMarkupBtn.hidden = !on;
+    if (this.sentShotLi) this.sentShotLi.textContent = `${this.tr("sentShot")}: ${this.tr(on ? "yes" : "no")}`;
   }
 
   private acceptFiles(files: FileList | undefined | null) {
@@ -245,31 +289,22 @@ export class WidgetUI {
     }
   }
 
+  /** Fill the "What gets sent?" list for this attempt (text only, no innerHTML). */
   setContext(ctx: UIContext) {
-    this.ctxBrowserChip.hidden = !ctx.browser;
-    this.ctxUrlChip.hidden = !ctx.url;
-    this.ctxConsoleChip.hidden = !ctx.consoleErrors;
-    if (ctx.browser) { this.ctxBrowserChip.textContent = ctx.browser; this.ctxBrowserChip.hidden = false; }
-    if (ctx.url) { this.ctxUrlChip.textContent = `Page ${ctx.url}`; this.ctxUrlChip.hidden = false; }
-    if (ctx.consoleErrors && ctx.consoleErrors > 0) {
-      this.ctxConsoleChip.textContent = `console · ${ctx.consoleErrors}`;
-      this.ctxConsoleChip.hidden = false;
-    }
-  }
-
-  /** Patch the guidance line to the active type's hint (hidden when empty). */
-  private applyGuidance() {
-    const g = this.config.types.find((ty) => ty.type === this.activeType)?.guidance ?? "";
-    this.guidanceEl.textContent = g;
-    this.guidanceEl.hidden = !g;
+    const li = (k: Parameters<typeof t>[1], v: string) => el("li", { textContent: `${this.tr(k)}: ${v}` });
+    const items = [el("li", { textContent: this.tr("sentText") })];
+    if (ctx.url) items.push(li("sentPage", ctx.url));
+    if (ctx.browser) items.push(li("sentBrowser", ctx.browser));
+    if (ctx.console) items.push(li("sentConsole", String(ctx.consoleErrors ?? 0)));
+    if (this.shotAllowed) items.push((this.sentShotLi = li("sentShot", this.tr(this.shotOn ? "yes" : "no"))));
+    if (ctx.contextKeys?.length) items.push(li("sentContext", ctx.contextKeys.join(", ")));
+    this.sentList.replaceChildren(...items);
   }
 
   private buildAnnotate() {
     this.annotator = new AnnotatorUI(this.config.locale, {
       onDone: (blob) => {
-        this.shotEnabled = true;
-        this.shotChip.classList.remove("off");
-        this.shotMarkupBtn.disabled = false;
+        this.setShot(true);
         this.shotLabelEl.textContent = `${this.tr("screenshotChip")} ${this.tr("shotReady")}`;
         this.closeAnnotator();
         this.h.onAnnotated(blob);
@@ -329,14 +364,10 @@ export class WidgetUI {
 
   /** New attempt → clear all transient form and media state without rebuilding DOM. */
   private resetShotUI() {
-    this.shotEnabled = true;
-    this.shotChip.classList.remove("off");
+    this.setShot(false);
     this.shotLabelEl.textContent = this.tr("screenshotChip");
     this.shotMarkupBtn.disabled = false;
     this.shotMarkupBtn.textContent = this.tr("editShot");
-    this.shotToggleBtn.textContent = "×";
-    this.shotToggleBtn.setAttribute("aria-label", this.tr("removeShot"));
-    this.shotToggleBtn.title = this.tr("removeShot");
     this.fileChips.replaceChildren();
     this.attachInput.value = "";
     this.mediaHint.hidden = true;
@@ -345,35 +376,63 @@ export class WidgetUI {
     this.backdrop.removeAttribute("aria-hidden");
   }
 
-  private buildExtracting(): HTMLElement {
-    this.sendNowBtn = el("button", { className: "fk-btn fk-ghost", type: "button", textContent: this.tr("sendNow") });
+  // The conversation: the user's text, how it was understood, ONE follow-up
+  // question with a single freetext answer (ADR-012). Also hosts the busy states.
+  private buildThread(): HTMLElement {
+    this.meBubble = el("div", { className: "fk-me" });
+    const avatar = icon("logo", "fk-avatar");
+    this.statusText = el("span");
+    this.typeTag = el("span", { className: "fk-tag" });
+    this.botRow = el("div", { className: "fk-bot" }, [avatar, this.statusText, this.typeTag]);
+    this.questionEl = el("p", { className: "fk-q", id: "fk-question" });
+
+    this.answerBox = el("input", { id: "fk-answer", type: "text", placeholder: this.tr("followUpPlaceholder"), ariaLabel: this.tr("followUpPlaceholder") });
+    this.answerBox.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") this.h.onComplete(this.answerBox.value.trim());
+    });
+    const send = el("button", { className: "fk-send", type: "button", ariaLabel: this.tr("send") }, [icon("up")]);
+    send.addEventListener("click", () => this.h.onComplete(this.answerBox.value.trim()));
+    this.answerWrap = el("div", { className: "fk-answer" }, [this.answerBox, send]);
+
+    const anyway = el("button", { className: "fk-linkbtn", type: "button", textContent: this.tr("sendAnyway") });
+    anyway.addEventListener("click", () => this.h.onComplete("")); // skip the answer
+    this.askFoot = el("div", { className: "fk-foot" }, [el("span", { textContent: this.tr("oneQuestion") }), anyway]);
+
+    this.sendNowBtn = el("button", { className: "fk-linkbtn", type: "button", textContent: this.tr("sendNow") });
     this.sendNowBtn.addEventListener("click", () => this.h.onSendNow());
-    this.statusText = el("span", { textContent: this.tr("analyzing") });
-    const view = el("div", { className: "fk-status" }, [el("span", { className: "fk-spinner" }), this.statusText, this.sendNowBtn]);
-    this.views["extracting"] = view;
+
+    const view = el("div", { className: "fk-view" }, [el("div", { className: "fk-thread" }, [this.meBubble, this.botRow, this.questionEl]), this.answerWrap, this.askFoot, this.sendNowBtn]);
+    this.views["thread"] = view;
     return view;
   }
 
-  // ONE conversational follow-up question + a single freetext answer (ADR-012).
-  private buildAsking(): HTMLElement {
-    this.questionEl = el("p", { className: "fk-question", id: "fk-question" });
-    this.answerBox = el("textarea", { className: "fk-input", id: "fk-answer", placeholder: this.tr("followUpPlaceholder") });
-    this.answerBox.rows = 3;
-    const send = el("button", { className: "fk-btn", type: "button", textContent: this.tr("send") });
-    send.addEventListener("click", () => this.h.onComplete(this.activeType, this.answerBox.value.trim()));
-    const anyway = el("button", { className: "fk-link", type: "button", textContent: this.tr("sendAnyway") });
-    anyway.addEventListener("click", () => this.h.onComplete(this.activeType, "")); // skip the answer
-    const view = el("div", {}, [this.questionEl, this.answerBox, el("div", { className: "fk-actions" }, [send, anyway])]);
-    this.views["asking"] = view;
-    return view;
+  /** Patch the thread for a busy state (extracting/submitting) or the question. */
+  private showThread(status: string, question?: string, type?: string) {
+    this.show("thread");
+    this.meBubble.textContent = this.textarea.value.trim();
+    this.botRow.classList.toggle("fk-busy", !!status);
+    this.statusText.textContent = status;
+    this.statusText.hidden = !status;
+    const label = this.typeLabel(type);
+    this.typeTag.textContent = label ? this.tr("classified").replace("{type}", label) : "";
+    this.typeTag.hidden = !label || !!status;
+    this.questionEl.textContent = question ?? "";
+    this.questionEl.hidden = this.answerWrap.hidden = this.askFoot.hidden = !question;
+    this.sendNowBtn.hidden = true;
   }
 
   private buildDone(): HTMLElement {
-    this.doneMsg = el("p", { className: "fk-hint" });
+    this.summaryEl = el("p", { className: "fk-summary" });
+    this.doneTag = el("span", { className: "fk-tag" });
+    this.card = el("div", { className: "fk-card" }, [el("span", { className: "fk-eyebrow", textContent: this.tr("understood") }), this.summaryEl, this.doneTag]);
     const restart = el("button", { className: "fk-btn fk-ghost", type: "button", textContent: this.tr("sendAnother") });
     restart.addEventListener("click", () => this.h.onRestart());
-    this.issueLink = el("a", { className: "fk-btn", textContent: this.tr("viewIssue"), target: "_blank", rel: "noopener noreferrer" });
-    const view = el("div", { className: "fk-done" }, [el("div", { className: "fk-done-icon", textContent: "✓" }), el("h3", { className: "fk-title", textContent: this.tr("doneTitle") }), this.doneMsg, el("div", { className: "fk-actions", role: "group" }, [restart, this.issueLink])]);
+    this.issueLink = el("a", { className: "fk-btn", target: "_blank", rel: "noopener noreferrer" }, [this.tr("viewIssue"), icon("ext")]);
+    const view = el("div", { className: "fk-view" }, [
+      el("div", { className: "fk-done-head" }, [icon("check", "fk-check"), el("h2", { className: "fk-h", textContent: this.tr("doneTitle") })]),
+      this.card,
+      el("div", { className: "fk-row", role: "group" }, [restart, this.issueLink]),
+    ]);
     this.views["done"] = view;
     return view;
   }
@@ -381,7 +440,7 @@ export class WidgetUI {
   private buildFailed(): HTMLElement {
     const retry = el("button", { className: "fk-btn", type: "button", textContent: this.tr("retry") });
     retry.addEventListener("click", () => this.h.onRetry());
-    const view = el("div", {}, [el("p", { className: "fk-hint", textContent: this.tr("failed") }), el("div", { className: "fk-actions" }, [retry])]);
+    const view = el("div", { className: "fk-view" }, [el("p", { className: "fk-hint", textContent: this.tr("failed") }), el("div", { className: "fk-row" }, [retry])]);
     this.views["failed"] = view;
     return view;
   }
@@ -389,7 +448,9 @@ export class WidgetUI {
   private selectType(type: string) {
     this.activeType = type;
     this.config.types.forEach((ty, i) => this.typeButtons[i]?.setAttribute("aria-pressed", String(ty.type === type)));
-    this.applyGuidance();
+    const g = this.showTypes ? (this.config.types.find((ty) => ty.type === type)?.guidance ?? "") : "";
+    this.guidanceEl.textContent = g;
+    this.guidanceEl.hidden = !g;
   }
 
   private show(name: string) {
@@ -437,34 +498,33 @@ export class WidgetUI {
         this.answerBox.value = "";
         this.selectType(this.config.types[0]?.type ?? "");
         this.resetShotUI(); // "form" is only entered on a fresh attempt (open/retry)
-        this.title.textContent = this.tr("title");
-        this.live.textContent = this.tr("title");
+        this.setDisclosure(false);
+        this.live.textContent = this.tr("heading");
         this.textarea.focus();
         break;
       case "extracting":
-        this.show("extracting");
-        // After the 4s slow-hint, skipping the follow-up becomes a primary action.
-        this.statusText.textContent = this.tr("analyzing");
-        this.sendNowBtn.hidden = false;
-        this.sendNowBtn.className = state.sendNow ? "fk-btn" : "fk-btn fk-ghost";
+        this.showThread(this.tr("analyzing"));
+        // After the 4s slow-hint, skipping the follow-up becomes available.
+        this.sendNowBtn.hidden = !state.sendNow;
         this.live.textContent = this.tr("analyzing");
         break;
       case "asking":
-        this.show("asking");
-        this.questionEl.textContent = state.question;
+        this.showThread("", state.question, state.type);
         this.answerBox.value = "";
         this.live.textContent = state.question;
         this.answerBox.focus();
         break;
       case "submitting":
-        this.show("extracting");
-        this.statusText.textContent = this.tr("finalizing");
-        this.sendNowBtn.hidden = true;
+        this.showThread(this.tr("finalizing"));
         this.live.textContent = this.tr("finalizing");
         break;
       case "done": {
         this.show("done");
-        this.doneMsg.textContent = this.tr("doneMsg");
+        const label = this.typeLabel(state.type);
+        this.summaryEl.textContent = state.summary ?? "";
+        this.doneTag.textContent = label;
+        this.doneTag.hidden = !label;
+        this.card.hidden = !state.summary; // nothing understood to show without the model
         // Only link an https URL — never trust a server value into href (a
         // javascript: URL would be click-XSS).
         const url = state.issueUrl && /^https:\/\//i.test(state.issueUrl) ? state.issueUrl : "";

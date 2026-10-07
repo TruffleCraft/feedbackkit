@@ -5,38 +5,42 @@ type Key =
   | "trigger"
   | "title"
   | "close"
+  | "heading"
   | "textLabel"
   | "textPlaceholder"
   | "send"
-  | "attachScreenshot"
-  | "attachFile"
+  | "addImages"
+  | "screenshotChip"
+  | "editShot"
+  | "whatSent"
+  | "sentText"
+  | "sentPage"
+  | "sentBrowser"
+  | "sentConsole"
+  | "sentShot"
+  | "sentContext"
+  | "yes"
+  | "no"
   | "analyzing"
   | "finalizing"
   | "sendNow"
+  | "classified"
   | "followUpPlaceholder"
+  | "oneQuestion"
   | "sendAnyway"
   | "doneTitle"
   | "doneMsg"
+  | "understood"
   | "viewIssue"
   | "sendAnother"
   | "failed"
   | "retry"
-  | "editShot"
   | "captureFailed"
   | "captureStarted"
   | "capturing"
   | "shotReady"
-  | "screenshotChip"
-  | "removeShot"
-  | "restoreShot"
-  | "dropTitle"
-  | "dropTitleAccent"
-  | "dropSub"
-  | "addImages"
   | "uploadFailed"
   | "uploadLimit"
-  | "privacy"
-  | "privacyNoShot"
   | "privacyLink"
   | "annotateTitle"
   | "annotateHint"
@@ -56,40 +60,44 @@ type Key =
 const STR: Record<Locale, Record<Key, string>> = {
   en: {
     trigger: "Feedback",
-    title: "Send feedback",
+    title: "Feedback",
     close: "Close",
-    textLabel: "What's on your mind?",
-    textPlaceholder: "Tell us anything — a bug, an idea, something that felt off…",
+    heading: "What did you notice?",
+    textLabel: "Your message",
+    textPlaceholder: "Describe it in your own words. If something is missing, we'll ask.",
     send: "Send",
-    attachScreenshot: "Attach a screenshot of this page",
-    attachFile: "Attach a file",
-    analyzing: "AI is structuring your feedback…",
-    finalizing: "Finishing without a follow-up…",
-    sendNow: "Skip follow-up",
-    followUpPlaceholder: "Your answer…",
-    sendAnyway: "Send anyway",
-    doneTitle: "Thanks!",
+    addImages: "Add images",
+    screenshotChip: "Screenshot",
+    editShot: "Mark up",
+    whatSent: "What gets sent?",
+    sentText: "Your text and attached images",
+    sentPage: "Page",
+    sentBrowser: "Browser",
+    sentConsole: "Console messages",
+    sentShot: "Screenshot",
+    sentContext: "App context",
+    yes: "yes",
+    no: "no",
+    analyzing: "One moment…",
+    finalizing: "Sending…",
+    sendNow: "Send without a follow-up",
+    classified: "Filed as {type}",
+    followUpPlaceholder: "Your answer",
+    oneQuestion: "One question, then you're done.",
+    sendAnyway: "Send without answering",
+    doneTitle: "Thanks, got it.",
     doneMsg: "Your feedback was received.",
-    viewIssue: "View issue",
-    sendAnother: "Send more feedback",
+    understood: "How we understood it",
+    viewIssue: "View ticket",
+    sendAnother: "Report something else",
     failed: "Something went wrong. Please try again.",
     retry: "Try again",
-    editShot: "Mark up",
     captureStarted: "Capturing the visible page…",
     capturing: "Capturing…",
-    captureFailed: "Could not capture this page — you can still send your feedback.",
+    captureFailed: "Could not capture this page. You can still send your feedback.",
     shotReady: "edited ✓",
-    screenshotChip: "Screenshot",
-    removeShot: "Remove screenshot",
-    restoreShot: "Restore screenshot",
-    dropTitleAccent: "Drop images here",
-    dropTitle: " or add them",
-    dropSub: "PNG, JPG, WebP or GIF · up to 4 files",
-    addImages: "Add images",
     uploadFailed: "upload failed",
     uploadLimit: "limit reached",
-    privacy: "Screenshot may be included with page context",
-    privacyNoShot: "Sent with browser and page address, no screenshot",
     privacyLink: "Privacy",
     annotateTitle: "Mark up screenshot",
     annotateHint: "Drag to crop, or pick a tool to mark things up.",
@@ -108,40 +116,44 @@ const STR: Record<Locale, Record<Key, string>> = {
   },
   de: {
     trigger: "Feedback",
-    title: "Feedback geben",
+    title: "Feedback",
     close: "Schließen",
-    textLabel: "Was möchtest du uns sagen?",
-    textPlaceholder: "Sag uns alles — ein Bug, eine Idee, etwas das sich falsch angefühlt hat…",
+    heading: "Was ist dir aufgefallen?",
+    textLabel: "Deine Nachricht",
+    textPlaceholder: "Beschreib es in deinen Worten. Wenn etwas fehlt, fragen wir nach.",
     send: "Senden",
-    attachScreenshot: "Screenshot dieser Seite anhängen",
-    attachFile: "Datei anhängen",
-    analyzing: "AI strukturiert dein Feedback…",
-    finalizing: "Wird ohne Rückfrage abgeschlossen…",
-    sendNow: "Rückfrage überspringen",
-    followUpPlaceholder: "Deine Antwort…",
-    sendAnyway: "Trotzdem senden",
-    doneTitle: "Danke!",
-    doneMsg: "Dein Feedback ist angekommen.",
-    viewIssue: "Zum Ticket",
-    sendAnother: "Weiteres Feedback",
-    failed: "Etwas ist schiefgelaufen. Bitte erneut versuchen.",
-    retry: "Erneut versuchen",
-    editShot: "Markieren",
-    captureStarted: "Sichtbaren Bereich aufnehmen…",
-    capturing: "Aufnahme…",
-    captureFailed: "Seite konnte nicht aufgenommen werden — dein Feedback kannst du trotzdem senden.",
-    shotReady: "bearbeitet ✓",
+    addImages: "Bild anhängen",
     screenshotChip: "Screenshot",
-    removeShot: "Screenshot entfernen",
-    restoreShot: "Screenshot wiederherstellen",
-    dropTitleAccent: "Bilder hierher ziehen",
-    dropTitle: " oder hinzufügen",
-    dropSub: "PNG, JPG, WebP oder GIF · bis zu 4 Dateien",
-    addImages: "Bilder hinzufügen",
+    editShot: "Markieren",
+    whatSent: "Was wird gesendet?",
+    sentText: "Dein Text und angehängte Bilder",
+    sentPage: "Seite",
+    sentBrowser: "Browser",
+    sentConsole: "Konsolenmeldungen",
+    sentShot: "Screenshot",
+    sentContext: "App-Kontext",
+    yes: "ja",
+    no: "nein",
+    analyzing: "Einen Moment …",
+    finalizing: "Wird gesendet …",
+    sendNow: "Ohne Rückfrage senden",
+    classified: "Als {type} eingeordnet",
+    followUpPlaceholder: "Deine Antwort",
+    oneQuestion: "Eine Frage, dann ist es fertig.",
+    sendAnyway: "Ohne Antwort senden",
+    doneTitle: "Danke, ist angekommen.",
+    doneMsg: "Dein Feedback ist angekommen.",
+    understood: "So haben wir es verstanden",
+    viewIssue: "Ticket ansehen",
+    sendAnother: "Noch etwas melden",
+    failed: "Etwas ist schiefgelaufen. Bitte versuch es noch einmal.",
+    retry: "Erneut versuchen",
+    captureStarted: "Sichtbaren Bereich aufnehmen …",
+    capturing: "Aufnahme …",
+    captureFailed: "Die Seite konnte nicht aufgenommen werden. Dein Feedback kannst du trotzdem senden.",
+    shotReady: "bearbeitet ✓",
     uploadFailed: "Upload fehlgeschlagen",
     uploadLimit: "Limit erreicht",
-    privacy: "Screenshot kann Seitenkontext enthalten",
-    privacyNoShot: "Wird mit Browser und Seitenadresse gesendet, ohne Screenshot",
     privacyLink: "Datenschutz",
     annotateTitle: "Screenshot markieren",
     annotateHint: "Ziehen zum Zuschneiden, oder ein Werkzeug zum Markieren wählen.",

@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { installMocks } from "./helpers";
 
-const placeholder = /tell us anything/i;
+const placeholder = /in your own words/i;
 const send = { name: "Send", exact: true } as const;
 const feedbackBtn = { name: "Feedback" } as const;
 const closeBtn = { name: "Close" } as const;
@@ -27,7 +27,7 @@ test("scroll-lock: set on open, restored on close — twice, no corruption (regr
   await page.getByRole("button", feedbackBtn).click();
   await page.getByPlaceholder(placeholder).fill("x");
   await page.getByRole("button", send).click();
-  await expect(page.getByText("Thanks!")).toBeVisible();
+  await expect(page.getByText("Thanks, got it.")).toBeVisible();
   await page.getByRole("button", closeBtn).click();
   expect(await overflow()).toBe("");
 });
@@ -37,7 +37,7 @@ test("form input survives a DOM toggle (re-render ban)", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", feedbackBtn).click();
   await page.getByPlaceholder(placeholder).fill("my typed feedback");
-  await page.getByRole("button", { name: "Remove screenshot" }).click();
+  await page.getByRole("button", { name: "Screenshot", exact: true }).click();
   await expect(page.getByPlaceholder(placeholder)).toHaveValue("my typed feedback"); // form not rebuilt
 });
 
@@ -48,7 +48,7 @@ test("a fresh attempt clears text, answer, and media without replacing persisten
   const text = page.getByPlaceholder(placeholder);
   await text.evaluate((node) => node.setAttribute("data-persistent", "yes"));
   await page.locator("#fk-file").setInputFiles({ name: "old.png", mimeType: "image/png", buffer: Buffer.from([1]) });
-  await page.getByRole("button", { name: "Remove screenshot" }).click();
+  await page.getByRole("button", { name: "Screenshot", exact: true }).click(); // on, then a fresh attempt resets it to off
   await text.fill("old attempt");
   await page.getByRole("button", send).click();
   await page.locator("#fk-answer").fill("stale answer");
@@ -59,7 +59,7 @@ test("a fresh attempt clears text, answer, and media without replacing persisten
   await expect(text).toHaveAttribute("data-persistent", "yes");
   await expect(page.locator("#fk-answer")).toHaveValue("");
   await expect(page.locator(".fk-files .fk-chip")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Remove screenshot" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Screenshot", exact: true })).toHaveAttribute("aria-pressed", "false");
 });
 
 test("renders full-viewport even when an ancestor is transformed (fixed-positioning trap)", async ({ page }) => {

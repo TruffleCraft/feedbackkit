@@ -98,6 +98,9 @@ export const FeedbackConfig = z.object({
     .default({ screenshot: "optional", console: true }),
   // Linked from the widget's privacy line (the host's own privacy policy).
   privacyUrl: z.string().url().startsWith("https://").optional(),
+  // Return the created issue's URL to the widget ("View ticket"). Switch off for
+  // public sites whose tracker is private or should stay unnamed.
+  issueLink: z.boolean().default(true),
   // Optional Cloudflare Turnstile gate on POST /api/feedback. `secret` names the
   // TURNSTILE_SECRET_<name> worker secret (like tracker.patSecret).
   turnstile: z.object({ siteKey: z.string().min(1), secret: z.string().regex(/^TURNSTILE_SECRET_[A-Za-z0-9_]+$/) }).optional(),
@@ -110,6 +113,9 @@ export const PublicConfig = z.object({
   enabled: z.boolean(),
   locale: z.string(),
   askType: z.boolean(),
+  // True when the gateway infers the type itself (LLM on, askType off, several
+  // types): the widget then shows no type picker. Optional for older gateways.
+  autoType: z.boolean().optional(),
   configVersion: z.number().int(),
   // Optional for compatibility with gateways that predate these fields.
   capture: z.object({ screenshot: z.enum(["optional", "off"]), console: z.boolean() }).optional(),
@@ -177,11 +183,12 @@ export type FeedbackPayload = z.infer<typeof FeedbackPayload>;
 
 // ── Feedback response (worker → widget) ───────────────────────────────────────
 export type FeedbackResponse =
-  | { v: 1; status: "created"; id: string; issueUrl?: string }
+  // `type` and `summary` let the widget show how the feedback was understood.
+  | { v: 1; status: "created"; id: string; issueUrl?: string; type?: string; summary?: string }
   // One conversational follow-up (ADR-012): a single natural-language question,
   // answered in freetext — not a multi-field form.
-  | { v: 1; status: "follow_up"; question: string; extracted: Record<string, string>; summary?: string }
-  | { v: 1; status: "accepted_incomplete"; id: string; issueUrl?: string }
+  | { v: 1; status: "follow_up"; question: string; extracted: Record<string, string>; summary?: string; type?: string }
+  | { v: 1; status: "accepted_incomplete"; id: string; issueUrl?: string; type?: string; summary?: string }
   | { v: 1; status: "issue_failed"; id: string; reason: string }
   | { v: 1; status: "error"; error: string; degraded?: boolean };
 

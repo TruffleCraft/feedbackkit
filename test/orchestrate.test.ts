@@ -100,7 +100,7 @@ describe("orchestrateFeedback — POST-1", () => {
       now: 1000,
       newId: () => "fid1",
     });
-    expect(r.body).toMatchObject({ status: "created", issueUrl: "https://github.com/acme/site/issues/1" });
+    expect(r.body).toMatchObject({ status: "created", issueUrl: "https://github.com/acme/site/issues/1", type: "bug", summary: "Saving fails" });
     expect(gh.calls[0]!.body.title).toBe("[BUG] Saving fails");
     expect(db.feedback[0]).toMatchObject({ outcome: "created" });
     expect(db.dedup.has(UUID)).toBe(true); // terminal success is idempotency-stored
@@ -138,6 +138,63 @@ describe("orchestrateFeedback — POST-1", () => {
     expect((r.body as { summary?: string }).summary).toBe("s");
     expect(gh.calls).toHaveLength(0);
     expect(db.dedup.size).toBe(0); // follow_up is NOT terminal
+  });
+
+  it("auto-type: no type sent → the model picks the template, the response names it", async () => {
+    const db = fakeDb();
+    const gh = ghCapture();
+    let prompt = "";
+    const chat: ChatFn = async (req) => {
+      prompt = JSON.parse((req as { init: { body: string } }).init.body).messages[1].content;
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ type: "praise", summary: "Tolle App", followUpQuestion: "", repro: "", expected: "", actual: "" }) } }] }), { status: 200 });
+    };
+    const r = await orchestrateFeedback(env(db.db), loaded(), payload({ type: undefined, message: "Super gemacht!" }), { apiKey: "k", chat, fetchImpl: gh.fetchImpl, newId: () => "fid" });
+    expect(prompt).toContain("choose the best match");
+    expect(prompt).toContain("- praise (Lob); required fields: none");
+    expect(r.body).toMatchObject({ status: "created", type: "praise", summary: "Tolle App" });
+    expect(gh.calls).toHaveLength(0); // praise is noIssue: the bug template's required fields were never asked
+  });
+
+  it("issueLink off: the issue is created and stored, but its URL is not returned", async () => {
+    const db = fakeDb();
+    const r = await orchestrateFeedback(env(db.db), loaded(baseConfig({ issueLink: false })), payload(), {
+      apiKey: "k",
+      chat: chatReturning({ type: "bug", summary: "s", repro: "k", expected: "e", actual: "a" }),
+      fetchImpl: ghCapture().fetchImpl,
+    });
+    expect(r.body.status).toBe("created");
+    expect(r.body).not.toHaveProperty("issueUrl");
+    expect(db.feedback[0]).toMatchObject({ issueUrl: "https://github.com/acme/site/issues/1" });
+  });
+
+  it("auto-type: the follow-up carries the chosen type for POST-2", async () => {
+    const db = fakeDb();
+    const r = await orchestrateFeedback(env(db.db), loaded(), payload({ type: undefined }), {
+      apiKey: "k",
+      chat: chatReturning({ type: "bug", summary: "s", repro: "klick", expected: "", actual: "", followUpQuestion: "Was hast du erwartet?" }),
+      fetchImpl: ghCapture().fetchImpl,
+    });
+    expect(r.body).toMatchObject({ status: "follow_up", type: "bug", question: "Was hast du erwartet?" });
+  });
+
+  it("auto-type without a usable model: creates for triage instead of asking type-specific questions", async () => {
+    const db = fakeDb();
+    const gh = ghCapture();
+    const r = await orchestrateFeedback(env(db.db), loaded(), payload({ type: undefined }), { chat: chatMustNotRun, fetchImpl: gh.fetchImpl });
+    expect(r.body.status).toBe("accepted_incomplete");
+    expect(gh.calls[0]!.body.labels).toContain("needs-triage");
+  });
+
+  it("a fixed type is never re-classified, even with auto-type on", async () => {
+    const db = fakeDb();
+    let prompt = "";
+    const chat: ChatFn = async (req) => {
+      prompt = JSON.parse((req as { init: { body: string } }).init.body).messages[1].content;
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ type: "praise", summary: "s", followUpQuestion: "", repro: "k", expected: "e", actual: "a" }) } }] }), { status: 200 });
+    };
+    const r = await orchestrateFeedback(env(db.db), loaded(), payload(), { apiKey: "k", chat, fetchImpl: ghCapture().fetchImpl });
+    expect(prompt).toContain("Feedback type: bug");
+    expect(r.body).toMatchObject({ status: "created", type: "bug" });
   });
 
   it("create-anyway on LLM failure: accepted_incomplete + ai-failed label", async () => {

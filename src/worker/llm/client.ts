@@ -6,7 +6,8 @@ import type { ConsoleEntryT, DeviceInfoT, FeedbackConfig, TemplateDefinition } f
 // the caller falls back to a plain form (create-anyway).
 
 export interface ExtractionResult {
-  /** LLM-suggested feedback type, only if it matches a configured template. */
+  /** LLM-suggested feedback type, only if it matches a configured template.
+   * With `autoType` it is the template the extraction was validated against. */
   type?: string;
   /** Extracted field values, keyed by field key. Empty/absent = not found. */
   extracted: Record<string, string>;
@@ -55,14 +56,21 @@ function labelText(label: unknown, locale: string): string {
   return "";
 }
 
-/** Build an OpenAI json_schema for the template's fields (+ type/summary). */
-function buildSchema(template: TemplateDefinition, allTypes: string[]) {
+/** Fields of every candidate template, first definition of a key wins. */
+function unionFields(templates: TemplateDefinition[]): TemplateDefinition["fields"] {
+  const seen = new Map<string, TemplateDefinition["fields"][number]>();
+  for (const t of templates) for (const f of t.fields) if (!seen.has(f.key)) seen.set(f.key, f);
+  return [...seen.values()];
+}
+
+/** Build an OpenAI json_schema for the candidate fields (+ type/summary). */
+function buildSchema(fields: TemplateDefinition["fields"], allTypes: string[]) {
   const properties: Record<string, unknown> = {
     type: { type: "string", enum: allTypes },
     summary: { type: "string" },
     followUpQuestion: { type: "string" },
   };
-  for (const f of template.fields) {
+  for (const f of fields) {
     properties[f.key] =
       f.kind === "select" && f.options?.length
         ? { type: "string", enum: f.options.map((o) => o.value) }
@@ -74,7 +82,7 @@ function buildSchema(template: TemplateDefinition, allTypes: string[]) {
     schema: {
       type: "object",
       additionalProperties: false,
-      required: ["type", "summary", "followUpQuestion", ...template.fields.map((f) => f.key)],
+      required: ["type", "summary", "followUpQuestion", ...fields.map((f) => f.key)],
       properties,
     },
   };
@@ -83,6 +91,8 @@ function buildSchema(template: TemplateDefinition, allTypes: string[]) {
 export interface ClassifyOpts {
   config: FeedbackConfig;
   template: TemplateDefinition;
+  /** Let the model pick the type among all templates; `template` is the fallback. */
+  autoType?: boolean;
   message: string;
   screenshotDataUrl?: string;
   // Session context fed to the model alongside the text + screenshot so the
@@ -122,16 +132,24 @@ function renderContext(opts: ClassifyOpts): string {
 export async function classifyAndExtract(opts: ClassifyOpts): Promise<ExtractionResult> {
   const { config, template, message, screenshotDataUrl, apiKey, chat } = opts;
   const allTypes = config.templates.map((t) => t.type);
+  const candidates = opts.autoType ? config.templates : [template];
+  const fields = unionFields(candidates);
 
-  const fieldLines = template.fields
+  const fieldLines = fields
     .map((f) => {
       const allowed = f.kind === "select" && f.options?.length ? ` Allowed exact values: ${f.options.map((option) => option.value).join(", ")}.` : "";
       return `- ${f.key} (${labelText(f.label, config.locale)})${f.extractionHint ? `: ${f.extractionHint}` : ""}${allowed}`;
     })
     .join("\n");
   // Naming the exact key set helps models that run WITHOUT json_schema (below).
-  const keyList = ["type", "summary", "followUpQuestion", ...template.fields.map((f) => f.key)].join(", ");
-  const userText = `Feedback type: ${template.type}\nIssue language: ${config.locale}\nTranslate summary and extracted issue fields into that language when needed. Keep followUpQuestion in the user's language.${"\n"}Fields to extract:\n${fieldLines}\n\nReturn a JSON object with exactly these keys: ${keyList}.${renderContext(opts)}\n\nUser feedback:\n${message}`;
+  const keyList = ["type", "summary", "followUpQuestion", ...fields.map((f) => f.key)].join(", ");
+  // Auto-typing: the model picks the type, and only that type's required fields count.
+  const typeLine = opts.autoType
+    ? `Feedback type: choose the best match.\n${candidates
+        .map((t) => `- ${t.type} (${labelText(t.label, config.locale)}); required fields: ${t.fields.filter((f) => f.required).map((f) => f.key).join(", ") || "none"}`)
+        .join("\n")}\nFill only fields that belong to the chosen type; leave the others empty. Ask follow-ups only for the chosen type's required fields.`
+    : `Feedback type: ${template.type}`;
+  const userText = `${typeLine}\nIssue language: ${config.locale}\nTranslate summary and extracted issue fields into that language when needed. Keep followUpQuestion in the user's language.${"\n"}Fields to extract:\n${fieldLines}\n\nReturn a JSON object with exactly these keys: ${keyList}.${renderContext(opts)}\n\nUser feedback:\n${message}`;
 
   const content: unknown = screenshotDataUrl
     ? [
@@ -151,7 +169,7 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
   // Structured output is best-effort (ADR-008). Endpoints that don't support it
   // return EMPTY content when it's forced, so it's opt-out per project.
   if (config.llm.structuredOutput !== false) {
-    req["response_format"] = { type: "json_schema", json_schema: buildSchema(template, allTypes) };
+    req["response_format"] = { type: "json_schema", json_schema: buildSchema(fields, allTypes) };
   }
   // OpenRouter-only privacy hint; other endpoints may reject unknown top-level keys.
   if (config.llm.provider === "openrouter") {
@@ -202,21 +220,23 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
     return degraded(template, "llm returned a non-object");
   }
   const obj = parsed as Record<string, unknown>;
+  const typeVal = typeof obj["type"] === "string" && allTypes.includes(obj["type"] as string) ? (obj["type"] as string) : undefined;
+  // Fixed type: the given template. Auto: the model's pick, else the fallback.
+  const chosen = (opts.autoType && config.templates.find((t) => t.type === typeVal)) || template;
 
   const extracted: Record<string, string> = {};
-  for (const f of template.fields) {
+  for (const f of chosen.fields) {
     const v = obj[f.key];
     if (typeof v !== "string" || !v.trim()) continue;
     const value = v.trim();
     if (f.kind === "select" && f.options?.length && !f.options.some((option) => option.value === value)) continue;
     extracted[f.key] = value;
   }
-  const missing = template.fields.filter((f) => f.required && f.askIfMissing && !extracted[f.key]).map((f) => f.key);
-  const typeVal = typeof obj["type"] === "string" && allTypes.includes(obj["type"] as string) ? (obj["type"] as string) : undefined;
+  const missing = chosen.fields.filter((f) => f.required && f.askIfMissing && !extracted[f.key]).map((f) => f.key);
   const summary = typeof obj["summary"] === "string" ? (obj["summary"] as string).trim() : undefined;
   const followUpQuestion = typeof obj["followUpQuestion"] === "string" ? (obj["followUpQuestion"] as string).trim() : undefined;
 
-  return { type: typeVal, extracted, missing, summary, followUpQuestion, degraded: false };
+  return { type: opts.autoType ? chosen.type : typeVal, extracted, missing, summary, followUpQuestion, degraded: false };
 }
 
 function degraded(template: TemplateDefinition, reason: string): ExtractionResult {

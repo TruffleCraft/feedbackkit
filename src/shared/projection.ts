@@ -1,5 +1,11 @@
 import { WIRE_VERSION, type FeedbackConfig, type PublicConfig } from "./contract.js";
 
+/** The gateway picks the type itself: an LLM is configured, the project does not
+ * ask the user, and there is more than one type to choose from. */
+export function autoTypeEnabled(config: FeedbackConfig): boolean {
+  return config.llm.provider !== "off" && !config.askType && config.templates.length > 1;
+}
+
 // The public projection returned by GET /api/config. Whitelist-only: it carries
 // exactly what the widget needs to render and NOTHING internal — no extractionHint,
 // no tracker/repo, no llm config, no secrets, no origin allowlist.
@@ -9,6 +15,7 @@ export function toPublicConfig(config: FeedbackConfig, configVersion: number): P
     enabled: config.enabled,
     locale: config.locale,
     askType: config.askType,
+    autoType: autoTypeEnabled(config),
     configVersion,
     // What the widget may auto-collect, the host's privacy link and the public
     // Turnstile site key are user-facing by nature; the Turnstile secret name is not.

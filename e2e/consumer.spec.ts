@@ -4,7 +4,7 @@ import { CONFIG, installMocks } from "./helpers";
 // Consumer-app knobs: capture policy, privacy link, host context, URL redaction,
 // lazy loading with data-trigger="none" + data-autoopen, and Turnstile tokens.
 
-const placeholder = /tell us anything/i;
+const placeholder = /in your own words/i;
 const send = { name: "Send", exact: true } as const;
 const created = { v: 1, status: "created", id: "1", issueUrl: "https://github.com/acme/site/issues/1" };
 
@@ -33,7 +33,7 @@ test("screenshot + console off: no capture UI, no upload, no console; privacy li
   expect(payload.attachmentKeys).toEqual([]);
   expect(payload.context).toEqual({ userId: "u_42", appVersion: "1.2.3" });
   expect(uploads).toEqual([]);
-  await expect(page.getByText("Thanks!")).toBeVisible();
+  await expect(page.getByText("Thanks, got it.")).toBeVisible();
 });
 
 const LAZY_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>lazy</title></head><body>
@@ -92,9 +92,9 @@ test("turnstile: fresh token on POST-1 and POST-2, site key + action passed to r
   await page.getByPlaceholder(placeholder).fill("saving fails");
   const [req1] = await Promise.all([page.waitForRequest("**/api/feedback**"), page.getByRole("button", send).click()]);
   expect(req1.postDataJSON().turnstileToken).toBe("tok-1");
-  await page.getByPlaceholder("Your answer…").fill("that it saves");
+  await page.getByPlaceholder("Your answer").fill("that it saves");
   const [req2] = await Promise.all([page.waitForRequest("**/api/feedback**"), page.getByRole("button", send).click()]);
   expect(req2.postDataJSON().turnstileToken).toBe("tok-2");
   expect(await page.evaluate(() => (window as unknown as { __tsOpts: unknown }).__tsOpts)).toEqual({ sitekey: "0x4AAA-test", action: "feedback" });
-  await expect(page.getByText("Thanks!")).toBeVisible();
+  await expect(page.getByText("Thanks, got it.")).toBeVisible();
 });

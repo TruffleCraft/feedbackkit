@@ -3,7 +3,7 @@
   "projectId": "feedbackkit-demo",
   "locale": "en",
   "enabled": true,
-  "askType": true,
+  "askType": false,
   "templates": [
     {
       "type": "bug",
