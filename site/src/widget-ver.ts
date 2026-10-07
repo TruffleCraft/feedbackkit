@@ -1,1 +1,1 @@
-export const WIDGET_VER = "e3cc9b0bb901";
+export const WIDGET_VER = "7ef5cc83555d";
