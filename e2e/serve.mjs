@@ -11,7 +11,7 @@ const PORT = Number(process.env.PORT || 8788);
 
 const ROUTES = {
   "/widget.js": { file: join(root, "dist", "widget.js"), type: "application/javascript; charset=utf-8" },
-  "/dm-sans.woff2": { file: join(root, "dist", "dm-sans.woff2"), type: "font/woff2" },
+  "/urbanist.woff2": { file: join(root, "dist", "urbanist.woff2"), type: "font/woff2" },
   "/": { file: join(root, "e2e", "demo.html"), type: "text/html; charset=utf-8" },
   "/demo.html": { file: join(root, "e2e", "demo.html"), type: "text/html; charset=utf-8" },
 };
@@ -55,7 +55,7 @@ createServer((req, res) => {
     return;
   }
   try {
-    res.writeHead(200, { "Content-Type": r.type, ...(path === "/dm-sans.woff2" ? { "Access-Control-Allow-Origin": "*" } : {}) });
+    res.writeHead(200, { "Content-Type": r.type, ...(path === "/urbanist.woff2" ? { "Access-Control-Allow-Origin": "*" } : {}) });
     res.end(readFileSync(r.file));
   } catch (e) {
     res.writeHead(500);

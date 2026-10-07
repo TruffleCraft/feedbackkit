@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Builds the Shadow-DOM widget bundle into ./dist. Until the widget source lands
 // (P1.10) this emits a placeholder so `wrangler deploy` has an assets dir.
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
@@ -11,15 +11,15 @@ const dist = join(root, "dist");
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
 
-// Serve the same self-hosted font as the marketing site. The widget is loaded
-// cross-origin, so the asset needs an explicit CORS header.
-const fontSrc = join(root, "site", "src", "font.ts");
+// The widget's typeface, Urbanist (SIL OFL 1.1, @fontsource-variable/urbanist),
+// latin subset as one variable woff2. Loaded cross-origin by host pages, so the
+// asset needs an explicit CORS header.
+const fontSrc = join(root, "node_modules", "@fontsource-variable", "urbanist", "files", "urbanist-latin-wght-normal.woff2");
 if (existsSync(fontSrc)) {
-  const encoded = readFileSync(fontSrc, "utf8").match(/[A-Za-z0-9+/=]{500,}/)?.[0];
-  if (encoded) {
-    writeFileSync(join(dist, "dm-sans.woff2"), Buffer.from(encoded, "base64"));
-    writeFileSync(join(dist, "_headers"), "/dm-sans.woff2\n  Access-Control-Allow-Origin: *\n  Cache-Control: public, max-age=0, must-revalidate\n");
-  }
+  copyFileSync(fontSrc, join(dist, "urbanist.woff2"));
+  writeFileSync(join(dist, "_headers"), "/urbanist.woff2\n  Access-Control-Allow-Origin: *\n  Cache-Control: public, max-age=0, must-revalidate\n");
+} else {
+  console.warn("build:widget: @fontsource-variable/urbanist missing — run pnpm install; the widget falls back to system fonts");
 }
 
 const entry = join(root, "src", "widget", "index.ts");
