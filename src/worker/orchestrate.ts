@@ -4,6 +4,7 @@ import { createIssue, TrackerError, type FetchFn } from "./providers/github.js";
 import { deriveTitle, renderIssueBody, type RenderContext } from "../shared/render.js";
 import { publicUrl } from "./storage/r2.js";
 import { redactPageUrl } from "../shared/page-url.js";
+import { autoTypeEnabled } from "../shared/projection.js";
 import { hitRateLimit, dayWindow } from "./security/ratelimit.js";
 import type { LoadedProject } from "./config.js";
 import type { Env } from "./env.js";
@@ -98,12 +99,12 @@ interface ExtractExtras {
 
 /** LLM extraction gated by the daily budget. Returns null when the LLM is
  * unavailable (provider off, no key, or budget spent) — the caller falls back. */
-async function extractWithBudget(env: Env, config: FeedbackConfig, template: TemplateDefinition, message: string, deps: OrchestrateDeps, extras: ExtractExtras = {}): Promise<ExtractionResult | null> {
+async function extractWithBudget(env: Env, config: FeedbackConfig, template: TemplateDefinition, message: string, deps: OrchestrateDeps, extras: ExtractExtras = {}, autoType = false): Promise<ExtractionResult | null> {
   if (config.llm.provider === "off" || !deps.apiKey) return null;
   const now = deps.now ?? Date.now();
   const within = (await hitRateLimit(env, `llm:${config.projectId}`, dayWindow(now), config.llm.dailyBudget)).allowed;
   if (!within) return null;
-  return classifyAndExtract({ config, template, message, apiKey: deps.apiKey, chat: deps.chat, ...extras });
+  return classifyAndExtract({ config, template, autoType, message, apiKey: deps.apiKey, chat: deps.chat, ...extras });
 }
 
 /** Enforce the project's capture policy server-side too (older widget builds, or a
@@ -147,7 +148,7 @@ export async function orchestrateFeedback(
   if (dg.resp) return { http: 200, body: dg.resp };
   const d1Degraded = dg.degraded;
 
-  const template = resolveTemplate(config, payload.type);
+  let template = resolveTemplate(config, payload.type);
   if (!template) return { http: 400, body: { v: WIRE_VERSION, status: "error", error: "unknown feedback type" } };
 
   const message = (payload.message ?? "").trim();
@@ -156,12 +157,19 @@ export async function orchestrateFeedback(
   // ── POST-1: extract → ask ONE conversational follow-up, or create ────────────
   if (!isCompletion) {
     const shot = await screenshotDataUrl(env, payload);
-    const result = await extractWithBudget(env, config, template, message, deps, { screenshotDataUrl: shot, ...extractionContext(payload) });
+    // No type sent and the project lets the gateway decide → the model picks it.
+    const autoType = !payload.type && autoTypeEnabled(config);
+    const result = await extractWithBudget(env, config, template, message, deps, { screenshotDataUrl: shot, ...extractionContext(payload) }, autoType);
+    if (autoType && result?.type) template = resolveTemplate(config, result.type) ?? template;
+    const tpl = template;
     const extracted = result?.extracted ?? {};
     // LLM unavailable (off/no-key/over-budget) → treat all required as missing → ask one generic question.
-    const missing = result && !result.degraded ? result.missing : requiredAskable(template).map((f) => f.key);
+    // Auto-typed feedback without a usable model has no known type: nothing
+    // type-specific to ask, so it is created for triage (or asked generically).
+    const unknownType = autoType && (!result || result.degraded);
+    const missing = result && !result.degraded ? result.missing : unknownType ? [] : requiredAskable(template).map((f) => f.key);
     const create = (o: Partial<CreateOpts>) =>
-      finalizeCreate(env, loaded, payload, template, { fields: extracted, summary: result?.summary, degraded: false, incomplete: false, d1Degraded, now, newId, fetchImpl: deps.fetchImpl, ...o });
+      finalizeCreate(env, loaded, payload, tpl, { fields: extracted, summary: result?.summary, degraded: false, incomplete: false, d1Degraded, now, newId, fetchImpl: deps.fetchImpl, ...o });
 
     if (result?.degraded) {
       console.warn("feedbackkit llm degraded", {
@@ -172,14 +180,15 @@ export async function orchestrateFeedback(
       });
       // LLM ran but failed. onLlmError → create unenriched; else ask (generic question).
       if (config.createAnyway.onLlmError) return create({ fields: {}, degraded: true, incomplete: true });
-      return { http: 200, body: { v: WIRE_VERSION, status: "follow_up", question: fallbackQuestion(config, template, missing), extracted: {}, summary: result.summary } };
+      return { http: 200, body: { v: WIRE_VERSION, status: "follow_up", question: fallbackQuestion(config, template, missing), extracted: {}, summary: result.summary, type: template.type } };
     }
+    if (unknownType && !result) return create({ incomplete: true });
     if (missing.length === 0) return create({}); // nothing required missing (extracted all, or no required fields) → create
     // Too many to reasonably ask → create-anyway (if allowed) instead of a wall of questions.
     if (result && missing.length > FIELD_CEILING && config.createAnyway.onIncomplete) return create({ incomplete: true });
     // Ask ONE follow-up: the model-composed question, or a label-based fallback.
     const question = (result?.followUpQuestion && result.followUpQuestion.trim()) || fallbackQuestion(config, template, missing);
-    return { http: 200, body: { v: WIRE_VERSION, status: "follow_up", question, extracted, summary: result?.summary } };
+    return { http: 200, body: { v: WIRE_VERSION, status: "follow_up", question, extracted, summary: result?.summary, type: template.type } };
   }
 
   // ── POST-2: ONE re-extraction of the freetext answer, then create (single-shot) ──
@@ -218,6 +227,13 @@ interface CreateOpts {
   fetchImpl?: FetchFn;
 }
 
+/** How the gateway understood the feedback, echoed for the widget's done card.
+ * Unenriched (LLM failed) issues report the type only. */
+function understood(template: TemplateDefinition, opts: CreateOpts): { type: string; summary?: string } {
+  const summary = opts.degraded ? undefined : opts.summary?.trim();
+  return { type: template.type, ...(summary ? { summary } : {}) };
+}
+
 async function finalizeCreate(
   env: Env,
   loaded: LoadedProject,
@@ -245,7 +261,7 @@ async function finalizeCreate(
   // noIssue template (e.g. praise): persist only, no tracker call.
   if (template.noIssue) {
     await persistFeedback(env, { id, projectId: config.projectId, outcome: "created", payload, issueUrl: null, now: opts.now });
-    const resp: FeedbackResponse = { v: WIRE_VERSION, status: "created", id };
+    const resp: FeedbackResponse = { v: WIRE_VERSION, status: "created", id, ...understood(template, opts) };
     await dedupPut(env, payload.feedbackId, resp, opts.now);
     return { http: 200, body: resp };
   }
@@ -268,7 +284,7 @@ async function finalizeCreate(
     const outcome = opts.degraded ? "ai-failed" : opts.incomplete ? "accepted_incomplete" : "created";
     await persistFeedback(env, { id, projectId: config.projectId, outcome, payload, issueUrl: issue.url, now: opts.now });
     const status: "created" | "accepted_incomplete" = opts.degraded || opts.incomplete ? "accepted_incomplete" : "created";
-    const resp: FeedbackResponse = { v: WIRE_VERSION, status, id, issueUrl: issue.url };
+    const resp: FeedbackResponse = { v: WIRE_VERSION, status, id, ...(config.issueLink ? { issueUrl: issue.url } : {}), ...understood(template, opts) };
     await dedupPut(env, payload.feedbackId, resp, opts.now);
     return { http: 200, body: resp };
   } catch (e) {

@@ -180,6 +180,36 @@ describe("classifyAndExtract", () => {
   });
 });
 
+describe("classifyAndExtract — auto-type", () => {
+  const multi = FeedbackConfig.parse({
+    ...config,
+    templates: [
+      ...config.templates,
+      { type: "idea", label: "Idee", fields: [{ key: "problem", label: "Problem", kind: "longtext", required: true }] },
+    ],
+  });
+
+  it("offers every template's fields, then validates against the chosen one", async () => {
+    let body: { messages: Array<{ content: string }>; response_format: { json_schema: { schema: { required: string[] } } } } | undefined;
+    const chat: ChatFn = async (req) => {
+      body = JSON.parse((req as { init: { body: string } }).init.body);
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ type: "idea", summary: "Dunkler Modus", followUpQuestion: "", problem: "", repro: "Klick" }) } }] }), { status: 200 });
+    };
+    const r = await classifyAndExtract({ config: multi, template: multi.templates[0]!, autoType: true, message: "Dark Mode wäre schön", apiKey: "k", chat });
+    expect(body!.response_format.json_schema.schema.required).toEqual(expect.arrayContaining(["repro", "problem"]));
+    expect(body!.messages[1]!.content).toContain("- idea (Idee); required fields: problem");
+    expect(r.type).toBe("idea");
+    expect(r.extracted).toEqual({}); // repro belongs to bug, not to the chosen idea
+    expect(r.missing).toEqual(["problem"]);
+  });
+
+  it("falls back to the given template when the model names an unknown type", async () => {
+    const r = await classifyAndExtract({ config: multi, template: multi.templates[0]!, autoType: true, message: "…", apiKey: "k", chat: mockChat(JSON.stringify({ type: "nope", summary: "s", repro: "Klick" })) });
+    expect(r.type).toBe("bug");
+    expect(r.extracted.repro).toBe("Klick");
+  });
+});
+
 describe("classifyAndExtract — session context & vision", () => {
   type Part = { type: string; text?: string; image_url?: { url: string } };
   type Body = { messages: Array<{ role: string; content: string | Part[] }> };

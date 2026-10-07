@@ -40,6 +40,7 @@ function toUIConfig(cfg: PublicConfig, triggerLabel: string | undefined, hideTri
     hideTrigger,
     screenshot: cfg.capture?.screenshot !== "off",
     privacyUrl,
+    autoType: !!cfg.autoType,
     types: cfg.types.map((ty) => ({
       type: ty.type,
       label: label(ty.label, locale),
@@ -135,9 +136,11 @@ async function boot() {
     ui.setContext({
       browser: device.viewport ? `${device.browser} · ${device.viewport.w}×${device.viewport.h}` : device.browser,
       url: location.pathname,
+      console: consoleOn,
       consoleErrors: buffer.snapshot().length,
+      contextKeys: Object.keys(readHostContext(window.FeedbackKitContext) ?? {}),
     });
-    dispatch({ t: "open", type: cfg.types[0]?.type ?? "" }, () => api.event("opened"));
+    dispatch({ t: "open", type: cfg.autoType ? "" : (cfg.types[0]?.type ?? "") }, () => api.event("opened"));
   };
 
   const ui = new WidgetUI(shadow, toUIConfig(cfg, script.dataset.label, hideTrigger), {
@@ -151,7 +154,7 @@ async function boot() {
       bailed = true;
       dispatch({ t: "sendNow" }, () => api.event("sent_anyway"));
     },
-    onComplete: (_type, answer) => void complete(answer),
+    onComplete: (answer) => void complete(answer),
     onAttach: (file) => {
       const bucket = pendingAttachments;
       const upload = attach(file);
@@ -264,7 +267,7 @@ async function boot() {
       base1 = {
         v: 1,
         feedbackId,
-        type,
+        ...(type ? { type } : {}), // absent → the gateway classifies (autoType)
         message: text,
         pageUrl: redactPageUrl(location.href), // origin + path only: queries/fragments carry tokens
         attachmentKeys: attachmentKeys.slice(0, 5), // contract cap
@@ -281,6 +284,7 @@ async function boot() {
       clearSlow();
       if (res.status === "follow_up") {
         base1.summary = res.summary;
+        if (res.type) base1.type = res.type; // POST-2 completes the type the gateway chose
         api.event("need_fields");
         // User pre-chose "send now": skip the question, but keep POST-1's extraction.
         if (bailed) return complete("", res.extracted);

@@ -160,6 +160,8 @@ and deploy; `pnpm materialize` adds the custom-domain route.
 {
   "capture": { "screenshot": "off", "console": false }, // default: "optional", true
   "privacyUrl": "https://example.com/privacy",          // linked from the widget
+  "issueLink": false,                                   // default true: "View ticket" after sending
+  "askType": false,                                     // default false: see below
   "storage": { "kind": "r2", "retentionDays": 90 }      // R2 objects AND D1 rows
 }
 ```
@@ -167,6 +169,11 @@ and deploy; `pnpm materialize` adds the custom-domain route.
 - `capture.screenshot: "off"` removes the page capture (the gateway also refuses
   it); users can still attach images themselves. Use it when pages show
   sensitive content. `capture.console: false` never hooks the console.
+- `issueLink: false` keeps the issue URL out of the widget response. Use it for
+  public sites whose tracker is private or should stay unnamed.
+- With an LLM configured, `askType: false` and more than one template, the
+  gateway classifies each report itself and the widget shows no type picker.
+  `askType: true` (or `llm.provider: "off"`) brings the picker back.
 - The page URL is always reported as origin + path; query strings and fragments
   are dropped (they carry login tokens).
 - With `retentionDays`, the daily cron deletes attachments, stored submissions

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { FeedbackConfig } from "../src/shared/contract.js";
-import { toPublicConfig } from "../src/shared/projection.js";
+import { autoTypeEnabled, toPublicConfig } from "../src/shared/projection.js";
 
 const config = FeedbackConfig.parse({
   projectId: "demo",
@@ -87,5 +87,18 @@ describe("toPublicConfig", () => {
       { value: "low", label: "Low" },
       { value: "high", label: "High" },
     ]);
+  });
+});
+
+describe("autoTypeEnabled", () => {
+  const two = { ...config, templates: [...config.templates, { ...config.templates[0]!, type: "idea" }] };
+  it("is on with an LLM, several types and askType off", () => {
+    expect(autoTypeEnabled(two)).toBe(true);
+    expect(toPublicConfig(two, 1).autoType).toBe(true);
+  });
+  it("is off with a single type, askType on, or the LLM off", () => {
+    expect(autoTypeEnabled(config)).toBe(false);
+    expect(autoTypeEnabled({ ...two, askType: true })).toBe(false);
+    expect(autoTypeEnabled({ ...two, llm: { ...two.llm, provider: "off" } })).toBe(false);
   });
 });

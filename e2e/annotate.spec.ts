@@ -4,10 +4,11 @@ import { installMocks } from "./helpers";
 // #54: screenshot annotator — capture → preview → crop/annotate → the flattened
 // image travels the existing upload path and its key rides on the payload.
 
-const placeholder = /tell us anything/i;
+const placeholder = /in your own words/i;
 
 async function openAnnotator(page: import("@playwright/test").Page) {
   await page.getByRole("button", { name: "Feedback" }).click();
+  await page.getByRole("button", { name: "Screenshot", exact: true }).click(); // screenshot is opt-in; "Mark up" appears once it is on
   await page.getByRole("button", { name: "Mark up" }).click();
   await expect(page.locator(".fk-canvas")).toBeVisible({ timeout: 10_000 }); // html-to-image capture can take a moment
 }
@@ -38,7 +39,7 @@ test("annotate: capture → draw → use → flattened shot uploads and key ride
   // Use it → overlay closes and the screenshot chip records the edit.
   await page.getByRole("button", { name: "Use screenshot" }).click();
   await expect(page.locator(".fk-editor")).toBeHidden();
-  await expect(page.locator(".fk-chip.shot .txt")).toContainText("edited");
+  await expect(page.locator(".fk-shot .txt")).toContainText("edited");
 
   // Send → the edited blob uploads (screenshot kind) and its key is on the payload.
   await page.getByPlaceholder(placeholder).fill("the header overlaps the menu");
@@ -50,7 +51,7 @@ test("annotate: capture → draw → use → flattened shot uploads and key ride
   expect(upload.url()).toContain("kind=screenshot");
   expect((await upload.request().sizes()).requestBodySize).toBeGreaterThan(0);
   expect(feedback.postDataJSON().attachmentKeys).toContain("fk_test/shot.webp");
-  await expect(page.getByText("Thanks!")).toBeVisible();
+  await expect(page.getByText("Thanks, got it.")).toBeVisible();
 });
 
 test("annotate: crop drag shrinks the exported image to the selected region", async ({ page }) => {
@@ -66,6 +67,7 @@ test("annotate: crop drag shrinks the exported image to the selected region", as
   await page.mouse.move(box.x + 120, box.y + 80, { steps: 4 });
   await page.mouse.up();
   await page.getByRole("button", { name: "Use screenshot" }).click();
+  await expect(page.locator(".fk-editor")).toBeHidden(); // export is async; the panel is inert until it closes
 
   await page.getByPlaceholder(placeholder).fill("cropped report");
   const [upload] = await Promise.all([page.waitForResponse("**/api/upload**"), page.getByRole("button", { name: "Send", exact: true }).click()]);
@@ -93,7 +95,7 @@ test("annotate: cancel leaves no edited shot; undo/clear controls exist", async 
 
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.locator(".fk-editor")).toBeHidden();
-  await expect(page.locator(".fk-chip.shot .txt")).not.toContainText("edited");
+  await expect(page.locator(".fk-shot .txt")).not.toContainText("edited");
   await expect(page.locator(".fk-panel")).not.toHaveAttribute("inert", "");
   await expect(page.getByRole("button", { name: "Mark up" })).toBeFocused();
   await expect(page.getByPlaceholder(placeholder)).toBeVisible(); // back on the form

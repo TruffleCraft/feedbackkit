@@ -9,9 +9,9 @@ export type WidgetState =
   | { name: "closed" }
   | { name: "form"; type: string; text: string }
   | { name: "extracting"; sendNow: boolean } // sendNow=true after the 4s slow-hint → "Send now" goes primary
-  | { name: "asking"; question: string; extracted: Record<string, string> }
+  | { name: "asking"; question: string; extracted: Record<string, string>; type?: string } // type = how the gateway classified it
   | { name: "submitting" }
-  | { name: "done"; issueUrl?: string; soft: boolean } // soft = accepted/received but no issue link yet
+  | { name: "done"; issueUrl?: string; soft: boolean; type?: string; summary?: string } // soft = accepted/received but no issue link yet
   | { name: "failed"; reason: string };
 
 export type WidgetEvent =
@@ -30,11 +30,11 @@ export type WidgetEvent =
 function fromResponse(res: FeedbackResponse): WidgetState {
   switch (res.status) {
     case "follow_up":
-      return { name: "asking", question: res.question, extracted: { ...res.extracted } };
+      return { name: "asking", question: res.question, extracted: { ...res.extracted }, type: res.type };
     case "created":
-      return { name: "done", issueUrl: res.issueUrl, soft: false };
+      return { name: "done", issueUrl: res.issueUrl, soft: false, type: res.type, summary: res.summary };
     case "accepted_incomplete":
-      return { name: "done", issueUrl: res.issueUrl, soft: true };
+      return { name: "done", issueUrl: res.issueUrl, soft: true, type: res.type, summary: res.summary };
     case "issue_failed":
       // Feedback IS saved server-side; the tracker call failed. Don't alarm the
       // user — their report landed and will be retried by the operator.
