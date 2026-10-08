@@ -190,6 +190,7 @@ describe("orchestrateFeedback — POST-1", () => {
       fetchImpl: ghCapture().fetchImpl,
     });
     expect(r.body).toMatchObject({ status: "follow_up", type: "bug", question: "Was hast du erwartet?" });
+    expect(r.body).not.toHaveProperty("typeUnclear");
   });
 
   it("auto-type without a usable model: creates for triage instead of asking type-specific questions", async () => {
@@ -220,7 +221,7 @@ describe("orchestrateFeedback — POST-1", () => {
     const r = await orchestrateFeedback(env(db.db), loaded(ideaConfig()), payload({ type: undefined, message: "PDF-Export wäre toll" }), { apiKey: "k", chat, fetchImpl: gh.fetchImpl });
     expect(seen.prompt).toContain("typeUnclear");
     expect(seen.schema?.required).toContain("typeUnclear");
-    expect(r.body).toMatchObject({ status: "follow_up", type: "feature", question: "Gibt es einen Export schon, oder fehlt er ganz?" });
+    expect(r.body).toMatchObject({ status: "follow_up", type: "feature", typeUnclear: true, question: "Gibt es einen Export schon, oder fehlt er ganz?" });
     expect(gh.calls).toHaveLength(0);
   });
 

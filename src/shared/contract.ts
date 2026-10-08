@@ -188,7 +188,7 @@ export type FeedbackResponse =
   | { v: 1; status: "created"; id: string; issueUrl?: string; type?: string; summary?: string }
   // One conversational follow-up (ADR-012): a single natural-language question,
   // answered in freetext — not a multi-field form.
-  | { v: 1; status: "follow_up"; question: string; extracted: Record<string, string>; summary?: string; type?: string }
+  | { v: 1; status: "follow_up"; question: string; extracted: Record<string, string>; summary?: string; type?: string; typeUnclear?: boolean }
   | { v: 1; status: "accepted_incomplete"; id: string; issueUrl?: string; type?: string; summary?: string }
   | { v: 1; status: "issue_failed"; id: string; reason: string }
   | { v: 1; status: "error"; error: string; degraded?: boolean };

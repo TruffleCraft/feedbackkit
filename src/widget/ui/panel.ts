@@ -509,7 +509,7 @@ export class WidgetUI {
         this.live.textContent = this.tr("analyzing");
         break;
       case "asking":
-        this.showThread("", state.question, state.type);
+        this.showThread("", state.question, state.typeUnclear ? undefined : state.type); // no "Filed as" while the question settles the type
         this.answerBox.value = "";
         this.live.textContent = state.question;
         this.answerBox.focus();

@@ -68,6 +68,19 @@ test("auto-type: no type picker, no type sent; the gateway's pick is shown and c
   await expect(page.getByRole("link", { name: "View ticket" })).toBeHidden(); // no issue URL → no link
 });
 
+test("auto-type: while the question settles an unclear type, no type is claimed", async ({ page }) => {
+  await installMocks(page, {
+    config: { ...CONFIG, autoType: true, types: [...CONFIG.types, { type: "idea", label: "Idea", fields: [{ key: "problem", label: "Problem", kind: "longtext", required: true }] }] },
+    post1: { v: 1, status: "follow_up", question: "Does an export exist already, or is it missing?", extracted: {}, type: "idea", typeUnclear: true },
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Feedback" }).click();
+  await page.getByPlaceholder(placeholder).fill("a PDF export would be great");
+  await page.getByRole("button", send).click();
+  await expect(page.locator("#fk-question")).toHaveText("Does an export exist already, or is it missing?");
+  await expect(page.locator(".fk-bot .fk-tag")).toBeHidden();
+});
+
 test("what gets sent: the disclosure lists the auto-collected context", async ({ page }) => {
   await installMocks(page, { post1: {} });
   await page.goto("/");

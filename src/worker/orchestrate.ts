@@ -190,7 +190,8 @@ export async function orchestrateFeedback(
     if (result && missing.length > FIELD_CEILING && config.createAnyway.onIncomplete) return create({ incomplete: true });
     // Ask ONE follow-up: the model-composed question, or a label-based fallback.
     const question = (result?.followUpQuestion && result.followUpQuestion.trim()) || fallbackQuestion(config, template, missing);
-    return { http: 200, body: { v: WIRE_VERSION, status: "follow_up", question, extracted, summary: result?.summary, type: template.type } };
+    // An unclear type is still sent (POST-2 needs a fallback) but flagged, so the widget does not claim it yet.
+    return { http: 200, body: { v: WIRE_VERSION, status: "follow_up", question, extracted, summary: result?.summary, type: template.type, ...(clarifyType ? { typeUnclear: true } : {}) } };
   }
 
   // ── POST-2: ONE re-extraction of the freetext answer, then create (single-shot) ──
