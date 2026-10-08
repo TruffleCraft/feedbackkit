@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { classifyAndExtract, type ChatFn } from "../src/worker/llm/client.js";
 import { FeedbackConfig } from "../src/shared/contract.js";
 import { BUG_FIXTURES } from "./fixtures/extraction.js";
@@ -274,4 +274,39 @@ describe("extraction eval corpus (contract, mock LLM)", () => {
       expect(r.missing.sort()).toEqual([...fx.expectMissing].sort());
     });
   }
+});
+
+describe("classifyAndExtract — follow-up language", () => {
+  it("asks in the user's language, with the browser language as a hint, informally by default", async () => {
+    let prompt = "";
+    const chat: ChatFn = async (req) => {
+      prompt = JSON.parse((req as { init: { body: string } }).init.body).messages[1].content;
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ type: "bug", summary: "s", followUpQuestion: "", repro: "", expected: "", actual: "" }) } }] }), { status: 200 });
+    };
+    await classifyAndExtract({ config, template: bug, message: "Knopf geht nicht", apiKey: "k", chat, deviceInfo: { language: "de-DE" } });
+    expect(prompt).toContain("Write followUpQuestion in the language of the user's own text");
+    expect(prompt).toContain("the browser reports de-DE");
+    expect(prompt).toContain("Address the user informally");
+  });
+});
+
+describe("classifyAndExtract — timeout", () => {
+  it("waits up to 25s for a slow model, then degrades instead of hanging", async () => {
+    vi.useFakeTimers();
+    try {
+      let aborted = false;
+      // A model that answers only when the gateway gives up on it.
+      const slow: ChatFn = (_req, signal) =>
+        new Promise((_resolve, reject) => signal.addEventListener("abort", () => ((aborted = true), reject(new Error("aborted")))));
+      const pending = classifyAndExtract({ config, template: bug, message: "…", apiKey: "k", chat: slow });
+      await vi.advanceTimersByTimeAsync(24_900);
+      expect(aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(200);
+      const r = await pending;
+      expect(aborted).toBe(true);
+      expect(r.degraded).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

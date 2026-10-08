@@ -40,7 +40,7 @@
   "llm": {
     "provider": "custom",
     "baseUrl": "https://litellm.trufflecraft.de/v1",
-    "model": "opencode-go/deepseek-v4.1-flash",
+    "model": "antigravity-flash-lite",
     "dailyBudget": 100,
     "structuredOutput": true
   },
