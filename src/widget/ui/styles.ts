@@ -2,6 +2,8 @@
 // one violet accent, neutral surfaces, generous radii (30px panel, pill
 // controls), fine borders and restrained motion. Dark is a near-black ground
 // with light ink; both themes keep text at 4.5:1 or more.
+// Phones (max-width:600px): a full-screen sheet in three zones (head, scrolling content,
+// input at the bottom), sized to the visual viewport so the input stays above the keyboard.
 export const STYLES = `
 :host {
   --fk-bg:#fff; --fk-soft:#f6f6f7; --fk-ink:#1a1a1a; --fk-ink-2:#52525b;
@@ -38,12 +40,13 @@ export const STYLES = `
 .fk-ic { display:inline-flex; } .fk-ic svg { width:18px; height:18px; }
 
 .fk-backdrop { position:fixed; z-index:2147483645; inset:0; display:flex; align-items:flex-end; justify-content:flex-end;
-  padding:max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-right)); background:transparent; }
+  padding:max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-right)); background:rgba(0,0,0,.05); }
 .fk-panel { width:min(440px,calc(100vw - 32px)); max-height:min(90dvh,760px); overflow:auto;
   display:flex; flex-direction:column; gap:18px; padding:26px; font-family:var(--fk-font); color:var(--fk-ink);
   background:var(--fk-bg); border:1px solid var(--fk-line); border-radius:30px; box-shadow:var(--fk-shadow);
   animation:fk-enter .2s cubic-bezier(.2,.8,.2,1); }
 @keyframes fk-enter { from { opacity:0; transform:translateY(10px) scale(.985); } }
+@keyframes fk-fade { from { opacity:0; } }
 .fk-panel button,.fk-panel a { font-family:var(--fk-font); cursor:pointer; }
 .fk-panel :focus-visible,.fk-trigger:focus-visible { outline:2px solid var(--fk-accent); outline-offset:2px; }
 .fk-head { display:flex; align-items:center; gap:10px; }
@@ -143,5 +146,14 @@ export const STYLES = `
 .fk-editor-foot .fk-btn { flex:none; min-height:44px; }
 .fk-sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
 [hidden] { display:none !important; }
-@media (max-width:600px) { .fk-backdrop { align-items:flex-end; padding:0; } .fk-panel { width:100%; max-height:90dvh; padding:22px; border-radius:30px 30px 0 0; } .fk-h { font-size:24px; } .fk-text { min-height:110px; } .fk-tools { gap:6px; } .fk-pill { padding:0 12px; } .fk-editor { padding-top:max(14px,env(safe-area-inset-top)); padding-right:max(14px,env(safe-area-inset-right)); padding-bottom:max(14px,env(safe-area-inset-bottom)); padding-left:max(14px,env(safe-area-inset-left)); } .fk-editor-hint { display:none; } }
+@media (max-width:600px) { .fk-backdrop { align-items:flex-start; padding:0; }
+  .fk-panel { width:100%; height:var(--fk-vvh,100dvh); max-height:none; margin-top:var(--fk-vvtop,0px); gap:0; padding:0; border:0; border-radius:0; animation:fk-fade .2s ease; }
+  .fk-head { flex:none; padding:max(8px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 8px max(20px,env(safe-area-inset-left)); border-bottom:1px solid var(--fk-line); }
+  .fk-x { width:44px; height:44px; }
+  .fk-view { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; padding:18px max(20px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left)); }
+  .fk-composer,.fk-answer { order:1; } .fk-composer,.fk-view > .fk-row { margin-top:auto; } .fk-thread { flex:1 0 auto; }
+  .fk-row { flex-direction:column-reverse; }
+  .fk-h { font-size:24px; } .fk-text { min-height:96px; } .fk-tools { gap:6px; }
+  .fk-icon-btn,.fk-pill { height:44px; } .fk-icon-btn { width:44px; } .fk-pill { padding:0 12px; }
+  .fk-disclose,.fk-privacy,.fk-linkbtn { min-height:44px; display:inline-flex; align-items:center; } .fk-editor { padding-top:max(14px,env(safe-area-inset-top)); padding-right:max(14px,env(safe-area-inset-right)); padding-bottom:max(14px,env(safe-area-inset-bottom)); padding-left:max(14px,env(safe-area-inset-left)); } .fk-editor-hint { display:none; } }
 `;
