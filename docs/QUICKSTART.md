@@ -236,6 +236,8 @@ the widget's defaults:
   --fk-line: #e4e0d7; --fk-line-2: #d6d1c6;
   --fk-font: "Hanken Grotesk", system-ui, sans-serif;
   --fk-shadow: 0 8px 24px rgba(40, 36, 28, .08);
+  --fk-radius: 16px;         /* the panel on wider screens (default 30px) */
+  --fk-radius-box: 12px;     /* composer, chat bubbles, done card (default 22px) */
 }
 html.dark [data-feedbackkit="host"] { /* repeat the tokens for your dark theme */ }
 ```
