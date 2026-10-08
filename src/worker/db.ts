@@ -28,7 +28,10 @@ export async function checkSchema(env: Env): Promise<SchemaState> {
       return { ok: false, version: null, expected: SCHEMA_VERSION, reason: "meta.schema_version missing — run `pnpm deploy` to apply migrations" };
     }
     const version = Number(row.value);
-    if (version !== SCHEMA_VERSION) {
+    // A newer schema is fine: migrations are expand-only and both release
+    // channels share one D1, so stable runs on the schema dev already migrated
+    // (RELEASES.md). Only a schema behind the code is a failure.
+    if (!Number.isFinite(version) || version < SCHEMA_VERSION) {
       return {
         ok: false,
         version,

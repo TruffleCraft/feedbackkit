@@ -29,6 +29,8 @@ FeedbackKit is a **single Cloudflare Worker** (Hono). It serves everything — t
 
 Any backend failure degrades instead of dropping feedback: LLM error/timeout → issue created unenriched (`ai-failed`); D1 unreachable → issue still created (`d1-degraded`, last-known-good config from isolate cache); issue-tracker error → payload persisted with `issue_failed` + retry in the admin.
 
+Each `feedback` row also records the type, the rendered title, the LLM provider and model and the config version in effect when it was processed (schema v2). An `issue_failed` row keeps the rendered issue (`issue_draft`: title, body, labels, repo), so the admin retry creates it without a second LLM call. The read-only admin API is described in [SECURITY.md](SECURITY.md#admin-endpoints).
+
 ## P1 vs P2
 
 P1 ships the Worker + widget + LLM + a seed-JSON config (no admin UI); SCTT runs on it in production (drift = 0). P2 adds the full admin UI, annotation, the GitHub App manifest flow, theming, and the webhook sink. See [ROADMAP.md](ROADMAP.md) and [DECISIONS.md](DECISIONS.md).

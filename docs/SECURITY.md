@@ -95,4 +95,24 @@ Admin routes (`/api/admin/*`, and the `/diag?project=` deep check) require
 `Authorization: Bearer <ADMIN_TOKEN>` and use a constant-time comparison. The
 token is a Worker secret — never commit it, never put it in `NEXT_PUBLIC_*` or
 any client bundle. Cloudflare Access in front of the admin surface is the
-recommended production posture (full admin-auth hardening lands in P2).
+recommended production posture.
+
+Every `/api/admin/*` route counts failed logins per client (`adm401` counter,
+keyed by the HMAC of the IP, never the address). After 20 failures in an hour
+that client gets `429` for every admin request, including one with the right
+token, until the hour is over. Admin responses carry `Cache-Control: no-store`.
+
+The read-only admin API (P2, step 1):
+
+| Route | Returns |
+|---|---|
+| `GET /api/admin/projects` | id, public key, config version, last update, feedback counts of the last 7 days by outcome |
+| `GET /api/admin/projects/:id/config` | the stored config plus `publicKey` and `configVersion`; re-importable as is via `POST /api/admin/config/import` |
+| `GET /api/admin/projects/:id/feedback?outcome=&cursor=&limit=` | feedback history, newest first, 25 per page (max 100), keyset cursor |
+| `GET /api/admin/projects/:id/funnel?days=30` | widget events by name and feedback by outcome in the window (1–90 days) |
+| `GET /api/admin/system` | release, schema, bindings, secret presence, LLM calls today against `llm.dailyBudget`, PAT access and expiry per project |
+
+Feedback items contain what the user wrote (message, summary, page URL without
+query) and attachment URLs. They never contain IP addresses, device info, the
+host context, or secret values; the system view reports secrets as present or
+missing only.

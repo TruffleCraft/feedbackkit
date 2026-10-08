@@ -5,7 +5,7 @@ import { z } from "zod";
 import { CONTEXT_KEY_RE, MAX_CONTEXT_KEYS, MAX_CONTEXT_VALUE } from "./limits.js";
 
 export const WIRE_VERSION = 1 as const;
-export const SCHEMA_VERSION = 1 as const;
+export const SCHEMA_VERSION = 2 as const;
 
 // ── Template schema (per ADR-002/005) ────────────────────────────────────────
 export const FieldKind = z.enum(["text", "longtext", "select", "url"]);

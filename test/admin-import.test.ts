@@ -142,7 +142,7 @@ describe("POST /api/admin/config/import", () => {
 
 describe("GET /diag first-run visibility", () => {
   const migrated = (sql: string) => {
-    if (sql.includes("meta")) return { value: "1" };
+    if (sql.includes("meta")) return { value: "2" };
     if (sql.includes("COUNT(*)")) return { n: 0 };
     return null;
   };
@@ -172,7 +172,7 @@ describe("GET /diag first-run visibility", () => {
 
   it("clears firstRun and shrinks nextSteps once configured", async () => {
     const handler = (sql: string) => {
-      if (sql.includes("meta")) return { value: "1" };
+      if (sql.includes("meta")) return { value: "2" };
       if (sql.includes("COUNT(*)")) return { n: 2 };
       return null;
     };
@@ -187,7 +187,7 @@ describe("GET /diag first-run visibility", () => {
 describe("GET / landing page", () => {
   it("renders the setup checklist with fixes on a fresh deploy", async () => {
     const bare = {
-      DB: fakeD1((sql: string) => (sql.includes("meta") ? { value: "1" } : sql.includes("COUNT(*)") ? { n: 0 } : null)),
+      DB: fakeD1((sql: string) => (sql.includes("meta") ? { value: "2" } : sql.includes("COUNT(*)") ? { n: 0 } : null)),
       UPLOADS: {} as R2Bucket,
       ASSETS: {} as Fetcher,
       FK_ENV: "test",
@@ -203,7 +203,7 @@ describe("GET / landing page", () => {
 
   it("shows ready state once secrets + a project exist", async () => {
     const handler = (sql: string) => {
-      if (sql.includes("meta")) return { value: "1" };
+      if (sql.includes("meta")) return { value: "2" };
       if (sql.includes("COUNT(*)")) return { n: 1 };
       return null;
     };

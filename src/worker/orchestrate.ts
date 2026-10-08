@@ -268,9 +268,33 @@ async function finalizeCreate(
   const title = deriveTitle(template, ctx);
   const issueBody = renderIssueBody(template, ctx, config.locale);
 
+  const repo = template.tracker.repo ?? config.tracker.defaultRepo;
+  const labels = [...template.tracker.labels];
+  if (opts.degraded) labels.push("ai-failed", "needs-triage");
+  else if (opts.incomplete) labels.push("needs-triage");
+  if (opts.d1Degraded) labels.push("d1-degraded");
+
+  // The journey row: the summary the gateway understood goes into the stored
+  // payload (POST-1 creates have none of their own), and what was configured at
+  // this moment is pinned to the row (#70).
+  const summary = understood(template, opts).summary;
+  const row = {
+    id,
+    projectId: config.projectId,
+    payload: summary ? { ...payload, summary } : payload,
+    type: template.type,
+    title,
+    llmProvider: config.llm.provider,
+    llmModel: config.llm.model || null,
+    configVersion: loaded.version,
+    now: opts.now,
+  };
+  // Everything a later admin retry needs to create the issue without the LLM.
+  const draft: IssueDraft = { title, body: issueBody, labels, repo };
+
   // noIssue template (e.g. praise): persist only, no tracker call.
   if (template.noIssue) {
-    await persistFeedback(env, { id, projectId: config.projectId, outcome: "created", payload, issueUrl: null, now: opts.now });
+    await persistFeedback(env, { ...row, outcome: "created", issueUrl: null });
     const resp: FeedbackResponse = { v: WIRE_VERSION, status: "created", id, ...understood(template, opts) };
     await dedupPut(env, payload.feedbackId, resp, opts.now);
     return { http: 200, body: resp };
@@ -279,20 +303,15 @@ async function finalizeCreate(
   const pat = env[config.tracker.patSecret] as string | undefined;
   if (!pat) {
     // Persist for retry; surface a terminal-but-retryable status (not dedup-stored).
-    await persistFeedback(env, { id, projectId: config.projectId, outcome: "issue_failed", payload, issueUrl: null, now: opts.now });
-    return { http: 200, body: { v: WIRE_VERSION, status: "issue_failed", id, reason: "tracker credential not configured" } };
+    const reason = "tracker credential not configured";
+    await persistFeedback(env, { ...row, outcome: "issue_failed", issueUrl: null, lastError: reason, issueDraft: draft });
+    return { http: 200, body: { v: WIRE_VERSION, status: "issue_failed", id, reason } };
   }
-
-  const repo = template.tracker.repo ?? config.tracker.defaultRepo;
-  const labels = [...template.tracker.labels];
-  if (opts.degraded) labels.push("ai-failed", "needs-triage");
-  else if (opts.incomplete) labels.push("needs-triage");
-  if (opts.d1Degraded) labels.push("d1-degraded");
 
   try {
     const issue = await createIssue({ pat, repo, title, body: issueBody, labels, fetchImpl: opts.fetchImpl });
     const outcome = opts.degraded ? "ai-failed" : opts.incomplete ? "accepted_incomplete" : "created";
-    await persistFeedback(env, { id, projectId: config.projectId, outcome, payload, issueUrl: issue.url, now: opts.now });
+    await persistFeedback(env, { ...row, outcome, issueUrl: issue.url });
     const status: "created" | "accepted_incomplete" = opts.degraded || opts.incomplete ? "accepted_incomplete" : "created";
     const resp: FeedbackResponse = { v: WIRE_VERSION, status, id, ...(config.issueLink ? { issueUrl: issue.url } : {}), ...understood(template, opts) };
     await dedupPut(env, payload.feedbackId, resp, opts.now);
@@ -305,7 +324,7 @@ async function finalizeCreate(
       repo,
       reason,
     });
-    await persistFeedback(env, { id, projectId: config.projectId, outcome: "issue_failed", payload, issueUrl: null, now: opts.now });
+    await persistFeedback(env, { ...row, outcome: "issue_failed", issueUrl: null, lastError: reason, issueDraft: draft });
     return { http: 200, body: { v: WIRE_VERSION, status: "issue_failed", id, reason } };
   }
 }
@@ -362,18 +381,52 @@ async function dedupPut(env: Env, feedbackId: string, resp: FeedbackResponse, no
   }
 }
 
+/** The rendered issue, stored on issue_failed rows (feedback.issue_draft). */
+export interface IssueDraft {
+  title: string;
+  body: string;
+  labels: string[];
+  repo: string;
+}
+
 interface FeedbackRow {
   id: string;
   projectId: string;
   outcome: string;
   payload: FeedbackPayload;
   issueUrl: string | null;
+  type: string;
+  title: string;
+  llmProvider: string;
+  llmModel: string | null;
+  configVersion: number;
+  lastError?: string;
+  issueDraft?: IssueDraft;
   now: number;
 }
 async function persistFeedback(env: Env, o: FeedbackRow): Promise<void> {
   try {
-    await env.DB.prepare("INSERT INTO feedback (id, project_id, outcome, payload, issue_url, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(id) DO NOTHING")
-      .bind(o.id, o.projectId, o.outcome, JSON.stringify(o.payload), o.issueUrl, o.now)
+    await env.DB.prepare(
+      `INSERT INTO feedback (id, project_id, outcome, payload, issue_url, created_at,
+         type, title, llm_provider, llm_model, config_version, updated_at, last_error, issue_draft)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14) ON CONFLICT(id) DO NOTHING`,
+    )
+      .bind(
+        o.id,
+        o.projectId,
+        o.outcome,
+        JSON.stringify(o.payload),
+        o.issueUrl,
+        o.now,
+        o.type,
+        o.title,
+        o.llmProvider,
+        o.llmModel,
+        o.configVersion,
+        o.now,
+        o.lastError ?? null,
+        o.issueDraft ? JSON.stringify(o.issueDraft) : null,
+      )
       .run();
   } catch (e) {
     console.warn(`[feedbackkit] feedback journey write failed (D1 degraded): ${(e as Error).message}`);

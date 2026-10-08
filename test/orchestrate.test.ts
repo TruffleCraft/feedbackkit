@@ -39,7 +39,7 @@ const payload = (over: Record<string, unknown> = {}) =>
 // Stateful D1 fake: dedup replay + records feedback/dedup writes.
 function fakeDb(opts: { dedupThrows?: boolean; counterCount?: number } = {}) {
   const dedup = new Map<string, string>();
-  const feedback: Array<{ id: unknown; outcome: unknown; issueUrl: unknown }> = [];
+  const feedback: Array<{ id: unknown; outcome: unknown; issueUrl: unknown; row: Record<string, unknown> }> = [];
   const db = {
     prepare(sql: string) {
       let params: unknown[] = [];
@@ -59,7 +59,12 @@ function fakeDb(opts: { dedupThrows?: boolean; counterCount?: number } = {}) {
         },
         run: async () => {
           if (sql.includes("INSERT INTO dedup")) dedup.set(String(params[0]), String(params[1]));
-          if (sql.includes("INSERT INTO feedback")) feedback.push({ id: params[0], outcome: params[2], issueUrl: params[4] });
+          if (sql.includes("INSERT INTO feedback")) {
+            // Column list of the INSERT, zipped with its bound values.
+            const cols = sql.slice(sql.indexOf("(") + 1, sql.indexOf(")")).split(",").map((c) => c.trim());
+            const row = Object.fromEntries(cols.map((c, i) => [c, params[i]]));
+            feedback.push({ id: params[0], outcome: params[2], issueUrl: params[4], row });
+          }
           return { success: true };
         },
         all: async () => ({ results: [] }),
@@ -434,6 +439,61 @@ describe("orchestrateFeedback — create-anyway on tracker/D1 failure", () => {
     const r = await orchestrateFeedback(env(db.db), loaded(), payload(), { apiKey: "k", chat: fullExtract(), fetchImpl: gh.fetchImpl });
     expect(["created", "accepted_incomplete"]).toContain(r.body.status);
     expect(gh.calls[0]!.body.labels).toContain("d1-degraded");
+  });
+});
+
+describe("orchestrateFeedback — journey row (admin history, #70)", () => {
+  const fullExtract = () => chatReturning({ type: "bug", summary: "Saving fails", repro: "k", expected: "e", actual: "a" });
+
+  it("pins type, title, LLM provider/model, config version and the understood summary", async () => {
+    const db = fakeDb();
+    const gh = ghCapture();
+    await orchestrateFeedback(env(db.db), { config: baseConfig(), version: 7 }, payload(), { apiKey: "k", chat: fullExtract(), fetchImpl: gh.fetchImpl, now: 5000, newId: () => "fid-j" });
+    const row = db.feedback[0]!.row;
+    expect(row).toMatchObject({
+      id: "fid-j",
+      project_id: "demo",
+      outcome: "created",
+      type: "bug",
+      title: "[BUG] Saving fails",
+      llm_provider: "openrouter",
+      llm_model: "m",
+      config_version: 7,
+      created_at: 5000,
+      updated_at: 5000,
+      last_error: null,
+      issue_draft: null,
+    });
+    // POST-1 creates carry no summary of their own; the stored payload gets the understood one.
+    expect(JSON.parse(row["payload"] as string)).toMatchObject({ feedbackId: UUID, summary: "Saving fails" });
+  });
+
+  it("records the configured model even when no model took part (provider off)", async () => {
+    const db = fakeDb();
+    const gh = ghCapture();
+    const config = baseConfig({ llm: { provider: "off", model: "" }, templates: [{ type: "idea", label: "Idee", fields: [] }] });
+    await orchestrateFeedback(env(db.db), loaded(config), payload({ type: "idea" }), { chat: chatMustNotRun, fetchImpl: gh.fetchImpl });
+    expect(db.feedback[0]!.row).toMatchObject({ type: "idea", llm_provider: "off", llm_model: null });
+  });
+
+  it("tracker failure stores the rendered draft and the error, so a retry needs no LLM", async () => {
+    const db = fakeDb();
+    const gh = ghCapture(502);
+    await orchestrateFeedback(env(db.db), loaded(), payload(), { apiKey: "k", chat: fullExtract(), fetchImpl: gh.fetchImpl });
+    const row = db.feedback[0]!.row;
+    expect(row).toMatchObject({ outcome: "issue_failed", last_error: "tracker error 502" });
+    const draft = JSON.parse(row["issue_draft"] as string) as { title: string; body: string; labels: string[]; repo: string };
+    // Exactly what the failed createIssue call sent.
+    expect(draft).toEqual({ title: gh.calls[0]!.body.title, body: gh.calls[0]!.body.body, labels: gh.calls[0]!.body.labels, repo: "acme/site" });
+    expect(gh.calls[0]!.url).toContain("/repos/acme/site/issues");
+  });
+
+  it("missing PAT stores the draft too (nothing was sent)", async () => {
+    const db = fakeDb();
+    await orchestrateFeedback({ DB: db.db } as unknown as Env, loaded(), payload(), { apiKey: "k", chat: fullExtract() });
+    const row = db.feedback[0]!.row;
+    expect(row["last_error"]).toBe("tracker credential not configured");
+    expect(JSON.parse(row["issue_draft"] as string)).toMatchObject({ title: "[BUG] Saving fails", repo: "acme/site", labels: ["type/bug"] });
   });
 });
 
