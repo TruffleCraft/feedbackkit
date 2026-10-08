@@ -152,7 +152,9 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
         .map((t) => `- ${t.type} (${labelText(t.label, config.locale)}); required fields: ${t.fields.filter((f) => f.required).map((f) => f.key).join(", ") || "none"}`)
         .join("\n")}\nFill only fields that belong to the chosen type; leave the others empty. Ask follow-ups only for the chosen type's required fields.\nSet typeUnclear to true only when the text honestly fits more than one type (for example something new versus a change to something that already exists). Then pick the likelier type and make followUpQuestion the one question whose answer settles the type, folding in the most important missing detail if there is one.`
     : `Feedback type: ${template.type}`;
-  const userText = `${typeLine}\nIssue language: ${config.locale}\nTranslate summary and extracted issue fields into that language when needed. Keep followUpQuestion in the user's language.${"\n"}Fields to extract:\n${fieldLines}\n\nReturn a JSON object with exactly these keys: ${keyList}.${renderContext(opts)}\n\nUser feedback:\n${message}`;
+  // Small models drift to the issue language; the browser language is a second hint.
+  const userLang = opts.deviceInfo?.language ? ` (the browser reports ${opts.deviceInfo.language})` : "";
+  const userText = `${typeLine}\nIssue language: ${config.locale}\nTranslate summary and extracted issue fields into that language when needed. Write followUpQuestion in the language of the user's own text below, never in the issue language unless the user wrote in it${userLang}. Address the user informally, as the widget does (German \"du\"), unless their own text is formal.${"\n"}Fields to extract:\n${fieldLines}\n\nReturn a JSON object with exactly these keys: ${keyList}.${renderContext(opts)}\n\nUser feedback:\n${message}`;
 
   const content: unknown = screenshotDataUrl
     ? [

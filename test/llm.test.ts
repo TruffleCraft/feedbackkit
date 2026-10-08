@@ -276,6 +276,20 @@ describe("extraction eval corpus (contract, mock LLM)", () => {
   }
 });
 
+describe("classifyAndExtract — follow-up language", () => {
+  it("asks in the user's language, with the browser language as a hint, informally by default", async () => {
+    let prompt = "";
+    const chat: ChatFn = async (req) => {
+      prompt = JSON.parse((req as { init: { body: string } }).init.body).messages[1].content;
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ type: "bug", summary: "s", followUpQuestion: "", repro: "", expected: "", actual: "" }) } }] }), { status: 200 });
+    };
+    await classifyAndExtract({ config, template: bug, message: "Knopf geht nicht", apiKey: "k", chat, deviceInfo: { language: "de-DE" } });
+    expect(prompt).toContain("Write followUpQuestion in the language of the user's own text");
+    expect(prompt).toContain("the browser reports de-DE");
+    expect(prompt).toContain("Address the user informally");
+  });
+});
+
 describe("classifyAndExtract — timeout", () => {
   it("waits up to 25s for a slow model, then degrades instead of hanging", async () => {
     vi.useFakeTimers();
