@@ -6,7 +6,7 @@
 // input at the bottom), sized to the visual viewport so the input stays above the keyboard.
 export const STYLES = `
 :host {
-  --fk-bg:#fff; --fk-soft:#f6f6f7; --fk-ink:#1a1a1a; --fk-ink-2:#52525b;
+  --fk-bg:#fff; --fk-soft:#f6f6f7; --fk-ink:#1a1a1a; --fk-ink-2:#52525b; --fk-accent-2:#a78bfa;
   --fk-muted:#71717a; --fk-line:#e7e7ea; --fk-line-2:#d4d4d8;
   --fk-accent:#7c3aed; --fk-accent-ink:#fff; --fk-accent-soft:rgba(124,58,237,.1); --fk-accent-text:#6d28d9;
   --fk-font:"FK Urbanist",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
@@ -34,7 +34,7 @@ export const STYLES = `
   transition:transform .18s ease,border-color .18s ease; }
 .fk-trigger:hover { transform:translateY(-2px); border-color:var(--fk-accent); }
 .fk-trigger-icon,.fk-avatar { width:26px; height:26px; display:grid; place-items:center; flex:none; border-radius:999px;
-  background:var(--fk-accent); color:#fff; }
+  background:var(--fk-accent); color:var(--fk-accent-ink); }
 .fk-trigger-icon svg,.fk-avatar svg { width:14px; height:14px; }
 .fk-trigger-label { white-space:nowrap; }
 .fk-ic { display:inline-flex; } .fk-ic svg { width:18px; height:18px; }
@@ -120,7 +120,7 @@ export const STYLES = `
 .fk-foot .fk-linkbtn { margin-left:auto; }
 
 .fk-done-head { display:flex; align-items:center; gap:14px; }
-.fk-check { width:52px; height:52px; flex:none; display:grid; place-items:center; border-radius:999px; background:var(--fk-accent); color:#fff; }
+.fk-check { width:52px; height:52px; flex:none; display:grid; place-items:center; border-radius:999px; background:var(--fk-accent); color:var(--fk-accent-ink); }
 .fk-check svg { width:26px; height:26px; }
 .fk-card { display:flex; flex-direction:column; gap:12px; padding:18px; background:var(--fk-soft); border-radius:22px; }
 .fk-eyebrow { color:var(--fk-ink-2); font-size:13px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
@@ -145,7 +145,7 @@ export const STYLES = `
 .fk-tool-sep { flex:1; }
 .fk-tool { width:38px; height:38px; display:grid; place-items:center; border:1px solid rgba(255,255,255,.16);
   border-radius:12px; background:rgba(255,255,255,.08); color:rgba(255,255,255,.8); font:600 16px var(--fk-font); cursor:pointer; }
-.fk-tool[aria-pressed="true"] { border-color:var(--fk-accent); background:var(--fk-accent); color:#fff; }
+.fk-tool[aria-pressed="true"] { border-color:var(--fk-accent); background:var(--fk-accent); color:var(--fk-accent-ink); }
 .fk-tool:disabled { opacity:.35; }
 .fk-canvas-wrap { position:relative; flex:1; min-height:0; display:flex; align-items:center; justify-content:center; overflow:auto; }
 .fk-canvas { display:block; max-width:100%; max-height:100%; border-radius:16px; background:#fff; box-shadow:0 16px 48px rgba(0,0,0,.5); touch-action:none; }

@@ -143,3 +143,17 @@ test("host theme follows document data-theme and falls back to color scheme", as
   await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
   await expect(host).toHaveAttribute("data-theme", "dark");
 });
+
+test("host theming: tokens set on the host element override the widget's own, in either theme", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await installMocks(page, { post1: {} });
+  await page.goto("/");
+  await page.addStyleTag({
+    content: '[data-feedbackkit="host"]{--fk-accent:rgb(88, 114, 99);--fk-accent-ink:rgb(251, 250, 247);--fk-accent-2:rgb(136, 171, 152);--fk-bg:rgb(251, 250, 247)}',
+  });
+  await page.getByRole("button", feedbackBtn).click();
+  await expect(page.locator(".fk-panel")).toHaveCSS("background-color", "rgb(251, 250, 247)"); // beats the dark default
+  await expect(page.locator(".fk-composer .fk-send")).toHaveCSS("background-color", "rgb(88, 114, 99)");
+  await expect(page.locator(".fk-mark rect").first()).toHaveCSS("fill", "rgb(88, 114, 99)");
+  await expect(page.locator(".fk-mark rect").last()).toHaveCSS("fill", "rgb(136, 171, 152)");
+});

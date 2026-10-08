@@ -216,6 +216,36 @@ server before the user asks to:
 </script>
 ```
 
+### Match your design (theming)
+
+The widget renders in a Shadow DOM, so your CSS cannot reach its rules. It reads
+its colours, font and shadow from CSS custom properties instead, and your page
+sets them on the widget's host element. Declarations from your page win over
+the widget's defaults:
+
+```css
+[data-feedbackkit="host"] {
+  --fk-accent: #587263;      /* send button, focus, the trigger and avatar disc */
+  --fk-accent-ink: #fbfaf7;  /* text and icons on the accent */
+  --fk-accent-soft: #eaf0ec; /* question bubble, type tag, active pills */
+  --fk-accent-text: #3f5a4b; /* accent-coloured text on light surfaces */
+  --fk-accent-2: #88ab98;    /* second pill of the mark in the panel head */
+  --fk-bg: #fbfaf7;          /* panel */
+  --fk-soft: #f4f2ec;        /* composer, answer field, the user's bubble */
+  --fk-ink: #1a1917; --fk-ink-2: #6e6a62; --fk-muted: #6e6a62;
+  --fk-line: #e4e0d7; --fk-line-2: #d6d1c6;
+  --fk-font: "Hanken Grotesk", system-ui, sans-serif;
+  --fk-shadow: 0 8px 24px rgba(40, 36, 28, .08);
+}
+html.dark [data-feedbackkit="host"] { /* repeat the tokens for your dark theme */ }
+```
+
+Set every token you change for each theme your site has; tokens you leave out
+keep FeedbackKit's own values. The widget follows `<html data-theme="dark|light">`
+and otherwise `prefers-color-scheme`; a site that switches themes another way
+(for example a `dark` class) sets both themes' tokens as above. Use fonts your
+page already loads.
+
 ### Turnstile (open sites)
 
 Create a Turnstile widget for your site's hostnames, then:
