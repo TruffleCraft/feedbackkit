@@ -3,18 +3,18 @@
 // from the gateway, wired to the feedbackkit-demo project), and carries the legal
 // pages (Impressum + Datenschutz) required for a publicly reachable German site.
 //
-// Design (v2): developer-tool aesthetic, DM Sans (self-hosted for GDPR/CSP,
-// served at /fonts/dm-sans.woff2), violet accent, dark theme by default with a
-// persisted theme choice (data-theme attribute + /theme.js — no inline scripts, so
-// script-src stays tight). Graphite panels (architecture, quickstart, closing
-// CTA, footer) stay dark in both themes; the rest of the palette is themed.
+// Design (v3, FeedbackKit design system): Urbanist (self-hosted for GDPR/CSP,
+// served at /fonts/urbanist.woff2), violet accent, light ground with dark blocks
+// (stats, architecture, quickstart, closing) and the logo's two chat pills as the
+// hero. The theme follows the visitor's system setting until they pick one
+// (data-theme attribute + /theme.js, no inline scripts, so script-src stays tight).
 //
 // No inline JS or third-party origins → script-src is 'self' (theme toggle,
 // same-origin) plus the gateway origin (widget bundle). style-src
 // 'unsafe-inline' covers the page CSS and the widget's shadow styles. font-src
 // 'self' for the self-hosted woff2 — no Google Fonts or other CDN.
 
-import { DM_SANS_WOFF2_B64 } from "./font.js";
+import { URBANIST_WOFF2_B64 } from "./font.js";
 import { WIDGET_VER } from "./widget-ver.js";
 
 const GATEWAY = "https://feedbackkit.trufflecraft.workers.dev";
@@ -32,255 +32,211 @@ const CSP = [
 ].join("; ");
 
 const CSS = `
-@font-face{font-family:"DM Sans";src:url("/fonts/dm-sans.woff2") format("woff2");font-weight:100 1000;font-style:normal;font-display:swap}
+@font-face{font-family:"Urbanist";src:url("/fonts/urbanist.woff2") format("woff2");font-weight:100 900;font-style:normal;font-display:swap}
 :root{
-  --bg:#ffffff; --soft:#f6f7f7; --ink:#0a0a0b; --ink-2:#52525b; --muted:#8a8a90;
-  --line:#e7e8ea; --line-2:#d9dbde; --accent:#7c3aed; --accent-ink:#ffffff; --glow:rgba(124,58,237,.14);
-  --panel:#0c1117; --panel-line:rgba(255,255,255,.1); --nav-bg:rgba(255,255,255,.88);
-  --sans:"DM Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  --ground:#f6f6f7; --card:#ffffff; --ink:#1a1a1a; --ink-2:#52525b; --muted:#71717a;
+  --line:#e7e7ea; --line-2:#d4d4d8; --accent:#7c3aed; --accent-text:#6d28d9; --accent-soft:rgba(124,58,237,.1);
+  --lav:#ddd6fe; --lav-ink:#4c1d95; --block:#1a1a1a; --block-line:transparent;
+  --sans:"Urbanist",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
-  --wrap:1160px;
+  --wrap:1180px;
 }
 [data-theme="dark"]{
-  --bg:#0c1117; --soft:#11161d; --ink:#e8eaed; --ink-2:#a3a9b2; --muted:#6b7280;
-  --line:#1f2630; --line-2:#2b3442; --accent:#8b5cf6; --glow:rgba(139,92,246,.12);
-  --panel:#080b0f; --panel-line:rgba(255,255,255,.08); --nav-bg:rgba(12,17,23,.88);
+  --ground:#1a1a1a; --card:#202022; --ink:#ffffff; --ink-2:#a2a2a2; --muted:#8b8b90;
+  --line:#2e2e31; --line-2:#48484d; --accent-text:#c4b5fd; --accent-soft:rgba(124,58,237,.24);
+  --lav:#3b2a63; --lav-ink:#ede9fe; --block:#111112; --block-line:#2e2e31;
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
-body{margin:0;font-family:var(--sans);color:var(--ink);background:var(--bg);line-height:1.6;font-size:16px;-webkit-font-smoothing:antialiased;transition:background .2s ease,color .2s ease}
+body{margin:0;font-family:var(--sans);color:var(--ink);background:var(--ground);line-height:1.55;font-size:17px;-webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:none}
-a:hover{color:var(--accent)}
-h1,h2,h3{margin:0;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+h1,h2,h3{margin:0;font-weight:900;line-height:1.02;letter-spacing:-.02em}
 p{margin:0}
 code,pre{font-family:var(--mono)}
 .wrap{max-width:var(--wrap);margin:0 auto;padding:0 24px}
-.accent{color:var(--accent)}
-::selection{background:color-mix(in srgb,var(--accent) 22%,transparent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+::selection{background:var(--accent-soft)}
 
 /* header */
-header{position:sticky;top:0;z-index:10;background:var(--nav-bg);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-.nav{display:flex;align-items:center;gap:24px;height:64px}
-.brand{display:flex;align-items:center;gap:9px;font-weight:700;font-size:16.5px;letter-spacing:-.02em}
-.nav .links{display:flex;gap:22px;margin-left:8px;flex-wrap:wrap}
-.nav .links a{color:var(--ink-2);font-size:14.5px;font-weight:500}
+header{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--ground) 88%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.nav{display:flex;align-items:center;gap:28px;height:76px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;letter-spacing:.2px}
+.nav .links{display:flex;gap:26px;margin-left:auto}
+.nav .links a{color:var(--ink-2);font-size:15px;font-weight:600}
 .nav .links a:hover{color:var(--ink)}
-.nav .right{margin-left:auto;display:flex;align-items:center;gap:12px}
-@media(max-width:480px){.nav .right{gap:8px}.gh-link{display:none}}
-.icon-btn{font-family:inherit;width:34px;height:34px;border-radius:8px;border:1px solid var(--line-2);background:transparent;color:var(--ink-2);cursor:pointer;display:grid;place-items:center;font-size:15px;line-height:1}
-.icon-btn:hover{border-color:var(--accent);color:var(--accent)}
-.btn{display:inline-flex;align-items:center;gap:8px;font-family:inherit;font-weight:600;font-size:14.5px;padding:9px 16px;border-radius:8px;border:1px solid var(--line-2);background:var(--bg);color:var(--ink);cursor:pointer;white-space:nowrap}
-.btn:hover{border-color:var(--accent);color:var(--accent)}
-.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.btn.primary:hover{filter:brightness(.9);color:var(--accent-ink)}
-.btn.lg{padding:12px 24px;font-size:15.5px}
-@media(max-width:860px){.nav .links{display:none}}
+.nav .right{display:flex;align-items:center;gap:12px}
+@media(max-width:860px){.nav .links{display:none}.nav .right{margin-left:auto}}
+.icon-btn{width:44px;height:44px;border-radius:999px;border:1px solid var(--line-2);background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer;padding:0}
+.icon-btn:hover{border-color:var(--accent)}
+.icon-btn svg{width:18px;height:18px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;height:54px;padding:0 28px;border-radius:999px;border:1.5px solid var(--ink);background:transparent;color:var(--ink);font:700 16px var(--sans);white-space:nowrap;cursor:pointer}
+.btn svg{width:18px;height:18px}
+.btn.solid{background:var(--ink);color:var(--ground)}
+.btn.violet{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.sm{height:44px;padding:0 20px;font-size:15px}
+.btn:hover{filter:brightness(1.1)}
+.btn .short{display:none}
+@media(max-width:480px){.btn.sm .long{display:none}.btn.sm .short{display:inline}}
 
 /* hero */
-.hero{position:relative;overflow:hidden}
-.hero::before{content:"";position:absolute;inset:0;background:radial-gradient(720px 420px at 78% 0%,var(--glow),transparent 65%);pointer-events:none}
-.hero::after{content:"";position:absolute;inset:0;background-image:radial-gradient(var(--line-2) 1px,transparent 1px);background-size:26px 26px;opacity:.35;mask-image:radial-gradient(680px 480px at 75% 20%,black,transparent 75%);-webkit-mask-image:radial-gradient(680px 480px at 75% 20%,black,transparent 75%);pointer-events:none}
-.hero .grid{position:relative;z-index:1;display:grid;grid-template-columns:minmax(0,1fr);gap:56px 64px;align-items:center;padding:80px 0 88px}
-@media(min-width:860px){.hero .grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
-.badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px}
-.chip{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:.05em;color:var(--accent);background:var(--soft);border:1px solid var(--line);padding:6px 13px;border-radius:999px}
-.chip.dim{color:var(--muted)}
-.hero h1{font-size:clamp(38px,4.6vw,58px);max-width:14ch}
-.hero .lede{font-size:18px;color:var(--ink-2);max-width:48ch;margin-top:22px}
+.hero{padding:40px 0 72px}
+.hero h1{font-size:clamp(52px,9vw,112px);line-height:.95;letter-spacing:-.03em}
+.hero h1 span{color:var(--accent)}
+.hero .row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,660px);gap:56px;align-items:start;margin-top:48px}
+@media(max-width:900px){.hero .row{grid-template-columns:minmax(0,1fr);gap:32px;margin-top:28px}.hero .convo{order:-1}}
+.lede{color:var(--ink-2);font-size:19px;max-width:34em}
 .cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
-.snippet{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:13px;color:var(--ink-2);background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-top:24px;max-width:100%;overflow-x:auto;white-space:nowrap}
-.snippet .p{color:var(--muted);user-select:none}
-.hint{font-size:13px;color:var(--muted);margin-top:14px}
-
-/* Static examples used below the fold. The hero deliberately does not fake the
-   live widget; having both visible created a misleading double-widget stack. */
-.widget-mock{width:min(440px,100%);margin:0 auto;background:var(--bg);border:1px solid var(--line);border-radius:16px;box-shadow:0 24px 56px -24px rgba(12,17,23,.4);padding:20px;display:flex;flex-direction:column;gap:14px}
-.widget-mock .head{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px}
-.widget-mock .head .close{margin-left:auto;color:var(--muted);font-size:16px}
-.widget-mock .tabs{display:flex;gap:6px}
-.wtab{font-size:12.5px;font-weight:600;padding:5px 12px;border-radius:999px;border:1px solid var(--line-2);color:var(--ink-2)}
-.wtab.active{background:color-mix(in srgb,var(--accent) 12%,transparent);border-color:var(--accent);color:var(--accent)}
-.widget-mock .foot{display:flex;justify-content:flex-end}
-.send{font-weight:600;font-size:13px;padding:8px 18px;border-radius:8px;background:var(--accent);color:var(--accent-ink)}
-.mockcard{border:1px solid var(--line-2);border-radius:10px;background:var(--bg);padding:12px;display:flex;flex-direction:column;gap:8px}
-.mockcard .txt{font-size:13px;color:var(--ink)}
-.mockbox{border:1px solid var(--line-2);border-radius:10px;padding:12px 14px;font-size:14px;background:var(--soft);min-height:56px}
-.mocktags{display:flex;flex-wrap:wrap;gap:6px}
-.tagchip{font-family:var(--mono);font-size:10.5px;color:var(--ink-2);border:1px solid var(--line-2);border-radius:6px;padding:2px 8px}
-.hero-signal{width:min(440px,100%);margin:0 auto;padding:22px;border:1px solid var(--panel-line);border-radius:18px;background:var(--panel);color:#fff;box-shadow:0 30px 70px -32px rgba(12,17,23,.72)}
-.signal-head{display:flex;align-items:center;gap:10px;font-weight:700}.signal-head span{margin-left:auto;color:#8b5cf6;font:11px var(--mono)}
-.signal-line{height:1px;margin:18px 0;background:linear-gradient(90deg,#8b5cf6,rgba(139,92,246,.08))}
-.signal-flow{display:grid;gap:9px}.signal-step{display:grid;grid-template-columns:28px 1fr auto;align-items:center;gap:10px;padding:11px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.035)}
-.signal-step .n{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:rgba(139,92,246,.15);color:#a78bfa;font:600 11px var(--mono)}
-.signal-step b{font-size:13px}.signal-step em{color:#7dd3fc;font:normal 10px var(--mono)}
-.signal-foot{margin-top:16px;color:rgba(255,255,255,.5);font:11px/1.5 var(--mono)}
+@media(max-width:560px){.cta{flex-direction:column}.cta .btn{width:100%}}
+.snippet{margin-top:24px;max-width:100%;overflow-x:auto;white-space:nowrap;padding:12px 16px;border:1px solid var(--line);border-radius:16px;background:var(--card);font:13px var(--mono);color:var(--ink-2)}
+.snippet .t{color:var(--accent-text)}
+.hint{margin-top:10px;color:var(--muted);font-size:14px}
+.convo{display:flex;flex-direction:column;gap:14px}
+.bubble{max-width:560px;padding:20px 28px;border-radius:999px;font-weight:700;font-size:clamp(17px,2vw,24px);line-height:1.3}
+.bubble.me{align-self:flex-start;background:var(--accent);color:#fff}
+.bubble.ai{align-self:flex-end;background:var(--lav);color:var(--lav-ink)}
+@media(max-width:560px){.bubble{border-radius:28px;padding:16px 22px}}
+.issue{margin-left:clamp(0px,10%,120px);padding:22px 24px;border-radius:30px;background:var(--block);border:1px solid var(--block-line);color:#fff;font:14px/1.6 var(--mono)}
+@media(max-width:900px){.issue{margin-left:0;font-size:12.5px}}
+.issue b{display:block;font:800 19px/1.3 var(--sans)}
+.issue .labels{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.issue .labels span{padding:3px 10px;border-radius:999px;background:#2a2a2d;color:#c9c9cf}
+.issue .labels span:first-child{background:rgba(124,58,237,.35);color:#ddd6fe}
+.issue .body{color:#c9c9cf}
+.issue .more{margin-top:8px;color:#8b8b90}
 
 /* stats */
-.stats{border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
-.stats .grid{display:grid;grid-template-columns:repeat(5,1fr);margin:-1px 0 0 -1px}
-.stat{border-left:1px solid var(--line);border-top:1px solid var(--line);padding:30px 18px;text-align:center}
-.stat .v{font-size:26px;font-weight:700;letter-spacing:-.02em}
-.stat .l{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin-top:6px}
-@media(max-width:900px){.stats .grid{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:560px){.stats .grid{grid-template-columns:repeat(2,1fr)}}
+.stats{max-width:calc(var(--wrap) + 16px);margin:0 auto;padding:40px;border-radius:30px;background:var(--block);border:1px solid var(--block-line);color:#fff;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:32px}
+@media(max-width:900px){.stats{grid-template-columns:repeat(2,minmax(0,1fr));margin:0 12px;padding:32px 22px;gap:24px}}
+.stat .v{font-size:clamp(40px,4.4vw,54px);font-weight:900;line-height:1}
+.stat .l{margin-top:8px;color:#a2a2a2;font-size:14px;line-height:1.35}
 
 /* sections */
 section{padding:88px 0}
-.kicker{font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
-section h2{font-size:clamp(28px,3.4vw,40px);max-width:26ch}
-section .sub{color:var(--ink-2);max-width:62ch;margin-top:16px;font-size:17px}
+.kicker{font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-text);margin-bottom:14px}
+section h2,.block h2{font-size:clamp(34px,5vw,56px);max-width:18ch}
+section .sub,.block .sub{color:var(--ink-2);max-width:40em;margin-top:18px;font-size:18px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:40px}
+@media(max-width:900px){.grid3{grid-template-columns:minmax(0,1fr)}}
+.card{padding:28px;border-radius:30px;background:var(--card);display:flex;flex-direction:column;gap:12px}
+.card h3{font-size:24px}
+.card p{color:var(--ink-2);font-size:16px}
+.card .pill{align-self:flex-start;height:36px;display:inline-flex;align-items:center;padding:0 16px;border-radius:999px;background:var(--accent);color:#fff;font-weight:800;font-size:15px}
+.card svg{width:28px;height:28px;color:var(--accent)}
 
-.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:44px}
-.card{border:1px solid var(--line);border-radius:14px;padding:26px;background:var(--bg)}
-.card svg{width:24px;height:24px;color:var(--accent);margin-bottom:14px}
-.card h3{font-size:17.5px;letter-spacing:-.01em}
-.card p{color:var(--ink-2);font-size:14.5px;margin-top:8px}
-@media(max-width:860px){.cards{grid-template-columns:1fr}}
-
-/* graphite panels — fixed dark, identical in both themes (product output) */
-.panel{border:1px solid var(--panel-line);border-radius:10px;background:var(--panel);overflow:hidden}
-.panel .bar{padding:10px 14px;border-bottom:1px solid var(--panel-line);font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.4)}
-.panel pre{margin:0;padding:14px;font-family:var(--mono);font-size:12.5px;line-height:1.8;color:rgba(255,255,255,.85);overflow-x:auto;white-space:pre-wrap}
-.panel .note{margin:0;padding:0 14px 14px;font-size:12.5px;color:rgba(255,255,255,.45)}
-.panel .body{padding:14px;display:flex;flex-direction:column;gap:8px;font-size:12px;color:rgba(255,255,255,.75)}
-.panel b{color:#fff}
-.panel .dim{color:rgba(255,255,255,.45)}
-.panel .box2{border:1px solid var(--panel-line);border-radius:7px;padding:7px 9px;color:rgba(255,255,255,.85);background:rgba(255,255,255,.04)}
-.panel .row-end{display:flex;justify-content:flex-end}
-.panel .send2{font-weight:600;padding:6px 14px;border-radius:7px;background:var(--accent);color:#fff;font-size:11.5px}
-.panel .micro{font-family:var(--mono);font-size:9px;border:1px solid var(--panel-line);border-radius:5px;padding:1px 6px;margin-left:6px}
-.panel .label{font-size:9.5px;letter-spacing:.06em;text-transform:uppercase}
-
-/* how it works */
-.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:44px}
-.step{border:1px solid var(--line);border-radius:14px;padding:26px;background:var(--soft);display:flex;flex-direction:column;gap:12px}
-.step .n{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--accent);width:32px;height:32px;border:1px solid var(--line-2);border-radius:8px;display:grid;place-items:center;background:var(--bg)}
-.step h3{font-size:17.5px}
-.step p{color:var(--ink-2);font-size:14.5px}
-.step .demo{margin-top:auto}
-@media(max-width:900px){.steps{grid-template-columns:1fr}}
-
-/* architecture — always dark panel section */
-.arch{background:var(--panel);border-top:1px solid var(--line)}
-.arch h2,.arch .kicker{color:#fff}
-.arch .kicker{color:var(--accent)}
-.arch .sub{color:rgba(255,255,255,.6)}
-.arch .flow{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:44px;align-items:stretch}
-.node{border:1px solid var(--panel-line);border-radius:14px;padding:20px;background:rgba(255,255,255,.03);display:flex;flex-direction:column;gap:10px}
-.node.mid{border-color:color-mix(in srgb,var(--accent) 45%,transparent);background:color-mix(in srgb,var(--accent) 7%,transparent)}
-.node-label{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.4)}
-.node.mid .node-label{color:var(--accent)}
-.node h3{color:#fff;font-size:16px}
-.node p{color:rgba(255,255,255,.55);font-size:13.5px}
-.node .tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
-.node .tags span{font-family:var(--mono);font-size:10.5px;font-weight:700;color:rgba(255,255,255,.65);border:1px solid var(--panel-line);border-radius:6px;padding:2px 8px}
-.node .out{margin-top:auto;font-family:var(--mono);font-size:11.5px;color:var(--accent)}
-.invariants{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px;align-items:center}
-.invariants .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.4)}
-.invariants .pill{font-family:var(--mono);font-size:11.5px;color:rgba(255,255,255,.65);border:1px solid var(--panel-line);border-radius:999px;padding:4px 12px}
-@media(max-width:900px){.arch .flow{grid-template-columns:1fr}}
+/* dark blocks: architecture, quickstart, closing */
+.block{border-radius:30px;background:var(--block);border:1px solid var(--block-line);color:#fff;padding:56px 48px}
+@media(max-width:700px){.block{padding:36px 22px;border-radius:24px}}
+.block h2{color:#fff}
+.block .kicker{color:#c4b5fd}
+.block .sub{color:#a2a2a2}
+.block code{color:#c4b5fd}
+.node{padding:24px;border-radius:24px;background:#202022;border:1px solid #2e2e31;display:flex;flex-direction:column;gap:10px}
+.node.mid{border-color:#7c3aed}
+.node-label{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8b8b90}
+.node.mid .node-label{color:#c4b5fd}
+.node h3{font-size:22px;color:#fff}
+.node p{color:#a2a2a2;font-size:15px}
+.node .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto}
+.node .tags span,.chips span{padding:4px 12px;border-radius:999px;background:#2a2a2d;color:#c9c9cf;font:12px var(--mono)}
+.node .out{margin-top:auto;font:13px var(--mono);color:#c4b5fd}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px;align-items:center}
+.chips .lbl{background:none;padding:0 6px 0 0;color:#8b8b90;font:800 12px var(--sans);letter-spacing:.08em;text-transform:uppercase}
+.chips b{color:#c4b5fd;font-weight:400}
+.term{padding:22px;border-radius:24px;background:#202022;border:1px solid #2e2e31}
+.term .bar{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#8b8b90;margin-bottom:10px}
+.term pre{margin:0;font:13px/1.8 var(--mono);color:#e4e4e7;white-space:pre-wrap}
+.term .a{color:#c4b5fd}.term .d{color:#8b8b90}
+.term p{margin-top:10px;color:#a2a2a2;font-size:14px}
+.block .btn{border-color:#fff;color:#fff}
+.block .btn.solid{background:#fff;color:#1a1a1a}
 
 /* roadmap */
-.roadmap{display:grid;grid-template-columns:56px 1fr;gap:0 20px;margin-top:44px}
-.dot-col{display:flex;flex-direction:column;align-items:center}
-.dot{width:34px;height:34px;border-radius:999px;display:grid;place-items:center;font-family:var(--mono);font-size:12px;font-weight:700;flex-shrink:0}
-.dot.done{background:var(--accent);color:#fff}
-.dot.next{border:1.5px solid var(--accent);color:var(--accent);background:var(--bg)}
-.dot.later{border:1px solid var(--line-2);color:var(--muted);background:var(--bg)}
-.stem{flex:1;width:1px;background:var(--line-2);margin:6px 0}
-.roadmap .item{padding-bottom:32px;display:flex;flex-direction:column;gap:6px}
-.roadmap .item h3{font-size:18px}
-.roadmap .item.later h3{color:var(--ink-2)}
-.roadmap .item p{color:var(--ink-2);font-size:14.5px;max-width:68ch}
-.roadmap .item.later p{color:var(--muted)}
-.head-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.badge{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.06em;border-radius:6px;padding:2px 8px}
-.badge.build{color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent);border:1px solid var(--accent)}
-.badge.committed{color:var(--accent);border:1px solid var(--line-2)}
-.badge.gated{color:var(--muted);border:1px solid var(--line-2)}
+.roadmap{display:flex;flex-direction:column;gap:12px;margin-top:40px}
+.phase{display:grid;grid-template-columns:auto minmax(0,1fr);gap:18px;align-items:start;padding:24px;border-radius:24px;background:var(--card)}
+.phase .tag{height:40px;min-width:56px;display:grid;place-items:center;padding:0 14px;border-radius:999px;background:var(--accent);color:#fff;font-weight:900}
+.phase.next .tag{background:var(--accent-soft);color:var(--accent-text)}
+.phase.later .tag{background:transparent;border:1.5px solid var(--line-2);color:var(--muted)}
+.phase h3{font-size:21px;line-height:1.2}
+.phase p{margin-top:6px;color:var(--ink-2);font-size:15.5px}
+.phase.later h3,.phase.later p{color:var(--muted)}
+.state{display:inline-block;margin-left:8px;padding:2px 10px;border-radius:999px;font:800 11px var(--sans);letter-spacing:.06em;vertical-align:middle;border:1px solid var(--line-2);color:var(--muted)}
+.state.build{background:var(--accent);border-color:var(--accent);color:#fff}
+.state.committed{border-color:var(--accent);color:var(--accent-text)}
 
-/* compare table */
-.compare-table{overflow-x:auto;margin-top:40px;border:1px solid var(--line);border-radius:14px;background:var(--bg)}
-.compare-table table{border-collapse:collapse;width:100%;min-width:720px;font-size:13.5px}
-.compare-table th,.compare-table td{padding:13px 14px;border-bottom:1px solid var(--line);text-align:center}
-.compare-table td:first-child,.compare-table th:first-child{text-align:left;color:var(--ink-2)}
-.compare-table th{font-weight:600;color:var(--ink-2)}
-.compare-table th.us{color:var(--accent);font-weight:700}
-.compare-table td.yes{color:var(--accent);font-weight:700}
-.compare-table td.no{color:var(--muted)}
-.compare-table tr:last-child td{border-bottom:0}
-.fineprint{margin-top:20px;font-size:13.5px;color:var(--muted);max-width:66ch}
+/* compare */
+.compare{overflow-x:auto;margin-top:40px;border-radius:24px;background:var(--card)}
+.compare table{border-collapse:collapse;width:100%;min-width:720px;font-size:15px}
+.compare th,.compare td{padding:15px 16px;border-bottom:1px solid var(--line);text-align:center}
+.compare td:first-child,.compare th:first-child{text-align:left;color:var(--ink-2)}
+.compare th{font-weight:800;color:var(--ink-2)}
+.compare th.us,.compare td.yes{color:var(--accent-text);font-weight:900}
+.compare td.no{color:var(--muted)}
+.compare tr:last-child td{border-bottom:0}
+.fineprint{margin-top:18px;color:var(--muted);font-size:15px;max-width:44em}
+.fineprint a{text-decoration:underline}
 
 /* faq */
-.faq{margin-top:40px;border-top:1px solid var(--line);max-width:820px}
-.faq details{border-bottom:1px solid var(--line)}
-.faq summary{list-style:none;cursor:pointer;padding:20px 4px;font-weight:600;font-size:16.5px;display:flex;justify-content:space-between;align-items:center;gap:16px}
+.faq{margin-top:36px;display:flex;flex-direction:column;gap:10px;max-width:860px}
+.faq details{border-radius:22px;background:var(--card);padding:0 24px}
+.faq summary{list-style:none;cursor:pointer;padding:22px 0;font-weight:800;font-size:18px;display:flex;justify-content:space-between;align-items:center;gap:16px}
 .faq summary::-webkit-details-marker{display:none}
-.faq summary::after{content:"+";color:var(--muted);font-weight:400;font-size:22px}
+.faq summary::after{content:"+";color:var(--accent-text);font-size:26px;line-height:1}
 .faq details[open] summary::after{content:"–"}
-.faq details p{padding:0 4px 20px;color:var(--ink-2);font-size:15.5px;max-width:70ch}
+.faq details p{padding:0 0 22px;color:var(--ink-2);max-width:42em}
+.faq a{text-decoration:underline}
 
-/* quickstart */
-.quickstart{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:40px}
-@media(max-width:900px){.quickstart{grid-template-columns:1fr}}
-
-/* closing cta — graphite, fixed dark in both themes */
-.close-cta{position:relative;overflow:hidden;background:var(--panel);border:1px solid var(--panel-line);border-radius:18px;padding:64px 32px;text-align:center}
-.close-cta::before{content:"";position:absolute;inset:0;background:radial-gradient(560px 300px at 50% -20%,var(--glow),transparent 70%);pointer-events:none}
-.close-cta h2{position:relative;font-size:clamp(26px,3.5vw,34px);color:#fff}
-.close-cta p{position:relative;color:rgba(255,255,255,.65);max-width:52ch;margin:14px auto 0;font-size:17px}
-.close-cta .cta{justify-content:center;position:relative}
-.close-cta .btn{border-color:rgba(255,255,255,.25);color:#fff}
-.close-cta .btn:hover{border-color:rgba(255,255,255,.6);color:#fff}
-.close-cta .btn.primary{border-color:var(--accent)}
+/* closing */
+.closing{text-align:center}
+.closing h2{margin:0 auto;max-width:16ch}
+.closing .sub{margin:16px auto 0}
+.closing .cta{justify-content:center}
 
 /* footer */
-footer{background:#0c1117;color:rgba(255,255,255,.7);margin-top:80px;border-top:1px solid rgba(255,255,255,.08)}
-footer .top{padding:56px 0 40px;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:32px}
-footer .brand{color:#fff}
-footer p.tag{margin-top:14px;font-size:14px;max-width:34ch;color:rgba(255,255,255,.55)}
-footer .col h4{font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.4);margin:0 0 14px}
-footer .col a{display:block;font-size:14.5px;color:rgba(255,255,255,.72);padding:5px 0}
-footer .col a:hover{color:#fff}
-footer .bottom{border-top:1px solid rgba(255,255,255,.1);padding:20px 0;font-size:13px;color:rgba(255,255,255,.45);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+footer{margin-top:24px;padding:56px 0 32px;border-top:1px solid var(--line)}
+footer .top{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:32px}
 @media(max-width:820px){footer .top{grid-template-columns:1fr 1fr}}
+footer p.tag{margin-top:14px;color:var(--ink-2);font-size:15px;max-width:30ch}
+footer h4{margin:0 0 12px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+footer .col a{display:block;padding:5px 0;color:var(--ink-2);font-size:15px}
+footer .col a:hover{color:var(--ink)}
+footer .bottom{margin-top:40px;padding-top:20px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:14px}
 
 /* legal pages */
-.legal{padding:64px 0 40px;max-width:760px}
-.legal h1{font-size:clamp(28px,5vw,40px)}
+.legal{padding-top:56px;padding-bottom:40px;max-width:760px}
+.legal h1{font-size:clamp(36px,6vw,56px)}
 .legal .stand{color:var(--muted);font-size:14px;margin-top:10px}
-.legal h2{font-size:20px;margin:38px 0 10px}
-.legal h3{font-size:16px;margin:22px 0 6px}
-.legal p,.legal li{color:var(--ink-2);font-size:15.5px}
+.legal h2{font-size:22px;margin:38px 0 10px;line-height:1.2}
+.legal h3{font-size:17px;margin:22px 0 6px;font-weight:800}
+.legal p,.legal li{color:var(--ink-2);font-size:16px}
 .legal ul{padding-left:20px;margin:8px 0}
 .legal li{margin:5px 0}
-.legal a{color:var(--accent);text-decoration:underline}
-.legal .back{display:inline-block;margin-top:8px;color:var(--ink-2);font-size:14.5px}
+.legal a{color:var(--accent-text);text-decoration:underline}
+.legal .back{display:inline-block;margin-top:24px;color:var(--ink-2);text-decoration:none}
 `;
 
+// Line icons for the theme toggle (static markup, never user input).
+const SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>';
+const MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>';
+const ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+
 // Vanilla-JS theme toggle, served same-origin so CSP needs no 'unsafe-inline'
-// on script-src. Loaded synchronously in <head> (not deferred) so the stored
-// theme applies before first paint — no flash of the wrong theme.
+// on script-src. Loaded synchronously in <head> (not deferred) so the theme
+// applies before first paint. Without a stored choice it follows the system.
 const THEME_JS = `(function(){
-var KEY='fk-theme';
-function apply(t){document.documentElement.setAttribute('data-theme',t)}
-apply(localStorage.getItem(KEY)||'dark');
-window.__fkToggleTheme=function(){
-  var next=(localStorage.getItem(KEY)||'dark')==='dark'?'light':'dark';
-  localStorage.setItem(KEY,next);
-  apply(next);
-  var btn=document.getElementById('fk-theme-btn');
-  if(btn)btn.textContent=next==='dark'?'☀':'☾';
-};
+var KEY='fk-theme', SUN=${JSON.stringify(SUN)}, MOON=${JSON.stringify(MOON)};
+function stored(){try{return localStorage.getItem(KEY)}catch(e){return null}}
+function current(){return stored()||(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}
+function apply(t){document.documentElement.setAttribute('data-theme',t);var b=document.getElementById('fk-theme-btn');if(b)b.innerHTML=t==='dark'?SUN:MOON}
+apply(current());
 document.addEventListener('DOMContentLoaded',function(){
-  var btn=document.getElementById('fk-theme-btn');
-  if(!btn)return;
-  btn.textContent=(localStorage.getItem(KEY)||'dark')==='dark'?'☀':'☾';
-  btn.addEventListener('click',window.__fkToggleTheme);
+  var b=document.getElementById('fk-theme-btn');
+  if(!b)return;
+  apply(current());
+  b.addEventListener('click',function(){var next=current()==='dark'?'light':'dark';try{localStorage.setItem(KEY,next)}catch(e){}apply(next)});
 });
 })();`;
 
-function logoMark(size = 26): string {
+function logoMark(size = 28): string {
   return `<svg viewBox="0 0 48 48" width="${size}" height="${size}" style="display:block;flex-shrink:0" aria-hidden="true"><rect x="3" y="8" width="30" height="14" rx="7" fill="var(--accent)"></rect><rect x="15" y="26" width="30" height="14" rx="7" fill="#a78bfa"></rect></svg>`;
 }
 
@@ -294,18 +250,17 @@ function head(title: string, description: string): string {
 
 const HEADER = `<header><div class="wrap nav">
   <a class="brand" href="/">${logoMark()} FeedbackKit</a>
-  <nav class="links"><a href="/#how">How it works</a><a href="/#architecture">Architecture</a><a href="/#roadmap">Roadmap</a><a href="/#compare">Compare</a><a href="/#faq">FAQ</a></nav>
+  <nav class="links" aria-label="Main"><a href="/#how">How it works</a><a href="/#architecture">Architecture</a><a href="/#roadmap">Roadmap</a><a href="/#faq">FAQ</a><a href="https://github.com/TruffleCraft/feedbackkit" target="_blank" rel="noopener">GitHub</a></nav>
   <div class="right">
-    <button type="button" class="icon-btn" id="fk-theme-btn" aria-label="Toggle dark mode" title="Toggle dark mode">☾</button>
-    <a class="gh-link" href="https://github.com/TruffleCraft/feedbackkit" target="_blank" rel="noopener" style="color:var(--ink-2);font-size:14.5px;font-weight:500">GitHub ↗</a>
-    <a class="btn primary" href="/#try">Try the demo</a>
+    <button type="button" class="icon-btn" id="fk-theme-btn" aria-label="Toggle dark mode" title="Toggle dark mode">${MOON}</button>
+    <a class="btn violet sm" href="/#try"><span class="long">Try the demo</span><span class="short">Demo</span></a>
   </div>
 </div></header>`;
 
 const FOOTER = `<footer><div class="wrap">
   <div class="top">
     <div>
-      <div class="brand" style="color:#fff">${logoMark()} FeedbackKit</div>
+      <div class="brand">${logoMark()} FeedbackKit</div>
       <p class="tag">Open feedback infrastructure you host yourself. One script tag on the front end, structured issues on the back.</p>
     </div>
     <div class="col"><h4>Product</h4>
@@ -315,7 +270,7 @@ const FOOTER = `<footer><div class="wrap">
     <div class="col"><h4>Legal</h4>
       <a href="/impressum">Impressum</a><a href="/datenschutz">Datenschutz</a></div>
   </div>
-  <div class="bottom"><span>© 2026 TruffleCraft — Michel Schieder</span><span>Made with FeedbackKit · Cloudflare Workers</span></div>
+  <div class="bottom"><span>© 2026 TruffleCraft · Michel Schieder</span><span>Made with FeedbackKit on Cloudflare Workers</span></div>
 </div></footer>`;
 
 function shell(opts: { title: string; description: string; body: string; widget?: boolean }): string {
@@ -340,240 +295,166 @@ function compareTable(): string {
   const bodyRows = rows
     .map(([label, vals]) => `<tr><td>${label}</td>${vals.map((v) => `<td class="${v ? "yes" : "no"}">${v ? "✓" : "—"}</td>`).join("")}</tr>`)
     .join("");
-  return `<div class="compare-table"><table>${headRow}${bodyRows}</table></div>`;
+  return `<div class="compare"><table>${headRow}${bodyRows}</table></div>`;
 }
 
 function homePage(): string {
   const body = `
-<section class="hero" id="top"><div class="wrap"><div class="grid">
-  <div>
-    <div class="badges">
-      <span class="chip">✦ Self-hosted · open source · AI-native</span>
-      <span class="chip dim">Pre-0.1 · under active development</span>
-    </div>
-    <h1>Complete feedback, at the source.</h1>
-    <p class="lede">Users rarely know what developers need. FeedbackKit closes the loop while they're still on the page: one sentence in, an AI structures it, asks one follow-up if something's missing — and a complete, agent-ready GitHub issue lands in your repo.</p>
-    <div class="cta">
-      <a class="btn primary lg" href="#try">Try the live demo ↘</a>
-      <a class="btn lg" href="#how">How it works</a>
-    </div>
-    <div class="snippet"><span class="p">$</span> <span class="accent">&lt;script</span> src=<span class="p">"…/widget.js"</span> data-project=<span class="p">"fk_pub_…"</span><span class="accent">&gt;&lt;/script&gt;</span></div>
-    <p class="hint">Exactly 2 attributes — all config comes from the gateway. The snippet never goes stale.</p>
-  </div>
-
-  <div class="hero-signal">
-    <div class="signal-head">${logoMark(22)} FeedbackKit <span>LIVE PIPELINE</span></div>
-    <div class="signal-line"></div>
-    <div class="signal-flow">
-      <div class="signal-step"><span class="n">01</span><b>Capture the user's context</b><em>viewport · console · URL</em></div>
-      <div class="signal-step"><span class="n">02</span><b>Ask only what is missing</b><em>structured LLM</em></div>
-      <div class="signal-step"><span class="n">03</span><b>Create an agent-ready issue</b><em>GitHub · private infra</em></div>
-    </div>
-    <div class="signal-foot">Your gateway and storage stay in your Cloudflare account. Configured LLM and tracker providers receive the workflow data they need.</div>
-  </div>
-</div></div></section>
-
-<div class="stats"><div class="wrap"><div class="grid">
-  <div class="stat"><div class="v">2</div><div class="l">attributes — the whole snippet</div></div>
-  <div class="stat"><div class="v">&lt; 19 kB</div><div class="l">widget bundle budget, gzipped</div></div>
-  <div class="stat"><div class="v">≤ 2</div><div class="l">LLM calls per feedback</div></div>
-  <div class="stat"><div class="v">0</div><div class="l">cookies &amp; trackers</div></div>
-  <div class="stat"><div class="v">MIT</div><div class="l">license, self-hosted</div></div>
-</div></div></div>
-
-<section id="how"><div class="wrap">
-  <div class="kicker">01 — How it works</div>
-  <h2>One sentence in. A structured issue out.</h2>
-  <p class="sub">No wizards, no required fields up front, no interrogation. One structured-output LLM call — and if that call fails, times out, or is over budget, the issue is created anyway. Feedback is never lost.</p>
-  <div class="steps">
-    <div class="step">
-      <div class="n">1</div>
-      <h3>The user writes freely</h3>
-      <p>A single text box, an optional type picker — "everything is GONE again?!?" is a perfectly fine report.</p>
-      <div class="demo mockcard">
-        <div class="txt">everything is GONE again?!? i wrote a whole page…</div>
-        <div class="mocktags"><span class="tagchip">🖼 screenshot</span><span class="tagchip">console · PII redacted</span><span class="tagchip">Chrome · 1440×900</span><span class="tagchip">/editor/draft-7</span></div>
+<section class="hero" id="top"><div class="wrap">
+  <h1>Complete feedback,<br><span>at the source.</span></h1>
+  <div class="row">
+    <div>
+      <p class="lede">Users rarely know what developers need. FeedbackKit closes the loop while they are still on the page: they write one sentence, an AI structures it and asks one follow-up if something is missing, and a complete, agent-ready GitHub issue lands in your repo.</p>
+      <div class="cta">
+        <a class="btn solid" href="#try">Try the live demo ${ARROW}</a>
+        <a class="btn" href="#how">How it works</a>
       </div>
+      <div class="snippet"><span class="t">&lt;script</span> src="…/widget.js" data-project="fk_pub_…"<span class="t">&gt;&lt;/script&gt;</span></div>
+      <p class="hint">Two attributes. All config comes from the gateway, so the snippet never goes stale.</p>
     </div>
-    <div class="step">
-      <div class="n">2</div>
-      <h3>AI structures + asks once</h3>
-      <p>One vision call takes everything — text, screenshot, redacted console, device context — and extracts your template's fields.</p>
-      <div class="demo panel"><div class="body">
-        <b>Almost done — 1 detail missing<span class="micro accent">AI PRE-FILLED</span></b>
-        <div class="dim label">Steps · <span class="accent">from screenshot + console</span></div>
-        <div class="box2">Write in /editor/draft-7 · leave · return — gone (<code class="accent">autosave 409</code>)</div>
-        <div class="row-end"><span class="send2">Complete &amp; send</span></div>
-      </div></div>
-    </div>
-    <div class="step">
-      <div class="n">3</div>
-      <h3>An agent-ready issue lands</h3>
-      <p>A titled, labelled GitHub issue — structured enough that a coding agent can act on it directly.</p>
-      <div class="demo panel"><pre><b>[BUG] Editor loses unsaved draft on navigation</b>
-
-<span class="accent">type/bug</span>  <span class="accent">source/feedbackkit</span>
-
-<b>## Steps</b>
-1. Write in /editor/draft-7
-2. Navigate away, return — content gone
-
-<b>## Environment</b>
-Chrome 149 · macOS · 1440×900 · en-US
-
-<span class="dim" style="font-style:italic">+ screenshot attached · console: autosave 409</span></pre></div>
+    <div class="convo" aria-label="Example conversation">
+      <div class="bubble me">everything is GONE again?!? i wrote a whole page</div>
+      <div class="bubble ai">What did you do right before it disappeared?</div>
+      <div class="issue">
+        <b>[BUG] Editor loses an unsaved draft on navigation</b>
+        <div class="labels"><span>type/bug</span><span>source/feedbackkit</span></div>
+        <div class="body">## Steps<br>1. Write in /editor/draft-7<br>2. Leave the page, come back: the text is gone</div>
+        <div class="more">+ 2 screenshots · console: autosave 409</div>
+      </div>
     </div>
   </div>
 </div></section>
 
-<section id="architecture" class="arch"><div class="wrap">
-  <div class="kicker">02 — Architecture</div>
+<div class="stats">
+  <div class="stat"><div class="v">2</div><div class="l">attributes in the snippet</div></div>
+  <div class="stat"><div class="v">~22 kB</div><div class="l">widget, gzipped</div></div>
+  <div class="stat"><div class="v">1</div><div class="l">follow-up question at most</div></div>
+  <div class="stat"><div class="v">0</div><div class="l">cookies and trackers</div></div>
+  <div class="stat"><div class="v">MIT</div><div class="l">license, self-hosted</div></div>
+</div>
+
+<section id="how"><div class="wrap">
+  <div class="kicker">01 · How it works</div>
+  <h2>One sentence in. A structured issue out.</h2>
+  <p class="sub">No wizards and no required fields up front. If the AI call fails, times out or is over budget, the issue is created anyway, so feedback is never lost.</p>
+  <div class="grid3">
+    <div class="card"><span class="pill">Step 1</span><h3>The user writes freely</h3><p>One text box, plus screenshots if they want. "everything is GONE again?!" is a fine report.</p></div>
+    <div class="card"><span class="pill">Step 2</span><h3>The AI asks once</h3><p>One call reads the text, the screenshots and the page context, picks the type and asks for the one thing that is missing.</p></div>
+    <div class="card"><span class="pill">Step 3</span><h3>An issue lands</h3><p>A titled, labelled GitHub issue with screenshots and environment, structured enough for a coding agent to act on.</p></div>
+  </div>
+</div></section>
+
+<div class="wrap" id="architecture"><div class="block">
+  <div class="kicker">02 · Architecture</div>
   <h2>One Worker. One deploy. Your account.</h2>
-  <p class="sub">A single Cloudflare Worker serves the widget, the config, the API and the admin — backed by D1 and R2 on free tiers. <code class="accent">pnpm deploy</code> and you're live. There is no central FeedbackKit service.</p>
-  <div class="flow">
+  <p class="sub">A single Cloudflare Worker serves the widget, the config and the API, backed by D1 and R2 on free tiers. Run <code>pnpm deploy</code> and you are live. There is no central FeedbackKit service.</p>
+  <div class="grid3">
     <div class="node">
-      <span class="node-label">Your website — any stack</span>
+      <span class="node-label">Your website, any stack</span>
       <h3>Widget</h3>
-      <p>Vanilla TS in a Shadow DOM. Free text, screenshot, session context. Never fights your CSS.</p>
-      <div class="out">POST /api/feedback →</div>
+      <p>Vanilla TS in a Shadow DOM. Free text, screenshots, session context. It never fights your CSS.</p>
+      <div class="out">POST /api/feedback</div>
     </div>
     <div class="node mid">
-      <span class="node-label">Self-hosted · Cloudflare</span>
+      <span class="node-label">Self-hosted on Cloudflare</span>
       <h3>Gateway Worker</h3>
-      <p>Origin allowlist · rate limit · honeypot → one structured-output LLM call, server-side Zod validation as the hard gate.</p>
-      <div class="tags"><span>D1</span><span>R2</span><span>budget cap</span><span>LLM: bring your own</span></div>
+      <p>Origin allowlist, rate limit and honeypot, then one structured-output LLM call with server-side validation as the hard gate.</p>
+      <div class="tags"><span>D1</span><span>R2</span><span>budget cap</span><span>your own LLM</span></div>
     </div>
     <div class="node">
       <span class="node-label">Your repo</span>
       <h3>GitHub issue</h3>
-      <p>Titled, labelled, attachments inlined. Webhook sink for anything else; GitLab, Jira &amp; Trello on the roadmap.</p>
-      <div class="out">✓ issue_created</div>
+      <p>Titled, labelled, attachments inlined. GitLab, Jira and Trello are on the roadmap.</p>
+      <div class="out">issue_created</div>
     </div>
   </div>
-  <div class="invariants">
-    <span class="lbl">Create-anyway invariant:</span>
-    <span class="pill">LLM down → issue unenriched <span class="accent">ai-failed</span></span>
-    <span class="pill">D1 down → issue still created <span class="accent">d1-degraded</span></span>
-    <span class="pill">GitHub down → payload persisted + retry <span class="accent">issue_failed</span></span>
+  <div class="chips">
+    <span class="lbl">Create anyway</span>
+    <span>LLM down: issue unenriched <b>ai-failed</b></span>
+    <span>D1 down: issue still created <b>d1-degraded</b></span>
+    <span>GitHub down: payload kept for retry <b>issue_failed</b></span>
   </div>
-</div></section>
+</div></div>
 
-<section style="background:var(--soft);border-top:1px solid var(--line);border-bottom:1px solid var(--line)"><div class="wrap">
-  <div class="kicker">03 — Privacy first</div>
+<section><div class="wrap">
+  <div class="kicker">03 · Privacy first</div>
   <h2>Feedback without surveillance.</h2>
-  <p class="sub">No session replay, no keystrokes, no stable user IDs, no persisted IPs. The widget measures an anonymous, content-free funnel — and everything runs in your own account.</p>
-  <div class="cards">
+  <p class="sub">No session replay, no keystrokes, no stable user IDs, no stored IPs. The widget counts an anonymous, content-free funnel, and everything runs in your own account.</p>
+  <div class="grid3">
     <div class="card">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 4v5c0 4.5-3 8-7 9-4-1-7-4.5-7-9V7z"/><path d="M9.5 12l2 2 3.5-3.5"/></svg>
-      <h3>Your data stays yours</h3><p>Gateway, database and attachments live in your Cloudflare account. The LLM gets <code>data_collection: deny</code>; console errors are PII-redacted before they leave the browser.</p>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 4v5c0 4.5-3 8-7 9-4-1-7-4.5-7-9V7z"/><path d="M9.5 12l2 2 3.5-3.5"/></svg>
+      <h3>Your data stays yours</h3><p>Gateway, database and attachments live in your Cloudflare account. Console errors are PII-redacted before they leave the browser.</p>
     </div>
     <div class="card">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 12h6M12 9v6"/></svg>
-      <h3>Your LLM, or none</h3><p>Any OpenAI-compatible endpoint — OpenRouter by default, LiteLLM/Ollama/local models planned. Daily budget cap per project, and a kill switch that falls back to plain required-field forms.</p>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 12h6M12 9v6"/></svg>
+      <h3>Your LLM, or none</h3><p>Any OpenAI-compatible endpoint: OpenRouter, your own LiteLLM or a local model. A daily budget cap per project, and with the LLM off the widget still collects the report.</p>
     </div>
     <div class="card">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
-      <h3>Your feedback types</h3><p>Bug, Idea, Improvement — preconfigured, but every project defines its own types with required fields and extraction hints, written "like you'd describe it to a colleague".</p>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+      <h3>Your feedback types</h3><p>Bug, feature request and change request out of the box. Every project defines its own types with required fields, and the AI picks the right one.</p>
     </div>
   </div>
 </div></section>
 
-<section id="roadmap"><div class="wrap">
-  <div class="kicker">04 — Roadmap</div>
+<section id="roadmap" style="padding-top:0"><div class="wrap">
+  <div class="kicker">04 · Roadmap</div>
   <h2>Built in the open, gated by evidence.</h2>
-  <p class="sub">P1–P2 are committed. Later phases start only when their outcome gate is true — the completion funnel is the core KPI from day one.</p>
+  <p class="sub">P1 and P2 are committed. Later phases start only when their outcome gate is true; the completion funnel is the core metric from day one.</p>
   <div class="roadmap">
-    <div class="dot-col"><span class="dot done">P1</span><span class="stem"></span></div>
-    <div class="item">
-      <div class="head-row"><h3>MVP — unstructured feedback → structured issue</h3><span class="badge build">IN BUILD</span></div>
-      <p>One-worker deploy, vanilla Shadow-DOM widget, vision extraction with one structured-output call, follow-up fields, create-anyway matrix, seed-JSON config. Exit: a real product runs on it in production for a week, p90 extraction &lt; 8 s.</p>
-    </div>
-
-    <div class="dot-col"><span class="dot next">P2</span><span class="stem"></span></div>
-    <div class="item">
-      <div class="head-row"><h3>Admin UI, annotation &amp; onboarding</h3><span class="badge committed">COMMITTED</span></div>
-      <p>Full admin (field editor, funnel dashboard, theming with live preview), screenshot annotation overlay, GitHub App flow, signed webhook sink. Exit: a stranger installs it in ≤ 15 minutes.</p>
-    </div>
-
-    <div class="dot-col"><span class="dot later">P3</span><span class="stem"></span></div>
-    <div class="item later">
-      <div class="head-row"><h3>Widget deluxe + full GitHub</h3><span class="badge gated">GATED</span></div>
-      <p>File attachments, draft persistence, full a11y, i18n en/de, GitHub Projects v2 board fields. Gate: two weeks of funnel data prove the follow-up loop works.</p>
-    </div>
-
-    <div class="dot-col"><span class="dot later">P4</span><span class="stem"></span></div>
-    <div class="item later">
-      <div class="head-row"><h3>Provider ecosystem</h3><span class="badge gated">GATED</span></div>
-      <p>GitLab first, then Jira Cloud and Trello — the same feedback lands wherever each project chooses. Gate: an external operator asks for a second provider.</p>
-    </div>
-
-    <div class="dot-col"><span class="dot later">P5</span></div>
-    <div class="item later">
-      <div class="head-row"><h3>Local &amp; private LLMs</h3><span class="badge gated">GATED</span></div>
-      <p>Custom endpoints in the admin — LiteLLM, Ollama, vLLM — up to a fully local recipe: self-hosted GitLab + local model, nothing leaves your network.</p>
-    </div>
+    <div class="phase"><span class="tag">P1</span><div><h3>MVP: unstructured feedback to structured issue <span class="state build">IN BUILD</span></h3><p>One-worker deploy, vanilla Shadow-DOM widget, vision extraction with one structured-output call, the follow-up question, create-anyway matrix, seed-JSON config. Exit: a real product runs on it in production for a week, p90 extraction under 8 s.</p></div></div>
+    <div class="phase next"><span class="tag">P2</span><div><h3>Admin UI, annotation and onboarding <span class="state committed">COMMITTED</span></h3><p>Full admin (field editor, funnel dashboard, theming with live preview), GitHub App flow, signed webhook sink. Exit: a stranger installs it in 15 minutes or less.</p></div></div>
+    <div class="phase later"><span class="tag">P3</span><div><h3>Widget deluxe and full GitHub <span class="state">GATED</span></h3><p>Full a11y, i18n en/de, GitHub Projects v2 board fields. Gate: two weeks of funnel data prove the follow-up loop works.</p></div></div>
+    <div class="phase later"><span class="tag">P4</span><div><h3>Provider ecosystem <span class="state">GATED</span></h3><p>GitLab first, then Jira Cloud and Trello, so the same feedback lands wherever each project chooses. Gate: an external operator asks for a second provider.</p></div></div>
+    <div class="phase later"><span class="tag">P5</span><div><h3>Local and private LLMs <span class="state">GATED</span></h3><p>Custom endpoints in the admin up to a fully local recipe: self-hosted GitLab and a local model, nothing leaves your network.</p></div></div>
   </div>
 </div></section>
 
-<section id="compare" style="background:var(--soft);border-top:1px solid var(--line);border-bottom:1px solid var(--line)"><div class="wrap">
-  <div class="kicker">05 — Why not …?</div>
+<section id="compare" style="padding-top:0"><div class="wrap">
+  <div class="kicker">05 · Why not …?</div>
   <h2>The moat is the combination.</h2>
-  <p class="sub">"LLM formats issues" is commoditizable. Synchronous follow-up <em>before</em> the issue exists — while the user is still on the page — plus automatic session context, privacy-first self-hosting and agent-ready output is not.</p>
+  <p class="sub">"An LLM formats issues" is easy to copy. A follow-up question <em>before</em> the issue exists, while the user is still on the page, plus automatic session context, self-hosting and agent-ready output is not.</p>
   ${compareTable()}
-  <p class="fineprint">Honest note: if you just want screenshots → GitHub issues with zero infrastructure, <a href="https://bugdrop.dev/" target="_blank" rel="noopener">BugDrop</a> is excellent. FeedbackKit is for teams that want <b style="color:var(--ink-2)">complete</b> feedback, their own types, multi-project routing and privacy-first self-hosting.</p>
+  <p class="fineprint">Honest note: if you just want screenshots in GitHub issues with zero infrastructure, <a href="https://bugdrop.dev/" target="_blank" rel="noopener">BugDrop</a> is excellent. FeedbackKit is for teams that want complete feedback, their own types, multi-project routing and self-hosting.</p>
 </div></section>
 
-<section id="faq"><div class="wrap">
-  <div class="kicker">06 — Questions</div>
+<section id="faq" style="padding-top:0"><div class="wrap">
+  <div class="kicker">06 · Questions</div>
   <h2>Frequently asked questions</h2>
   <div class="faq">
-    <details><summary>Where does the feedback go?</summary><p>Straight into your GitHub repo as a structured, labelled issue — title, body sections, screenshot, device context. From P2 a signed webhook sink lets you route the same payload anywhere (n8n, Zapier, Actions).</p></details>
-    <details><summary>Do I need my own AI key?</summary><p>Yes — any OpenAI-compatible endpoint, OpenRouter by default, and it stays in your Cloudflare account. Daily budget cap per project; there's even an "LLM off" kill switch that degrades to plain required-field forms.</p></details>
-    <details><summary>What data does the widget collect?</summary><p>The feedback text, an optional screenshot, and technical context: browser, OS, viewport, language, page URL, recent console errors — PII-filtered client-side. Funnel events are enum-only: no content, no keystrokes, no persisted IPs. See the <a href="/datenschutz">Datenschutzerklärung</a>.</p></details>
-    <details><summary>What happens when the AI fails or the budget is spent?</summary><p>Create-anyway is an architecture invariant: the issue is created unenriched and labelled <code>ai-failed</code>. Even if the database is unreachable the issue is still created. No failure may lose feedback.</p></details>
-    <details><summary>Does it slow my page down or break my styles?</summary><p>No. The ~21 kB gzipped widget renders everything inside a Shadow DOM — fully isolated from your CSS, loading after your page is interactive, on any stack including React/Next.</p></details>
-    <details><summary>How hard is it to run?</summary><p>One <code>pnpm deploy</code> to your Cloudflare account (Workers + D1 + R2, free tiers). Zero-touch updates: your fork stays commit-identical with upstream, so "Sync fork" is a conflict-free upgrade. <code>/diag</code> tells you what's wrong before you have to guess.</p></details>
+    <details><summary>Where does the feedback go?</summary><p>Straight into your GitHub repo as a structured, labelled issue with title, body sections, screenshots and device context. From P2 a signed webhook sink lets you route the same payload anywhere (n8n, Zapier, Actions).</p></details>
+    <details><summary>Do I need my own AI key?</summary><p>For the AI part, yes: any OpenAI-compatible endpoint, and the key stays in your Cloudflare account. There is a daily budget cap per project, and with the LLM switched off the widget still collects every report.</p></details>
+    <details><summary>What data does the widget collect?</summary><p>The feedback text, screenshots the user adds, and technical context: browser, OS, viewport, language, page URL without query string, recent console errors (PII-filtered in the browser). Funnel events carry no content. See the <a href="/datenschutz">Datenschutzerklärung</a>.</p></details>
+    <details><summary>What happens when the AI fails or the budget is spent?</summary><p>The issue is created unenriched and labelled <code>ai-failed</code>. Even if the database is unreachable, the issue is still created. No failure may lose feedback.</p></details>
+    <details><summary>Does it slow my page down or break my styles?</summary><p>No. The ~22 kB gzipped widget renders inside a Shadow DOM, isolated from your CSS, and loads after your page is interactive, on any stack including React and Next.</p></details>
+    <details><summary>How hard is it to run?</summary><p>One <code>pnpm deploy</code> to your Cloudflare account (Workers, D1, R2, free tiers). Your fork stays commit-identical with upstream, so "Sync fork" is a conflict-free upgrade, and <code>/diag</code> tells you what is wrong before you have to guess.</p></details>
   </div>
 </div></section>
 
-<section id="start"><div class="wrap">
-  <div class="kicker">07 — Get started</div>
-  <h2>Clone to first issue in ~15 minutes.</h2>
-  <p class="sub">Fork the repo, run setup, deploy to your Cloudflare account. Your fork stays commit-identical with upstream — updating is one click on "Sync fork".</p>
-  <div class="quickstart">
-    <div class="panel">
-      <div class="bar">1 · Set up</div>
-      <pre><span class="accent">$</span> git clone …/feedbackkit
-<span class="accent">$</span> pnpm setup</pre>
-      <p class="note">Idempotent — LLM key skippable, prints your URLs.</p>
-    </div>
-    <div class="panel">
-      <div class="bar">2 · Deploy</div>
-      <pre><span class="accent">$</span> pnpm deploy
-<span class="dim">✓ migrations · ✓ worker live</span></pre>
-      <p class="note">Workers + D1 + R2, free tiers. <code>/diag</code> checks everything.</p>
-    </div>
-    <div class="panel">
-      <div class="bar">3 · Paste the snippet</div>
-      <pre><span class="accent">&lt;script</span> src=<span class="dim">"…/widget.js"</span>
-  data-project=<span class="dim">"fk_pub_…"</span><span class="accent">&gt;&lt;/script&gt;</span></pre>
-      <p class="note">Test dry-run first on <code>/t/&lt;key&gt;</code>.</p>
-    </div>
+<div class="wrap" id="start"><div class="block">
+  <div class="kicker">07 · Get started</div>
+  <h2>Clone to first issue in about 15 minutes.</h2>
+  <p class="sub">Fork the repo, run setup, deploy to your Cloudflare account. Updating is one click on "Sync fork".</p>
+  <div class="grid3">
+    <div class="term"><div class="bar">1 · Set up</div><pre><span class="a">$</span> git clone …/feedbackkit
+<span class="a">$</span> pnpm setup</pre><p>Idempotent. The LLM key can wait; it prints your URLs.</p></div>
+    <div class="term"><div class="bar">2 · Deploy</div><pre><span class="a">$</span> pnpm deploy
+<span class="d">✓ migrations · ✓ worker live</span></pre><p>Workers, D1 and R2 on free tiers. <code>/diag</code> checks everything.</p></div>
+    <div class="term"><div class="bar">3 · Paste the snippet</div><pre><span class="a">&lt;script</span> src=<span class="d">"…/widget.js"</span>
+  data-project=<span class="d">"fk_pub_…"</span><span class="a">&gt;&lt;/script&gt;</span></pre><p>Dry-run it first on <code>/t/&lt;key&gt;</code>.</p></div>
   </div>
-</div></section>
+</div></div>
 
-<section id="try"><div class="wrap">
-  <div class="close-cta">
-    <h2>Go on — leave us feedback.</h2>
-    <p>The <b style="color:#fff">Feedback</b> button in the bottom-right corner is the real widget, wired to a live gateway. Report a "bug", ask for a feature, or tell us what you think of this page — a real issue opens on GitHub.</p>
-    <div class="cta">
-      <a class="btn primary lg" href="https://github.com/TruffleCraft/feedbackkit" target="_blank" rel="noopener">View on GitHub</a>
-      <a class="btn lg" href="/#how">Read how it works</a>
-    </div>
+<section id="try"><div class="wrap"><div class="block closing">
+  <h2>Go on, leave us feedback.</h2>
+  <p class="sub">The Feedback button in the bottom-right corner is the real widget, wired to a live gateway. Report a bug, ask for a feature or tell us what you think of this page. A real issue opens on GitHub.</p>
+  <div class="cta">
+    <a class="btn solid" href="https://github.com/TruffleCraft/feedbackkit" target="_blank" rel="noopener">View on GitHub ${ARROW}</a>
+    <a class="btn" href="/#how">Read how it works</a>
   </div>
-</div></section>`;
+</div></div></section>`;
+
   return shell({
-    title: "FeedbackKit — turn messy feedback into structured issues",
+    title: "FeedbackKit: turn messy feedback into structured issues",
     description: "A self-hosted feedback widget that turns what your users actually type into clean, structured, agent-ready GitHub issues — with AI, screenshots, and full context.",
     body,
     widget: true,
@@ -670,7 +551,7 @@ function htmlResponse(body: string): Response {
 }
 
 function fontResponse(): Response {
-  const bin = atob(DM_SANS_WOFF2_B64);
+  const bin = atob(URBANIST_WOFF2_B64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return new Response(bytes, {
@@ -695,7 +576,7 @@ function themeJsResponse(): Response {
 export default {
   fetch(req: Request): Response {
     const { pathname } = new URL(req.url);
-    if (pathname === "/fonts/dm-sans.woff2") return fontResponse();
+    if (pathname === "/fonts/urbanist.woff2") return fontResponse();
     if (pathname === "/theme.js") return themeJsResponse();
     if (pathname === "/impressum") return htmlResponse(impressumPage());
     if (pathname === "/datenschutz" || pathname === "/privacy") return htmlResponse(datenschutzPage());
