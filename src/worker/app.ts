@@ -12,6 +12,9 @@ import { verifyTurnstile } from "./security/turnstile.js";
 import { checkRepoAccess } from "./providers/github.js";
 import { sniffImage, storeAttachment, deleteAssetsForFeedback, publicUrl, MAX_UPLOAD_BYTES } from "./storage/r2.js";
 import { ConfigError } from "./errors.js";
+import { VERSION, releaseOf, bindingsPresence, secretsPresence } from "./status.js";
+import { adminAuthed, adminGate } from "./admin/auth.js";
+import { registerAdminRoutes } from "./admin/routes.js";
 import type { Env } from "./env.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -64,40 +67,6 @@ async function readJsonBounded(c: import("hono").Context, max: number): Promise<
   }
 }
 
-export const VERSION = "0.0.0";
-// The running release and channel (ADR-013): baked in per build by the release
-// workflows via FK_RELEASE / FK_CHANNEL; VERSION is the fallback for local runs.
-const releaseOf = (env: Env) => ({ version: env.FK_RELEASE || VERSION, channel: env.FK_CHANNEL || "local" });
-
-// Length-independent compare for the admin token (avoids leaking a match via
-// early-return timing). Length itself is not treated as secret. Full admin-auth
-// hardening (401 rate-limit, CSP) lands with the admin surface in P2.
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let out = 0;
-  for (let i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return out === 0;
-}
-
-function adminAuthed(c: import("hono").Context): boolean {
-  const token = c.env["ADMIN_TOKEN"] as string | undefined;
-  if (!token) return false;
-  const header = c.req.header("Authorization") ?? "";
-  const m = header.match(/^Bearer\s+(.+)$/);
-  return m ? safeEqual(m[1]!, token) : false;
-}
-
-// Non-sensitive presence booleans for /diag and the landing page: which setup
-// steps are done, never the values. Any GITHUB_PAT_* secret counts — the name
-// suffix is per-project config (tracker.patSecret), not fixed.
-function secretsPresence(env: Env): { adminToken: boolean; githubPat: boolean; llmKey: boolean } {
-  return {
-    adminToken: Boolean(env["ADMIN_TOKEN"]),
-    githubPat: Object.keys(env).some((k) => k.startsWith("GITHUB_PAT_") && Boolean(env[k])),
-    llmKey: Boolean(env["LLM_API_KEY"]),
-  };
-}
-
 const app = new Hono<{ Bindings: Env }>();
 
 // GET /widget.js is served as a static asset from ./dist (built by build:widget,
@@ -110,11 +79,7 @@ const app = new Hono<{ Bindings: Env }>();
 // anyone burn the shared PAT budget → DoS of issue creation).
 app.get("/diag", async (c) => {
   const schema = await checkSchema(c.env);
-  const bindings = {
-    DB: typeof c.env.DB?.prepare === "function",
-    UPLOADS: typeof c.env.UPLOADS?.get === "function",
-    ASSETS: typeof c.env.ASSETS?.fetch === "function",
-  };
+  const bindings = bindingsPresence(c.env);
 
   let tracker = "skipped — pass ?project=<key>";
   let llm = "skipped — pass ?project=<key>";
@@ -345,7 +310,8 @@ app.post("/api/upload", async (c) => {
 // GDPR delete (P1.8): remove all attachments for a feedback id. Admin-authed.
 // Registered before the /api/admin/* catch-all so it isn't shadowed by the stub.
 app.delete("/api/admin/assets", async (c) => {
-  if (!adminAuthed(c)) return c.json({ v: WIRE_VERSION, status: "error", error: "unauthorized" }, 401);
+  const denied = await adminGate(c);
+  if (denied) return denied;
   const feedbackId = c.req.query("feedbackId") ?? "";
   if (!UUID_RE.test(feedbackId)) return c.json({ v: WIRE_VERSION, status: "error", error: "missing or invalid feedbackId" }, 400);
   const deleted = await deleteAssetsForFeedback(c.env, feedbackId);
@@ -361,7 +327,8 @@ app.delete("/api/admin/assets", async (c) => {
 // the public key NEVER rotates on update (installed snippets keep working).
 // Widgets pick up the new config within the isolate cache TTL (~60 s, ADR-008).
 app.post("/api/admin/config/import", async (c) => {
-  if (!adminAuthed(c)) return c.json({ v: WIRE_VERSION, status: "error", error: "unauthorized" }, 401);
+  const denied = await adminGate(c);
+  if (denied) return denied;
 
   const body = await readJsonBounded(c, MAX_FEEDBACK_BYTES);
   if (!body.ok) return c.json({ v: WIRE_VERSION, status: "error", error: body.tooLarge ? "payload too large" : "invalid json" }, body.tooLarge ? 413 : 400);
@@ -369,7 +336,9 @@ app.post("/api/admin/config/import", async (c) => {
     return c.json({ v: WIRE_VERSION, status: "error", error: "config must be a JSON object" }, 400);
   }
 
-  const { publicKey: pinnedRaw, ...cfg } = body.value as Record<string, unknown>;
+  // configVersion comes along when an admin export (GET /api/admin/projects/:id/config)
+  // is re-imported; it is informational and never stored in the blob.
+  const { publicKey: pinnedRaw, configVersion: _exportedVersion, ...cfg } = body.value as Record<string, unknown>;
   if (pinnedRaw !== undefined && (typeof pinnedRaw !== "string" || !/^[A-Za-z0-9_-]{8,64}$/.test(pinnedRaw))) {
     return c.json({ v: WIRE_VERSION, status: "error", error: "publicKey must be 8-64 chars of [A-Za-z0-9_-]" }, 400);
   }
@@ -593,6 +562,9 @@ app.get("/t/:key", (c) => {
   return c.html(renderTestPage(key, nonce));
 });
 
+// Read-only admin API (P2, step 1). Registered before the catch-all below.
+registerAdminRoutes(app);
+
 app.all("/api/admin/*", notImplemented("P2"));
 
 // First-run landing page (P2): the first URL an operator sees after a deploy.
@@ -611,4 +583,4 @@ app.get("/", async (c) => {
 // entry module must export ONLY the handler: wrangler/miniflare treats every
 // named export of the entry as a WorkerEntrypoint, so a stray `export const`
 // (string, Hono app, …) kills `wrangler dev` at startup.
-export { app };
+export { app, VERSION };
