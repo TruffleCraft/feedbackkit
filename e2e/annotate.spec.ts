@@ -157,6 +157,31 @@ test("screenshots: several captures upload in order, × removes one, four is the
   expect(feedback.postDataJSON().attachmentKeys).toHaveLength(3);
 });
 
+test("screenshot of a page that scrolls inside its own container keeps the user's scroll position", async ({ page }) => {
+  await installMocks(page, { post1: { v: 1, status: "created", id: "9" } });
+  await page.goto("/");
+  await page.evaluate(() => {
+    const box = document.createElement("div");
+    box.id = "scroller";
+    box.style.cssText = "position:fixed;inset:0 0 0 50%;overflow:auto";
+    box.innerHTML = '<div style="height:3000px">tall</div>';
+    document.body.appendChild(box);
+    box.scrollTop = 1200;
+    const seen: string[] = ((window as unknown as { __seen: string[] }).__seen = []);
+    new MutationObserver(() => seen.push((box.firstElementChild as HTMLElement).style.transform)).observe(box.firstElementChild!, { attributes: true, attributeFilter: ["style"] });
+  });
+  await page.getByRole("button", { name: "Feedback" }).click();
+  await page.getByRole("button", { name: "Screenshot", exact: true }).click();
+  await expect(page.locator(".fk-thumbs .fk-thumb")).toHaveCount(1, { timeout: 10_000 });
+  const after = await page.evaluate(() => {
+    const box = document.getElementById("scroller")!;
+    return { top: box.scrollTop, transform: (box.firstElementChild as HTMLElement).style.transform };
+  });
+  expect(after).toEqual({ top: 1200, transform: "" }); // restored after the capture
+  const seen = await page.evaluate(() => (window as unknown as { __seen: string[] }).__seen);
+  expect(seen).toContain("translate(0px, -1200px)"); // the capture saw the scrolled view
+});
+
 test("draft: closing from the form keeps text and screenshots for the next open", async ({ page }) => {
   await installMocks(page, { post1: { v: 1, status: "created", id: "1" } });
   await page.goto("/");

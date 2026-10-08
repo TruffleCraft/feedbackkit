@@ -41,7 +41,9 @@ export interface UIHandlers {
   onSubmit(type: string, text: string): void;
   onSendNow(): void;
   onComplete(answer: string): void;
-  onAttach(file: File): Promise<"uploaded" | "failed" | "limit">;
+  onAttach(file: File): Promise<{ status: "uploaded" | "failed" | "limit"; key?: string }>;
+  /** × on an attached image → index drops its key from the report. */
+  onRemoveFile(key: string): void;
   onRetry(): void;
   onRestart(): void;
   /** "Screenshot" clicked → index captures the visible page and adds it (setShots). */
@@ -311,14 +313,29 @@ export class WidgetUI {
 
   private acceptFiles(files: FileList | undefined | null) {
     for (const file of Array.from(files ?? [])) {
-      const chip = el("span", { className: "fk-chip file", textContent: `… ${file.name}` });
-      chip.dataset.status = "uploading";
-      this.fileChips.appendChild(chip);
-      void this.h.onAttach(file).then((status) => {
-        chip.dataset.status = status;
-        chip.textContent = status === "uploaded"
-          ? `✓ ${file.name}`
-          : `⚠ ${file.name} · ${this.tr(status === "limit" ? "uploadLimit" : "uploadFailed")}`;
+      // Shown like a screenshot thumbnail (no pen: picked files are not marked up), with × to drop it.
+      const url = URL.createObjectURL(file);
+      const img = el("span", { className: "fk-thumb-img", title: file.name }, [el("img", { src: url, alt: file.name })]);
+      const remove = el("button", { className: "fk-thumb-x", type: "button", ariaLabel: this.tr("removeFile").replace("{name}", file.name) }, [icon("close")]);
+      const thumb = el("span", { className: "fk-thumb file" }, [img, remove]);
+      thumb.dataset.status = "uploading";
+      let key: string | undefined;
+      let removed = false;
+      remove.addEventListener("click", () => {
+        removed = true;
+        thumb.remove();
+        URL.revokeObjectURL(url);
+        if (key) this.h.onRemoveFile(key);
+      });
+      this.fileChips.appendChild(thumb);
+      void this.h.onAttach(file).then((r) => {
+        key = r.key;
+        if (removed) {
+          if (key) this.h.onRemoveFile(key); // × while it was still uploading
+          return;
+        }
+        thumb.dataset.status = r.status;
+        if (r.status !== "uploaded") img.title = `${file.name} · ${this.tr(r.status === "limit" ? "uploadLimit" : "uploadFailed")}`;
       });
     }
   }

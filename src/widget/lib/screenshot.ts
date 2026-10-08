@@ -11,9 +11,37 @@ const MAX_WIDTH = 800; // token-thrift: the LLM reads a small image fine
 // under the cap instead of vanishing on a very long page.
 const MAX_HEIGHT = 4000;
 
+// html-to-image clones the DOM, and a clone starts unscrolled: a page that
+// scrolls inside its own container (an app shell with a fixed sidebar) came out
+// showing the top of that container, not what the user saw. While capturing,
+// each scrolled container is set back to 0 and its children shifted by the
+// same amount, which looks identical on screen and survives the clone.
+function freezeScroll(root: Element, skip?: Element): () => void {
+  const undo: Array<() => void> = [];
+  if (typeof document.createTreeWalker !== "function") return () => {};
+  // 1 = SHOW_ELEMENT / FILTER_ACCEPT, 2 = FILTER_REJECT (no NodeFilter global needed)
+  const walker = document.createTreeWalker(root, 1, { acceptNode: (n) => (n === skip ? 2 : 1) });
+  for (let n = walker.nextNode() as HTMLElement | null; n && undo.length < 25; n = walker.nextNode() as HTMLElement | null) {
+    const { scrollTop: top, scrollLeft: left } = n;
+    if (!top && !left) continue;
+    const kids = Array.from(n.children) as HTMLElement[];
+    const before = kids.map((k) => k.style.transform);
+    n.scrollTop = 0;
+    n.scrollLeft = 0;
+    kids.forEach((k, i) => (k.style.transform = `translate(${-left}px, ${-top}px) ${before[i]}`.trim()));
+    undo.push(() => {
+      kids.forEach((k, i) => (k.style.transform = before[i]!));
+      n.scrollTop = top;
+      n.scrollLeft = left;
+    });
+  }
+  return () => undo.reverse().forEach((f) => f());
+}
+
 export async function captureScreenshot(opts: { root?: Element; skip?: Element; maxWidth?: number; viewport?: boolean } = {}): Promise<Blob | null> {
   const root = (opts.root ?? document.body) as HTMLElement;
   const maxW = opts.maxWidth ?? MAX_WIDTH;
+  const unfreeze = opts.viewport ? freezeScroll(root, opts.skip) : () => {};
   try {
     const viewport = opts.viewport
       ? {
@@ -40,5 +68,7 @@ export async function captureScreenshot(opts: { root?: Element; skip?: Element; 
     return await new Promise<Blob | null>((resolve) => out.toBlob((b) => resolve(b), "image/webp", 0.8));
   } catch {
     return null;
+  } finally {
+    unfreeze();
   }
 }
