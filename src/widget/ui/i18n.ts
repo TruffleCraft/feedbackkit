@@ -39,7 +39,7 @@ type Key =
   | "captureFailed"
   | "captureStarted"
   | "capturing"
-  | "shotReady"
+  | "removeShot"
   | "uploadFailed"
   | "uploadLimit"
   | "privacyLink"
@@ -69,13 +69,13 @@ const STR: Record<Locale, Record<Key, string>> = {
     send: "Send",
     addImages: "Add images",
     screenshotChip: "Screenshot",
-    editShot: "Mark up",
+    editShot: "Mark up screenshot {n}",
     whatSent: "What gets sent?",
     sentText: "Your text and attached images",
     sentPage: "Page",
     sentBrowser: "Browser",
     sentConsole: "Console messages",
-    sentShot: "Screenshot",
+    sentShot: "Screenshots",
     sentContext: "App context",
     yes: "yes",
     no: "no",
@@ -97,7 +97,7 @@ const STR: Record<Locale, Record<Key, string>> = {
     captureStarted: "Capturing the visible page…",
     capturing: "Capturing…",
     captureFailed: "Could not capture this page. You can still send your feedback.",
-    shotReady: "edited ✓",
+    removeShot: "Remove screenshot {n}",
     uploadFailed: "upload failed",
     uploadLimit: "limit reached",
     privacyLink: "Privacy",
@@ -126,13 +126,13 @@ const STR: Record<Locale, Record<Key, string>> = {
     send: "Senden",
     addImages: "Bild anhängen",
     screenshotChip: "Screenshot",
-    editShot: "Markieren",
+    editShot: "Screenshot {n} markieren",
     whatSent: "Was wird gesendet?",
     sentText: "Dein Text und angehängte Bilder",
     sentPage: "Seite",
     sentBrowser: "Browser",
     sentConsole: "Konsolenmeldungen",
-    sentShot: "Screenshot",
+    sentShot: "Screenshots",
     sentContext: "App-Kontext",
     yes: "ja",
     no: "nein",
@@ -154,7 +154,7 @@ const STR: Record<Locale, Record<Key, string>> = {
     captureStarted: "Sichtbaren Bereich aufnehmen …",
     capturing: "Aufnahme …",
     captureFailed: "Die Seite konnte nicht aufgenommen werden. Dein Feedback kannst du trotzdem senden.",
-    shotReady: "bearbeitet ✓",
+    removeShot: "Screenshot {n} entfernen",
     uploadFailed: "Upload fehlgeschlagen",
     uploadLimit: "Limit erreicht",
     privacyLink: "Datenschutz",

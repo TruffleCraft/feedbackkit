@@ -48,7 +48,8 @@ test("a fresh attempt clears text, answer, and media without replacing persisten
   const text = page.getByPlaceholder(placeholder);
   await text.evaluate((node) => node.setAttribute("data-persistent", "yes"));
   await page.locator("#fk-file").setInputFiles({ name: "old.png", mimeType: "image/png", buffer: Buffer.from([1]) });
-  await page.getByRole("button", { name: "Screenshot", exact: true }).click(); // on, then a fresh attempt resets it to off
+  await page.getByRole("button", { name: "Screenshot", exact: true }).click();
+  await expect(page.locator(".fk-thumb")).toHaveCount(1, { timeout: 10_000 }); // gone again after a fresh attempt
   await text.fill("old attempt");
   await page.getByRole("button", send).click();
   await page.locator("#fk-answer").fill("stale answer");
@@ -59,7 +60,7 @@ test("a fresh attempt clears text, answer, and media without replacing persisten
   await expect(text).toHaveAttribute("data-persistent", "yes");
   await expect(page.locator("#fk-answer")).toHaveValue("");
   await expect(page.locator(".fk-files .fk-chip")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Screenshot", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator(".fk-thumb")).toHaveCount(0);
 });
 
 test("renders full-viewport even when an ancestor is transformed (fixed-positioning trap)", async ({ page }) => {

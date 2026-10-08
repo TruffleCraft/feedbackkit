@@ -106,8 +106,9 @@ async function boot() {
   let base1: FeedbackPayload | null = null; // POST-1 payload, reused for POST-2
   let attachedKeys: string[] = []; // R2 keys of manually attached files (uploaded on pick)
   let pendingAttachments: Promise<"uploaded" | "failed" | "limit">[] = [];
-  let editedShot: Blob | null = null; // annotated/cropped capture (#54); replaces the submit-time capture
-  let editedShotUrl = ""; // object URL backing the annotator's <img>, revoked on reset
+  let shots: { blob: Blob; url: string }[] = []; // the draft's page captures (#91), marked up in place
+  let editing = -1; // index of the screenshot open in the annotator
+  let draft = false; // closed from the form: the next open shows the same text and media
   let bailed = false;
   let slowTimer: ReturnType<typeof setTimeout> | undefined;
   let gen = 0; // attempt generation: a stale async result (from a closed/superseded attempt) is ignored
@@ -118,9 +119,10 @@ async function boot() {
     feedbackId = "";
     base1 = null;
     bailed = false;
-    editedShot = null;
-    if (editedShotUrl) URL.revokeObjectURL(editedShotUrl);
-    editedShotUrl = "";
+    for (const s of shots) URL.revokeObjectURL(s.url);
+    shots = [];
+    editing = -1;
+    ui.resetDraft();
   }
 
   // <script … data-trigger="none">: no floating button; the host opens the panel
@@ -130,7 +132,9 @@ async function boot() {
 
   const open = () => {
     if (state.name !== "closed") return;
-    resetAttempt();
+    if (draft) showShots(); // resync the screenshot button (a capture may have been cut off by the close)
+    else resetAttempt();
+    draft = false;
     gate?.preload();
     const device = collectDeviceInfo(window);
     ui.setContext({
@@ -146,10 +150,11 @@ async function boot() {
   const ui = new WidgetUI(shadow, toUIConfig(cfg, script.dataset.label, hideTrigger), {
     onOpen: open,
     onClose: () => {
+      draft = state.name === "form"; // closing before sending keeps the draft (scroll, then add another screenshot)
       gen++; // abandon any in-flight attempt
       dispatch({ t: "close" });
     },
-    onSubmit: (type, text, screenshot) => void submit(type, text, screenshot),
+    onSubmit: (type, text) => void submit(type, text),
     onSendNow: () => {
       bailed = true;
       dispatch({ t: "sendNow" }, () => api.event("sent_anyway"));
@@ -173,10 +178,21 @@ async function boot() {
       resetAttempt();
       dispatch({ t: "restart" });
     },
-    onEditScreenshot: () => void editShot(),
+    onAddScreenshot: () => void addShot(),
+    onEditShot: (i) => void editShot(i),
+    onRemoveShot: (i) => {
+      const [removed] = shots.splice(i, 1);
+      if (removed) URL.revokeObjectURL(removed.url);
+      showShots();
+    },
     onAnnotated: (blob) => {
-      editedShot = blob;
+      const shot = shots[editing];
+      editing = -1;
+      if (!shot) return;
+      URL.revokeObjectURL(shot.url);
+      Object.assign(shot, { blob, url: URL.createObjectURL(blob) });
       debug("screenshot annotated", { bytes: blob.size });
+      showShots();
     },
   });
 
@@ -194,37 +210,44 @@ async function boot() {
     slowTimer = undefined;
   }
 
-  // "Mark up screenshot" (#54): capture now, hand the image to the in-panel
-  // annotator. 6s box (not the submit path's 3s — that one must stay under the
-  // 4s slowHint; here the user explicitly asked and is watching). Failure shows
-  // a hint — feedback itself is never blocked on a capture.
-  async function editShot() {
+  const MAX_SHOTS = 4; // with manual images, at most 5 attachments in total (contract cap)
+  function showShots() {
+    ui.setShots(shots.map((s) => s.url), shots.length < MAX_SHOTS && shots.length + attachedKeys.length + pendingAttachments.length < 5);
+  }
+
+  // "Screenshot" (#91): capture the visible page now and add it to the draft; its
+  // thumbnail opens it in the annotator (#54). 6s box: the user asked and is watching.
+  // Failure shows a hint — feedback itself is never blocked on a capture.
+  async function addShot() {
     if (!screenshotOn) return;
     const myGen = gen;
     const t0 = Date.now();
     ui.captureStarted();
     const shot = await Promise.race([captureScreenshot({ skip: host, maxWidth: 1600, viewport: true }), new Promise<null>((r) => setTimeout(() => r(null), 6000))]);
-    debug("edit capture", { ms: Date.now() - t0, ok: !!shot, bytes: shot?.size ?? 0 });
-    if (myGen !== gen || state.name !== "form") return; // closed/superseded while capturing
-    if (!shot) {
-      ui.captureFailed();
-      return;
-    }
-    if (editedShotUrl) URL.revokeObjectURL(editedShotUrl);
-    editedShotUrl = URL.createObjectURL(shot);
+    debug("capture", { ms: Date.now() - t0, ok: !!shot, bytes: shot?.size ?? 0 });
+    ui.captureDone();
+    if (myGen !== gen || state.name !== "form") return showShots(); // closed while capturing
+    if (!shot) return ui.captureFailed();
+    shots.push({ blob: shot, url: URL.createObjectURL(shot) });
+    showShots();
+  }
+
+  async function editShot(i: number) {
+    const shot = shots[i];
+    if (!shot) return;
     const img = new Image();
-    img.src = editedShotUrl;
+    img.src = shot.url;
     try {
       await img.decode();
     } catch {
-      ui.captureFailed();
-      return;
+      return ui.captureFailed();
     }
-    if (myGen !== gen || state.name !== "form") return;
+    if (state.name !== "form") return;
+    editing = i;
     ui.openAnnotator(img);
   }
 
-  async function submit(type: string, text: string, screenshot: boolean) {
+  async function submit(type: string, text: string) {
     const myGen = ++gen; // this attempt's token; a later submit/close bumps gen and invalidates us
     bailed = false;
     dispatch({ t: "submit" }, () => api.event("submitted"));
@@ -242,27 +265,13 @@ async function boot() {
       await Promise.allSettled([...pendingAttachments]);
       if (myGen !== gen) return;
       const attachmentKeys: string[] = [];
-      if (screenshot && screenshotOn) {
-        // An annotated/cropped shot (#54) wins over a fresh capture — what the
-        // user marked up is exactly what uploads (and reaches the LLM via #53).
-        // Otherwise: time-boxed capture. Now that cacheBust is gone a full-page
-        // shot runs ~0.6-1s, so 3s is ample AND deliberately stays UNDER the 4s
-        // slowHint: that ordering keeps capture invisible to the "send now"
-        // escape hatch. (Raising it past 4s makes slowHint fire mid-capture, so
-        // "send now" appears to do nothing while submit() is still blocked here,
-        // and widens the close-during-capture drop window.) A page that still
-        // can't capture in 3s degrades to no screenshot — feedback itself is
-        // never blocked.
-        const shot = editedShot ?? (await Promise.race([captureScreenshot({ skip: host, viewport: true }), new Promise<null>((r) => setTimeout(() => r(null), 3000))]));
-        if (myGen !== gen) return; // superseded/closed while capturing
-        if (shot) {
-          const key = await api.uploadScreenshot(feedbackId, shot);
-          if (myGen !== gen) return;
-          if (key) attachmentKeys.push(key);
-        }
+      // The draft's screenshots go first, in order, so the worker's vision input
+      // (attachment 0) is a page capture. Manual evidence follows in upload order.
+      for (const shot of screenshotOn ? shots : []) {
+        const key = await api.uploadScreenshot(feedbackId, shot.blob);
+        if (myGen !== gen) return; // superseded/closed while uploading
+        if (key) attachmentKeys.push(key);
       }
-      // Keep the page screenshot first: the worker uses attachment 0 as the
-      // bounded vision input. Manual evidence still follows in upload order.
       attachmentKeys.push(...attachedKeys);
       base1 = {
         v: 1,
@@ -314,7 +323,7 @@ async function boot() {
 
   // Manual file attach (picked in the form) → upload now, key rides along on submit.
   async function attach(file: File): Promise<"uploaded" | "failed" | "limit"> {
-    if (attachedKeys.length + pendingAttachments.length >= 4) return "limit"; // leave room for the auto-screenshot (cap 5)
+    if (attachedKeys.length + pendingAttachments.length + shots.length >= 5) return "limit"; // contract cap: 5 attachments
     if (!feedbackId) feedbackId = uuid();
     const bucket = attachedKeys; // capture: a close→reopen (resetAttempt) rebinds attachedKeys,
     const key = await api.uploadScreenshot(feedbackId, file, "upload"); // so a stale upload lands in the OLD bucket, not the new session

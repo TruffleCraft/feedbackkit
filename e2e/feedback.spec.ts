@@ -90,9 +90,9 @@ test("what gets sent: the disclosure lists the auto-collected context", async ({
   await disclose.click();
   await expect(disclose).toHaveAttribute("aria-expanded", "true");
   await expect(page.locator("#fk-sent")).toContainText("Page: /");
-  await expect(page.locator("#fk-sent")).toContainText("Screenshot: no");
+  await expect(page.locator("#fk-sent")).toContainText("Screenshots: no");
   await page.getByRole("button", { name: "Screenshot", exact: true }).click();
-  await expect(page.locator("#fk-sent")).toContainText("Screenshot: yes");
+  await expect(page.locator("#fk-sent")).toContainText("Screenshots: 1", { timeout: 10_000 });
 });
 
 test("category guidance: shows the per-type hint and updates on type switch", async ({ page }) => {
@@ -165,14 +165,14 @@ test("drop processes every file and keeps independent status chips through failu
   await expect(page.locator("#fk-file")).toHaveAttribute("multiple", "");
   await page.locator(".fk-composer").evaluate((node) => {
     const transfer = new DataTransfer();
-    for (let i = 1; i <= 5; i++) transfer.items.add(new File([String(i)], `evidence-${i}.png`, { type: "image/png" }));
+    for (let i = 1; i <= 6; i++) transfer.items.add(new File([String(i)], `evidence-${i}.png`, { type: "image/png" }));
     node.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }));
   });
 
-  await expect(page.locator(".fk-files .fk-chip")).toHaveCount(5);
-  await expect(page.locator('.fk-chip.file[data-status="uploaded"]')).toHaveCount(3);
+  await expect(page.locator(".fk-files .fk-chip")).toHaveCount(6);
+  await expect(page.locator('.fk-chip.file[data-status="uploaded"]')).toHaveCount(4);
   await expect(page.locator('.fk-chip.file[data-status="failed"]')).toHaveCount(1);
-  await expect(page.locator('.fk-chip.file[data-status="limit"]')).toContainText(["evidence-5.png"]);
+  await expect(page.locator('.fk-chip.file[data-status="limit"]')).toContainText(["evidence-6.png"]); // screenshots and images share the cap of 5
   const chips = await page.locator(".fk-chip.file").allTextContents();
-  for (let i = 1; i <= 5; i++) expect(chips.some((text) => text.includes(`evidence-${i}.png`))).toBe(true);
+  for (let i = 1; i <= 6; i++) expect(chips.some((text) => text.includes(`evidence-${i}.png`))).toBe(true);
 });
