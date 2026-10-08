@@ -78,6 +78,21 @@ const chatMustNotRun: ChatFn = async () => {
   throw new Error("LLM must not be called on this path");
 };
 
+// Two idea-like types the user cannot tell apart: something new vs. a change to something that exists.
+const ideaConfig = () =>
+  baseConfig({
+    templates: [
+      { type: "feature", label: "Feature request", fields: [{ key: "problem", label: "Problem", kind: "longtext", required: true }], tracker: { labels: ["type/feature"] } },
+      { type: "improvement", label: "Change request", fields: [{ key: "what", label: "Was", kind: "longtext", required: true }], tracker: { labels: ["type/improvement"] } },
+    ],
+  });
+const capturingChat = (obj: object, seen: { prompt: string; schema?: { required: string[] } }): ChatFn => async (req) => {
+  const body = JSON.parse((req as { init: { body: string } }).init.body);
+  seen.prompt = body.messages[1].content;
+  seen.schema = body.response_format?.json_schema?.schema;
+  return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(obj) } }] }), { status: 200 });
+};
+
 function ghCapture(status = 201) {
   const calls: Array<{ url: string; body: { title: string; body: string; labels: string[] } }> = [];
   const fetchImpl: FetchFn = async (url, init) => {
@@ -175,6 +190,7 @@ describe("orchestrateFeedback — POST-1", () => {
       fetchImpl: ghCapture().fetchImpl,
     });
     expect(r.body).toMatchObject({ status: "follow_up", type: "bug", question: "Was hast du erwartet?" });
+    expect(r.body).not.toHaveProperty("typeUnclear");
   });
 
   it("auto-type without a usable model: creates for triage instead of asking type-specific questions", async () => {
@@ -195,6 +211,36 @@ describe("orchestrateFeedback — POST-1", () => {
     const r = await orchestrateFeedback(env(db.db), loaded(), payload(), { apiKey: "k", chat, fetchImpl: ghCapture().fetchImpl });
     expect(prompt).toContain("Feedback type: bug");
     expect(r.body).toMatchObject({ status: "created", type: "bug" });
+  });
+
+  it("auto-type: an unclear type asks the settling question even when nothing is missing", async () => {
+    const db = fakeDb();
+    const gh = ghCapture();
+    const seen: { prompt: string; schema?: { required: string[] } } = { prompt: "" };
+    const chat = capturingChat({ type: "feature", typeUnclear: true, summary: "Export als PDF", followUpQuestion: "Gibt es einen Export schon, oder fehlt er ganz?", problem: "Ich will Notizen als PDF exportieren", what: "" }, seen);
+    const r = await orchestrateFeedback(env(db.db), loaded(ideaConfig()), payload({ type: undefined, message: "PDF-Export wäre toll" }), { apiKey: "k", chat, fetchImpl: gh.fetchImpl });
+    expect(seen.prompt).toContain("typeUnclear");
+    expect(seen.schema?.required).toContain("typeUnclear");
+    expect(r.body).toMatchObject({ status: "follow_up", type: "feature", typeUnclear: true, question: "Gibt es einen Export schon, oder fehlt er ganz?" });
+    expect(gh.calls).toHaveLength(0);
+  });
+
+  it("auto-type: a clear type with nothing missing creates without a question", async () => {
+    const db = fakeDb();
+    const r = await orchestrateFeedback(env(db.db), loaded(ideaConfig()), payload({ type: undefined }), {
+      apiKey: "k",
+      chat: chatReturning({ type: "feature", typeUnclear: false, summary: "s", followUpQuestion: "", problem: "p", what: "" }),
+      fetchImpl: ghCapture().fetchImpl,
+    });
+    expect(r.body).toMatchObject({ status: "created", type: "feature" });
+  });
+
+  it("a fixed type never sees the typeUnclear field", async () => {
+    const db = fakeDb();
+    const seen: { prompt: string; schema?: { required: string[] } } = { prompt: "" };
+    await orchestrateFeedback(env(db.db), loaded(ideaConfig()), payload({ type: "feature" }), { apiKey: "k", chat: capturingChat({ type: "feature", summary: "s", followUpQuestion: "", problem: "p" }, seen), fetchImpl: ghCapture().fetchImpl });
+    expect(seen.prompt).not.toContain("typeUnclear");
+    expect(seen.schema?.required).not.toContain("typeUnclear");
   });
 
   it("create-anyway on LLM failure: accepted_incomplete + ai-failed label", async () => {
@@ -261,6 +307,33 @@ describe("orchestrateFeedback — POST-2 (freetext answer → one re-extraction)
     });
     expect(r.body.status).toBe("created");
     expect(gh.calls).toHaveLength(1);
+  });
+
+  it("auto-typed: the answer settles the type and the issue gets that type's labels", async () => {
+    const db = fakeDb();
+    const gh = ghCapture();
+    const seen: { prompt: string; schema?: { required: string[] } } = { prompt: "" };
+    const chat = capturingChat({ type: "improvement", typeUnclear: false, summary: "Export schneller machen", followUpQuestion: "", problem: "", what: "Der Export dauert zu lange" }, seen);
+    const r = await orchestrateFeedback(
+      env(db.db),
+      loaded(ideaConfig()),
+      payload({ type: "feature", autoTyped: true, message: "Export ist nervig", followUpText: "Den gibt es schon, er dauert nur ewig", extracted: { problem: "Export nervt" } }),
+      { apiKey: "k", chat, fetchImpl: gh.fetchImpl },
+    );
+    expect(seen.prompt).toContain("choose the best match");
+    expect(r.body).toMatchObject({ status: "created", type: "improvement" });
+    expect(gh.calls[0]!.body.labels).toContain("type/improvement");
+    expect(gh.calls[0]!.body.body).toContain("Der Export dauert zu lange");
+  });
+
+  it("not auto-typed: POST-2 keeps the type even if the model suggests another", async () => {
+    const db = fakeDb();
+    const gh = ghCapture();
+    const seen: { prompt: string; schema?: { required: string[] } } = { prompt: "" };
+    const chat = capturingChat({ type: "improvement", summary: "s", followUpQuestion: "", problem: "Export nervt" }, seen);
+    const r = await orchestrateFeedback(env(db.db), loaded(ideaConfig()), payload({ type: "feature", followUpText: "dauert ewig", extracted: { problem: "Export nervt" } }), { apiKey: "k", chat, fetchImpl: gh.fetchImpl });
+    expect(seen.prompt).toContain("Feedback type: feature");
+    expect(r.body).toMatchObject({ status: "created", type: "feature" });
   });
 
   it("still-missing after the answer → accepted_incomplete (single-shot, always creates)", async () => {

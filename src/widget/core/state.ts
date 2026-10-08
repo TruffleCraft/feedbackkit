@@ -9,7 +9,7 @@ export type WidgetState =
   | { name: "closed" }
   | { name: "form"; type: string; text: string }
   | { name: "extracting"; sendNow: boolean } // sendNow=true after the 4s slow-hint → "Send now" goes primary
-  | { name: "asking"; question: string; extracted: Record<string, string>; type?: string } // type = how the gateway classified it
+  | { name: "asking"; question: string; extracted: Record<string, string>; type?: string; typeUnclear?: boolean } // type = how the gateway classified it
   | { name: "submitting" }
   | { name: "done"; issueUrl?: string; soft: boolean; type?: string; summary?: string } // soft = accepted/received but no issue link yet
   | { name: "failed"; reason: string };
@@ -30,7 +30,7 @@ export type WidgetEvent =
 function fromResponse(res: FeedbackResponse): WidgetState {
   switch (res.status) {
     case "follow_up":
-      return { name: "asking", question: res.question, extracted: { ...res.extracted }, type: res.type };
+      return { name: "asking", question: res.question, extracted: { ...res.extracted }, type: res.type, typeUnclear: res.typeUnclear };
     case "created":
       return { name: "done", issueUrl: res.issueUrl, soft: false, type: res.type, summary: res.summary };
     case "accepted_incomplete":

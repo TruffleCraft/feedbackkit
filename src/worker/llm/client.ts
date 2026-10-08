@@ -17,6 +17,8 @@ export interface ExtractionResult {
   /** ONE short natural-language follow-up question for the missing info (ADR-012),
    * in the user's language; empty when nothing required is missing. */
   followUpQuestion?: string;
+  /** Auto-typing only: the text fits more than one type; the follow-up should settle it. */
+  typeUnclear?: boolean;
   /** True if the LLM call/parse failed — caller must fall back, never block. */
   degraded: boolean;
   degradeReason?: string;
@@ -64,9 +66,10 @@ function unionFields(templates: TemplateDefinition[]): TemplateDefinition["field
 }
 
 /** Build an OpenAI json_schema for the candidate fields (+ type/summary). */
-function buildSchema(fields: TemplateDefinition["fields"], allTypes: string[]) {
+function buildSchema(fields: TemplateDefinition["fields"], allTypes: string[], autoType = false) {
   const properties: Record<string, unknown> = {
     type: { type: "string", enum: allTypes },
+    ...(autoType ? { typeUnclear: { type: "boolean" } } : {}),
     summary: { type: "string" },
     followUpQuestion: { type: "string" },
   };
@@ -82,7 +85,7 @@ function buildSchema(fields: TemplateDefinition["fields"], allTypes: string[]) {
     schema: {
       type: "object",
       additionalProperties: false,
-      required: ["type", "summary", "followUpQuestion", ...fields.map((f) => f.key)],
+      required: ["type", ...(autoType ? ["typeUnclear"] : []), "summary", "followUpQuestion", ...fields.map((f) => f.key)],
       properties,
     },
   };
@@ -142,12 +145,12 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
     })
     .join("\n");
   // Naming the exact key set helps models that run WITHOUT json_schema (below).
-  const keyList = ["type", "summary", "followUpQuestion", ...fields.map((f) => f.key)].join(", ");
+  const keyList = ["type", ...(opts.autoType ? ["typeUnclear"] : []), "summary", "followUpQuestion", ...fields.map((f) => f.key)].join(", ");
   // Auto-typing: the model picks the type, and only that type's required fields count.
   const typeLine = opts.autoType
     ? `Feedback type: choose the best match.\n${candidates
         .map((t) => `- ${t.type} (${labelText(t.label, config.locale)}); required fields: ${t.fields.filter((f) => f.required).map((f) => f.key).join(", ") || "none"}`)
-        .join("\n")}\nFill only fields that belong to the chosen type; leave the others empty. Ask follow-ups only for the chosen type's required fields.`
+        .join("\n")}\nFill only fields that belong to the chosen type; leave the others empty. Ask follow-ups only for the chosen type's required fields.\nSet typeUnclear to true only when the text honestly fits more than one type (for example something new versus a change to something that already exists). Then pick the likelier type and make followUpQuestion the one question whose answer settles the type, folding in the most important missing detail if there is one.`
     : `Feedback type: ${template.type}`;
   const userText = `${typeLine}\nIssue language: ${config.locale}\nTranslate summary and extracted issue fields into that language when needed. Keep followUpQuestion in the user's language.${"\n"}Fields to extract:\n${fieldLines}\n\nReturn a JSON object with exactly these keys: ${keyList}.${renderContext(opts)}\n\nUser feedback:\n${message}`;
 
@@ -169,7 +172,7 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
   // Structured output is best-effort (ADR-008). Endpoints that don't support it
   // return EMPTY content when it's forced, so it's opt-out per project.
   if (config.llm.structuredOutput !== false) {
-    req["response_format"] = { type: "json_schema", json_schema: buildSchema(fields, allTypes) };
+    req["response_format"] = { type: "json_schema", json_schema: buildSchema(fields, allTypes, opts.autoType) };
   }
   // OpenRouter-only privacy hint; other endpoints may reject unknown top-level keys.
   if (config.llm.provider === "openrouter") {
@@ -236,7 +239,8 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
   const summary = typeof obj["summary"] === "string" ? (obj["summary"] as string).trim() : undefined;
   const followUpQuestion = typeof obj["followUpQuestion"] === "string" ? (obj["followUpQuestion"] as string).trim() : undefined;
 
-  return { type: opts.autoType ? chosen.type : typeVal, extracted, missing, summary, followUpQuestion, degraded: false };
+  const typeUnclear = opts.autoType && obj["typeUnclear"] === true;
+  return { type: opts.autoType ? chosen.type : typeVal, extracted, missing, summary, followUpQuestion, ...(typeUnclear ? { typeUnclear } : {}), degraded: false };
 }
 
 function degraded(template: TemplateDefinition, reason: string): ExtractionResult {
