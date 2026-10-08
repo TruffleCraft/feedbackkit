@@ -28,7 +28,7 @@
     },
     {
       "type": "improvement",
-      "label": "Improvement",
+      "label": "Change request",
       "fields": [
         { "key": "what", "label": "What could be better?", "kind": "longtext", "required": true },
         { "key": "desired", "label": "What would feel better instead?", "kind": "longtext", "required": true, "extractionHint": "The concrete desired behavior, wording, or outcome." }

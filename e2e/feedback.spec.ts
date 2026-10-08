@@ -37,6 +37,7 @@ test("follow_up: shows ONE conversational question, freetext answer → created"
   ]);
   expect(req.postDataJSON().followUpText).toContain("save the form"); // freetext answer, not per-field
   expect(req.postDataJSON().summary).toBe("Save action fails");
+  expect(req.postDataJSON().autoTyped).toBeUndefined(); // a type the widget chose stays fixed
   await expect(page.getByText("Thanks, got it.")).toBeVisible();
   await expect(page.locator(".fk-summary")).toHaveText("Save action fails"); // how it was understood
   await expect(page.locator(".fk-card .fk-tag")).toHaveText("Bug");
@@ -62,9 +63,22 @@ test("auto-type: no type picker, no type sent; the gateway's pick is shown and c
   await expect(page.getByText("Filed as Idea")).toBeVisible();
   await page.locator("#fk-answer").fill("reading at night");
   const [req2] = await Promise.all([page.waitForRequest("**/api/feedback**"), page.locator("#fk-answer").press("Enter")]);
-  expect(req2.postDataJSON()).toMatchObject({ type: "idea", followUpText: "reading at night" });
+  expect(req2.postDataJSON()).toMatchObject({ type: "idea", autoTyped: true, followUpText: "reading at night" }); // the answer may still settle the type
   await expect(page.locator(".fk-summary")).toHaveText("Dark mode for the editor");
   await expect(page.getByRole("link", { name: "View ticket" })).toBeHidden(); // no issue URL → no link
+});
+
+test("auto-type: while the question settles an unclear type, no type is claimed", async ({ page }) => {
+  await installMocks(page, {
+    config: { ...CONFIG, autoType: true, types: [...CONFIG.types, { type: "idea", label: "Idea", fields: [{ key: "problem", label: "Problem", kind: "longtext", required: true }] }] },
+    post1: { v: 1, status: "follow_up", question: "Does an export exist already, or is it missing?", extracted: {}, type: "idea", typeUnclear: true },
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Feedback" }).click();
+  await page.getByPlaceholder(placeholder).fill("a PDF export would be great");
+  await page.getByRole("button", send).click();
+  await expect(page.locator("#fk-question")).toHaveText("Does an export exist already, or is it missing?");
+  await expect(page.locator(".fk-bot .fk-tag")).toBeHidden();
 });
 
 test("what gets sent: the disclosure lists the auto-collected context", async ({ page }) => {
