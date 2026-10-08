@@ -5,11 +5,12 @@ import { publicUrl } from "../storage/r2.js";
 import { dayWindow } from "../security/ratelimit.js";
 import { checkRepoAccess } from "../providers/github.js";
 import { releaseOf, bindingsPresence, secretsPresence } from "../status.js";
-import { adminGate } from "./auth.js";
+import { adminCheck, adminGate } from "./auth.js";
 import type { Env } from "../env.js";
 
-// Read-only admin API (P2, step 1). Every route runs through adminGate (bearer
-// ADMIN_TOKEN, failed attempts rate-limited per hashed IP). Responses carry
+// Read-only admin API (P2, step 1). Every route runs through adminGate (a
+// Cloudflare Access sign-in or the bearer ADMIN_TOKEN, failed token attempts
+// rate-limited per hashed IP). Responses carry
 // feedback content and config, but never IP addresses, secret values, device
 // info or host context.
 
@@ -94,6 +95,16 @@ interface FeedbackListRow {
 }
 
 export function registerAdminRoutes(app: AppT): void {
+  // ── Who is signed in: an Access user (with email) or the token holder ───────
+  // Probed by the admin UI on every load without a token, so a request with no
+  // credentials at all gets a 401 that does not count toward the lockout.
+  app.get("/api/admin/me", async (c) => {
+    const r = await adminCheck(c, { countAnonymous: false });
+    if (!r.ok) return r.res;
+    const id = r.identity;
+    return c.json(id.via === "access" ? { v: WIRE_VERSION, via: "access", email: id.email } : { v: WIRE_VERSION, via: "token" });
+  });
+
   // ── Project list with a 7-day feedback count ────────────────────────────────
   app.get("/api/admin/projects", async (c) => {
     const denied = await adminGate(c);

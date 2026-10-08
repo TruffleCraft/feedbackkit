@@ -123,7 +123,7 @@ export function system(now = Date.now()) {
     wireVersion: 1,
     schema: { expected: 2, ok: true, version: 2 },
     bindings: { DB: true, UPLOADS: true, ASSETS: true },
-    secrets: { adminToken: true, githubPat: true, llmKey: true },
+    secrets: { adminToken: true, githubPat: true, llmKey: true, accessTeamDomain: true, accessAud: true },
     projects: [
       {
         id: "harborline",
@@ -160,11 +160,15 @@ export interface AdminMockOpts {
   items?: Item[];
   /** Page size of the mocked history (the real API defaults to 25). */
   pageSize?: number;
+  /** Signed in through Cloudflare Access as this email: /api/admin/me says so and no token is needed. */
+  access?: string;
 }
 
 /** Records the outcome filter of every history request, for assertions. */
 export async function installAdminMocks(page: Page, opts: AdminMockOpts = {}) {
   const requests: Array<{ outcome: string | null; cursor: string | null }> = [];
+  /** The Authorization header of every admin call ("" when none was sent). */
+  const authHeaders: string[] = [];
   const items = opts.items ?? feedbackItems();
   const pageSize = opts.pageSize ?? 7;
   const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
@@ -174,10 +178,18 @@ export async function installAdminMocks(page: Page, opts: AdminMockOpts = {}) {
     const req = route.request();
     const url = new URL(req.url());
     const auth = req.headers()["authorization"] ?? "";
+    authHeaders.push(auth);
+    // Like the gateway: a probe without credentials is a plain 401 (never 429).
+    if (url.pathname === "/api/admin/me") {
+      if (opts.access) return json(route, { v: 1, via: "access", email: opts.access });
+      if (!auth) return json(route, { v: 1, status: "error", error: "unauthorized" }, 401);
+    }
     if (opts.status === 429) return json(route, { v: 1, status: "error", error: "rate limited" }, 429);
-    if (opts.status === 401 || auth !== `Bearer ${TOKEN}`) return json(route, { v: 1, status: "error", error: "unauthorized" }, 401);
+    if (opts.status === 401 || (!opts.access && auth !== `Bearer ${TOKEN}`)) return json(route, { v: 1, status: "error", error: "unauthorized" }, 401);
 
     const p = url.pathname;
+    if (p === "/api/admin/me") return json(route, { v: 1, via: "token" });
+
     if (p === "/api/admin/projects") return json(route, { v: 1, projects: opts.emptyProjects ? [] : projects() });
     if (p === "/api/admin/system") return json(route, system());
     if (p === "/api/admin/projects/harborline/config") return json(route, harborConfig);
@@ -195,7 +207,7 @@ export async function installAdminMocks(page: Page, opts: AdminMockOpts = {}) {
     if (p.startsWith("/api/admin/projects/")) return json(route, { v: 1, status: "error", error: "unknown project" }, 404);
     return json(route, { v: 1, status: "error", error: "not found" }, 404);
   });
-  return { requests };
+  return { requests, authHeaders };
 }
 
 /** Starts the page signed in (the token the login would have stored). */

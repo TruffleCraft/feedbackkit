@@ -7,6 +7,8 @@ import { FeedbackConfig } from "../src/shared/contract.js";
 import { dayWindow } from "../src/worker/security/ratelimit.js";
 import { parsePatExpiry } from "../src/worker/admin/routes.js";
 import { fakeD1 } from "./helpers.js";
+import { resetAccessCache } from "../src/worker/admin/access.js";
+import { AUD, TEAM, makeKey, claims, signJwt, jwksFetch, type TestKey } from "./access-helpers.js";
 import type { Env } from "../src/worker/env.js";
 
 const TOKEN = "adm1n-s3cret-token";
@@ -471,5 +473,108 @@ describe("parsePatExpiry", () => {
     expect(parsePatExpiry("2026-10-18 02:00:00 +0200", now)?.at).toBe("2026-10-18T00:00:00.000Z");
     expect(parsePatExpiry("soon", now)).toEqual({ raw: "soon", at: null, daysLeft: null });
     expect(parsePatExpiry(undefined, now)).toBeNull();
+  });
+});
+
+describe("admin API — Cloudflare Access sign-in", () => {
+  let key: TestKey;
+  let jwt: string;
+  beforeEach(async () => {
+    resetAccessCache();
+    key ??= await makeKey("kid-a");
+    jwt = await signJwt(key, claims());
+    const gh = async () => new Response("{}", { status: 200 });
+    vi.stubGlobal("fetch", jwksFetch([key], gh).fn);
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  const ORIGIN = "http://localhost";
+  const accessEnv = (s: Store, extra: Record<string, unknown> = {}) => env(s, { FK_ACCESS_TEAM_DOMAIN: TEAM, FK_ACCESS_AUD: AUD, ...extra });
+  const withJwt = (token: string | null, headers: Record<string, string> = {}, init: RequestInit = {}) =>
+    req(token, CLIENT_IP, { ...init, headers: { "Cf-Access-Jwt-Assertion": jwt, ...headers } });
+
+  it("an Access identity passes adminGate on every read route without a token", async () => {
+    const s = store();
+    const e = accessEnv(s);
+    for (const path of ADMIN_PATHS) expect((await app.request(path, withJwt(null), e)).status, path).toBe(200);
+  });
+
+  it("the Bearer token keeps working when Access is configured", async () => {
+    const s = store();
+    expect((await getJson(accessEnv(s), "/api/admin/projects")).status).toBe(200);
+  });
+
+  it("ignores the Access header when FK_ACCESS_* are unset", async () => {
+    const s = store();
+    expect((await app.request("/api/admin/projects", withJwt(null), env(s))).status).toBe(401);
+  });
+
+  it("an invalid Access JWT without a token is a counted failure", async () => {
+    const s = store();
+    const e = accessEnv(s);
+    const bad = await signJwt(key, claims({ aud: ["other-app"] }));
+    for (let i = 0; i < 20; i++) {
+      expect((await app.request("/api/admin/projects", req(null, CLIENT_IP, { headers: { "Cf-Access-Jwt-Assertion": bad } }), e)).status).toBe(401);
+    }
+    expect((await getJson(e, "/api/admin/projects")).status).toBe(429);
+  });
+
+  it("a valid Access identity is not held by the token lockout of its IP", async () => {
+    const s = store();
+    const e = accessEnv(s);
+    for (let i = 0; i < 21; i++) await getJson(e, "/api/admin/projects", "guess-" + i);
+    expect((await getJson(e, "/api/admin/projects")).status).toBe(429);
+    expect((await app.request("/api/admin/projects", withJwt(null), e)).status).toBe(200);
+  });
+
+  it("GET /api/admin/me reports access with the email, or token", async () => {
+    const s = store();
+    const e = accessEnv(s);
+    const a = await app.request("/api/admin/me", withJwt(null), e);
+    expect(a.status).toBe(200);
+    expect(a.headers.get("Cache-Control")).toBe("no-store");
+    expect(await a.json()).toEqual({ v: 1, via: "access", email: "dana@example.com" });
+    const t = await getJson(e, "/api/admin/me");
+    expect(t.status).toBe(200);
+    expect(t.body).toEqual({ v: 1, via: "token" });
+    // Access wins when both are present.
+    expect(await (await app.request("/api/admin/me", withJwt(TOKEN), e)).json()).toMatchObject({ via: "access" });
+  });
+
+  it("GET /api/admin/me without credentials is a 401 that does not count", async () => {
+    const s = store();
+    const e = accessEnv(s);
+    for (let i = 0; i < 30; i++) expect((await getJson(e, "/api/admin/me", null)).status).toBe(401);
+    expect(s.counters.size).toBe(0);
+    expect((await getJson(e, "/api/admin/me")).status).toBe(200);
+    // A wrong token on /me still counts.
+    for (let i = 0; i < 20; i++) expect((await getJson(e, "/api/admin/me", "guess-" + i)).status).toBe(401);
+    expect((await getJson(e, "/api/admin/me")).status).toBe(429);
+  });
+
+  it("state-changing requests accept Access only from the same origin (CSRF)", async () => {
+    const s = store();
+    const e = accessEnv(s);
+    const body = JSON.stringify({ ...demoConfig, projectId: "fresh" });
+    const post = (headers: Record<string, string>) => app.request("/api/admin/config/import", withJwt(null, headers, { method: "POST", body }), e);
+    expect((await post({ Origin: "https://evil.example" })).status).toBe(401);
+    expect((await post({ "Sec-Fetch-Site": "cross-site" })).status).toBe(401);
+    expect((await post({})).status).toBe(401);
+    expect((await post({ Origin: ORIGIN })).status).toBe(200);
+    expect((await post({ "Sec-Fetch-Site": "same-origin" })).status).toBe(200);
+
+    const del = (headers: Record<string, string>) => app.request(`/api/admin/assets?feedbackId=${clientId(1)}`, withJwt(null, headers, { method: "DELETE" }), e);
+    expect((await del({ Origin: "https://evil.example" })).status).toBe(401);
+    expect((await del({ Origin: ORIGIN })).status).toBe(200);
+  });
+
+  it("/diag?project= runs the deep check for an Access identity", async () => {
+    const s = store();
+    const e = accessEnv(s);
+    const res = await app.request("/diag?project=demo", withJwt(null), e);
+    const body = (await res.json()) as { checks: { tracker: string } };
+    expect(body.checks.tracker).not.toMatch(/^unauthorized/);
+    const anon = await app.request("/diag?project=demo", req(null), e);
+    expect(((await anon.json()) as { checks: { tracker: string } }).checks.tracker).toMatch(/^unauthorized/);
   });
 });

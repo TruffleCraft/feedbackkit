@@ -41,6 +41,9 @@ export FK_R2_BUCKET=feedbackkit-uploads
 pnpm exec wrangler secret put ADMIN_TOKEN          # generate a long random string
 pnpm exec wrangler secret put GITHUB_PAT_default   # see the PAT recipe below
 pnpm exec wrangler secret put LLM_API_KEY          # OPTIONAL — skip to run "LLM off"
+# OPTIONAL, for signing in to /admin with Cloudflare Access (see "Admin" below):
+pnpm exec wrangler secret put FK_ACCESS_TEAM_DOMAIN
+pnpm exec wrangler secret put FK_ACCESS_AUD
 ```
 
 ### GitHub PAT recipe (exact)
@@ -269,9 +272,13 @@ it at Siteverify and requires success, action `feedback` and a hostname from
 
 ## Admin
 
-Open `https://<your-worker>.workers.dev/admin` and sign in with your
-`ADMIN_TOKEN`. The page keeps the token in `sessionStorage` for this tab only
-and sends it as a Bearer header. It sets no cookie.
+Open `https://<your-gateway>/admin`. There are two ways in:
+
+- Cloudflare Access (recommended): each person signs in with their own
+  account and nothing has to be pasted. Setup below.
+- The admin token: paste your `ADMIN_TOKEN`. The page keeps it in
+  `sessionStorage` for this tab only and sends it as a Bearer header. curl and
+  scripts use the token too.
 
 In this release the admin pages are read-only. The project list shows each
 project with its feedback count of the last 7 days. A project page has the
@@ -285,15 +292,53 @@ resets at 00:00 UTC.
 Changing configs, fields and retrying failed issues follow in a later release.
 Until then, import configs with `POST /api/admin/config/import` (step 4).
 
-After 20 wrong tokens in an hour, the gateway blocks admin requests from that
-network for the rest of the hour (HTTP 429).
+After 20 wrong tokens in an hour, the gateway blocks token requests from that
+network for the rest of the hour (HTTP 429). Access sign-ins are not blocked.
 
-We recommend putting the admin surface behind
-[Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/self-hosted-public-app/)
-so each person signs in with their own account before the token is even asked
-for. Add a self-hosted application for your gateway hostname with two paths,
-`/admin*` and `/api/admin/*`, and allow only your team's emails. Scripts that
-call the admin API then need an Access service token.
+### Sign in with Cloudflare Access
+
+Access checks who you are before a request reaches the gateway, then passes the
+identity along as a signed JWT. The gateway verifies that JWT, so the admin
+opens without a token.
+
+1. Pick an identity provider in Cloudflare One. Any provider works,
+   including [generic OIDC](https://developers.cloudflare.com/cloudflare-one/integrations/identity-providers/generic-oidc/)
+   (for example a self-hosted Pocket ID).
+2. Create a self-hosted Access application on your gateway hostname
+   ([guide](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/))
+   with these paths:
+   - `/admin*`
+   - `/api/admin/*`
+   - `/oauth/authorize`, once the gateway has an OAuth sign-in (not yet)
+
+   Add an Allow policy for the people who should get in.
+3. Copy the AUD tag from Zero Trust > Access controls > Applications >
+   **Configure** on your application > **Additional settings** >
+   **Application Audience (AUD) Tag**.
+4. Store both values as Worker secrets, so no tracked file changes:
+
+   ```bash
+   pnpm exec wrangler secret put FK_ACCESS_TEAM_DOMAIN   # https://<team>.cloudflareaccess.com
+   pnpm exec wrangler secret put FK_ACCESS_AUD           # the AUD tag from step 3
+   ```
+
+5. Reload `/admin`. The header shows "Signed in as" with your email.
+   **Sign out** ends the Access session (`/cdn-cgi/access/logout`).
+
+`/diag` reports both values as present or missing (never the values) and adds a
+next step when only one of them is set.
+
+Scripts and curl: with `/api/admin/*` behind Access, a request has to get
+through Access first. Create an
+[Access service token](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/),
+add a Service Auth policy for it, and send its `CF-Access-Client-Id` and
+`CF-Access-Client-Secret` headers together with
+`Authorization: Bearer $ADMIN_TOKEN`. A service token alone does not open the
+admin: its JWT has no email, so the gateway still asks for the admin token.
+
+Optional hardening: in the application's cookie settings, set **SameSite** to
+`Lax`. The gateway already refuses Access sign-ins on cross-site `POST` and
+`DELETE` requests, so this is a second layer.
 
 ## Fork + auto-deploy (recommended for updates)
 

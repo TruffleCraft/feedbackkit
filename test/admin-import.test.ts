@@ -157,12 +157,12 @@ describe("GET /diag first-run visibility", () => {
     const res = await app.request("/diag", {}, bare);
     expect(res.status).toBe(200); // infra is healthy; readiness is a separate signal
     const body = (await res.json()) as {
-      secrets: { adminToken: boolean; githubPat: boolean; llmKey: boolean };
+      secrets: Record<string, boolean>;
       projects: number;
       firstRun: boolean;
       nextSteps: string[];
     };
-    expect(body.secrets).toEqual({ adminToken: false, githubPat: false, llmKey: false });
+    expect(body.secrets).toEqual({ adminToken: false, githubPat: false, llmKey: false, accessTeamDomain: false, accessAud: false });
     expect(body.projects).toBe(0);
     expect(body.firstRun).toBe(true);
     expect(body.nextSteps.join("\n")).toContain("ADMIN_TOKEN");
@@ -181,6 +181,25 @@ describe("GET /diag first-run visibility", () => {
     expect(body.firstRun).toBe(false);
     expect(body.secrets.githubPat).toBe(true);
     expect(body.nextSteps).toEqual([]);
+  });
+
+  it("reports Access sign-in config as presence booleans and flags a half-done setup", async () => {
+    const handler = (sql: string) => {
+      if (sql.includes("meta")) return { value: "2" };
+      if (sql.includes("COUNT(*)")) return { n: 2 };
+      return null;
+    };
+    const extra = { GITHUB_PAT_default: "x", LLM_API_KEY: "y" };
+    const half = await app.request("/diag", {}, env(handler, { ...extra, FK_ACCESS_AUD: "aud-tag-value" }));
+    const h = (await half.json()) as { nextSteps: string[]; secrets: Record<string, boolean> };
+    expect(h.secrets).toMatchObject({ accessTeamDomain: false, accessAud: true });
+    expect(h.nextSteps.join("\n")).toContain("FK_ACCESS_TEAM_DOMAIN");
+    expect(JSON.stringify(h)).not.toContain("aud-tag-value");
+
+    const full = await app.request("/diag", {}, env(handler, { ...extra, FK_ACCESS_AUD: "aud-tag-value", FK_ACCESS_TEAM_DOMAIN: "team.cloudflareaccess.com" }));
+    const f = (await full.json()) as { nextSteps: string[]; secrets: Record<string, boolean> };
+    expect(f.secrets).toMatchObject({ accessTeamDomain: true, accessAud: true });
+    expect(f.nextSteps).toEqual([]);
   });
 });
 

@@ -4,8 +4,10 @@ import type { Env } from "../env.js";
 // Admin shell pages (P2, step 3, ADR-014). The Worker renders three static
 // shells: /admin (project list), /admin/projects/:id and /admin/system. They
 // hold no data at all, not even the project id from the URL. dist/admin.js
-// (built from src/admin/main.ts) reads the bearer token from sessionStorage,
-// calls /api/admin/* and fills the page with textContent only.
+// (built from src/admin/main.ts) asks /api/admin/me whether Cloudflare Access
+// already signed the visitor in; if not, it reads the bearer token from
+// sessionStorage. Then it calls /api/admin/* and fills the page with
+// textContent only.
 //
 // CSP: scripts from 'self' (admin.js is a static asset next to the Worker) or
 // with this response's nonce; styles only with the nonce, so the markup below
@@ -105,6 +107,9 @@ svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-widt
 .top .end{margin-left:auto;display:flex;align-items:center;gap:10px}
 .out{border:0;background:none;color:var(--muted);font-weight:600;font-size:14px;cursor:pointer;padding:6px 4px;white-space:nowrap}
 .out:hover{color:var(--ink)}
+a.out{display:inline-flex;align-items:center}
+.who{color:var(--muted);font-size:14px;font-weight:600;min-width:0;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.top .end{min-width:0}
 .icon-btn{width:36px;height:36px;border-radius:999px;border:1px solid var(--line-2);background:transparent;color:var(--ink);display:grid;place-items:center;cursor:pointer;padding:0}
 .icon-btn:hover{border-color:var(--accent)}
 main{max-width:1120px;margin:0 auto;padding:28px 24px 64px}
@@ -241,6 +246,8 @@ a.thumb:hover{border-color:var(--accent)}
   main{padding:16px 16px 48px}
   .top{gap:8px;padding:0 12px}
   .brand small{display:none}
+  .who{max-width:34vw;font-size:13px}
+  .who-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   .nav{margin-left:0}
   h1{font-size:24px}
   .funnel{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -399,7 +406,9 @@ ${SPRITE}
   <a class="brand" href="/admin"><svg width="22" height="22" aria-hidden="true"><use href="#mark"/></svg><span class="name">FeedbackKit</span> <small>Admin</small></a>
   <nav class="nav" id="nav" aria-label="Admin" hidden><a href="/admin"${cur(["projects", "project"])}>Projects</a><a href="/admin/system"${cur(["system"])}>System</a></nav>
   <div class="end">
+    <span class="who" id="who" hidden></span>
     <button class="out" type="button" id="signout" hidden>Sign out</button>
+    <a class="out" id="signout-access" href="/cdn-cgi/access/logout" hidden>Sign out</a>
     <button class="icon-btn" type="button" id="theme" aria-label="Switch between light and dark">${icon("i-moon", "i when-light")}${icon("i-sun", "i when-dark")}</button>
   </div>
 </header>

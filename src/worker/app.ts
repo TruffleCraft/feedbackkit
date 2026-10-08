@@ -76,8 +76,9 @@ const app = new Hono<{ Bindings: Env }>();
 // Self-check (ADR-004 / DX): converts several first-request failures into one command.
 // The base health (bindings + schema) is public. The ?project=<key> deep check
 // drives the maintainer's PAT against GitHub and discloses config/secret metadata,
-// so it is gated behind ADMIN_TOKEN and rate-limited (an open endpoint would let
-// anyone burn the shared PAT budget → DoS of issue creation).
+// so it is gated behind ADMIN_TOKEN or a Cloudflare Access sign-in and
+// rate-limited (an open endpoint would let anyone burn the shared PAT budget →
+// DoS of issue creation).
 app.get("/diag", async (c) => {
   const schema = await checkSchema(c.env);
   const bindings = bindingsPresence(c.env);
@@ -86,8 +87,8 @@ app.get("/diag", async (c) => {
   let llm = "skipped — pass ?project=<key>";
   let r2 = "skipped — pass ?project=<key> (admin)";
   const project = c.req.query("project");
-  if (project && !adminAuthed(c)) {
-    tracker = llm = "unauthorized — deep check requires Authorization: Bearer <ADMIN_TOKEN>";
+  if (project && !(await adminAuthed(c))) {
+    tracker = llm = "unauthorized — deep check requires Authorization: Bearer <ADMIN_TOKEN> or a Cloudflare Access sign-in";
   } else if (project) {
     const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
     const rl = await hitRateLimit(c.env, await ipKey(c.env, "diag", ip), hourWindow(), 60);
@@ -142,6 +143,7 @@ app.get("/diag", async (c) => {
   if (!secrets.githubPat) nextSteps.push("set a GitHub PAT: npx wrangler secret put GITHUB_PAT_default");
   if (firstRun) nextSteps.push("create your first project: POST /api/admin/config/import (see docs/QUICKSTART.md)");
   if (!secrets.llmKey) nextSteps.push("optional: set LLM_API_KEY to enable AI follow-up questions");
+  if (secrets.accessTeamDomain !== secrets.accessAud) nextSteps.push("Access sign-in needs both FK_ACCESS_TEAM_DOMAIN and FK_ACCESS_AUD (see docs/QUICKSTART.md#admin)");
 
   const ok = schema.ok && bindings.DB && bindings.UPLOADS && !tracker.startsWith("FAIL") && !r2.startsWith("FAIL");
   return c.json(

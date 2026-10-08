@@ -1,6 +1,9 @@
 // FeedbackKit admin, read-only (P2, step 3, ADR-014). Fills the Worker-rendered
-// shells from /api/admin/*. The admin token lives in sessionStorage only and
-// goes out as a Bearer header, so there is no cookie and no CSRF surface.
+// shells from /api/admin/*. Two ways in: when Cloudflare Access sits in front of
+// the admin, GET /api/admin/me answers with the signed-in email and no token is
+// needed (Access sends its own cookie; the gateway trusts only the JWT header
+// Access adds at the edge). Otherwise the admin token lives in sessionStorage
+// only and goes out as a Bearer header.
 //
 // Everything that comes from the API is untrusted (feedback text is whatever a
 // visitor typed): it reaches the DOM only through textContent / append(string),
@@ -81,7 +84,7 @@ interface SystemInfo {
   channel: string;
   schema: { ok: boolean; version: number | null; expected: number };
   bindings: Record<string, boolean>;
-  secrets: { adminToken: boolean; githubPat: boolean; llmKey: boolean };
+  secrets: { adminToken: boolean; githubPat: boolean; llmKey: boolean; accessTeamDomain?: boolean; accessAud?: boolean };
   projects: SystemProject[];
 }
 
@@ -116,12 +119,16 @@ function store(kind: "session" | "local", key: string, value?: string | null): s
 }
 const readToken = () => store("session", TOKEN_KEY);
 
+// Set when /api/admin/me reports a Cloudflare Access sign-in: requests then go
+// out without a token, and Access adds the identity on its way to the gateway.
+let accessEmail: string | null = null;
+
 async function api<T>(path: string, token = readToken()): Promise<T> {
-  const res = await fetch(path, {
-    headers: { Authorization: `Bearer ${token ?? ""}`, Accept: "application/json" },
-    cache: "no-store",
-    credentials: "omit",
-  });
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (accessEmail === null) headers["Authorization"] = `Bearer ${token ?? ""}`;
+  // same-origin: with Access in front, the browser must send the CF_Authorization
+  // cookie or Access stops the request before it reaches the gateway.
+  const res = await fetch(path, { headers, cache: "no-store", credentials: "same-origin" });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try {
@@ -220,6 +227,19 @@ function toggleTheme() {
 const MSG_WRONG = "That token didn't match.";
 const MSG_LOCKED = "Too many failed sign-ins from your network. After 20 in an hour, sign-in stays blocked until the hour is over.";
 const MSG_ENDED = "The saved token no longer works. Sign in again.";
+const MSG_ACCESS_ENDED = "Your sign-in has ended. Reload the page to sign in again.";
+
+/** Asks the gateway, without a token, whether Cloudflare Access signed this visitor in. */
+async function accessSignIn(): Promise<string | null> {
+  try {
+    const res = await fetch("/api/admin/me", { headers: { Accept: "application/json" }, cache: "no-store", credentials: "same-origin" });
+    if (!res.ok) return null;
+    const me = (await res.json()) as { via?: unknown; email?: unknown };
+    return me.via === "access" && typeof me.email === "string" && me.email ? me.email : null;
+  } catch {
+    return null;
+  }
+}
 
 function showLogin(msg?: string) {
   store("session", TOKEN_KEY, null);
@@ -227,6 +247,8 @@ function showLogin(msg?: string) {
   for (const s of document.querySelectorAll<HTMLElement>("main > section")) s.hidden = s.id !== "login";
   $("nav").hidden = true;
   $("signout").hidden = true;
+  $("signout-access").hidden = true;
+  $("who").hidden = true;
   setLoginError(msg ?? null);
   $("token").focus();
 }
@@ -265,6 +287,10 @@ function wireLogin(view: string) {
 
 /** 401/429 end the session; anything else is shown as a load error. */
 function fail(err: unknown, what: string) {
+  if (accessEmail !== null && err instanceof HttpError && err.status === 401) {
+    for (const s of document.querySelectorAll<HTMLElement>("main > section")) s.hidden = true;
+    return notice(MSG_ACCESS_ENDED);
+  }
   if (err instanceof HttpError && err.status === 401) return showLogin(MSG_ENDED);
   if (err instanceof HttpError && err.status === 429) return showLogin(MSG_LOCKED);
   const why = err instanceof HttpError ? `The gateway answered ${err.status} (${err.message}).` : "The gateway didn't answer.";
@@ -703,20 +729,29 @@ function start(view: string) {
   const section = $(`view-${view}`);
   $("login").hidden = true;
   $("nav").hidden = false;
-  $("signout").hidden = false;
+  $("signout").hidden = accessEmail !== null;
+  $("signout-access").hidden = accessEmail === null;
+  if (accessEmail !== null) {
+    const who = $("who");
+    // On phones only the email shows; the label is for wider screens and screen readers.
+    who.replaceChildren(el("span", { class: "who-label" }, "Signed in as "), accessEmail);
+    who.title = accessEmail;
+    who.hidden = false;
+  }
   section.hidden = false;
   const [what, load] = LOADERS[view] ?? LOADERS["projects"]!;
   load().catch((err) => fail(err, what));
 }
 
-function boot() {
+async function boot() {
   applyTheme(store("local", THEME_KEY));
   $("theme").addEventListener("click", toggleTheme);
   $("signout").addEventListener("click", () => showLogin());
   const view = document.body.dataset["view"] ?? "projects";
   wireLogin(view);
-  if (readToken()) start(view);
+  accessEmail = await accessSignIn();
+  if (accessEmail !== null || readToken()) start(view);
   else showLogin();
 }
 
-boot();
+void boot();
