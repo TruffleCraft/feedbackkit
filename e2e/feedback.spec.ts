@@ -152,6 +152,27 @@ test("send waits for a visible attachment upload before creating feedback", asyn
   expect((await feedback).postDataJSON().attachmentKeys).toContain("fk_test/manual.png");
 });
 
+test("an attached image can be removed: × drops it from the report and frees the cap", async ({ page }) => {
+  await installMocks(page, { post1: { v: 1, status: "created", id: "6" } });
+  let n = 0;
+  await page.route("**/api/upload**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ v: 1, key: `fk_test/pick-${++n}.png` }) }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Feedback" }).click();
+  await page.locator("#fk-file").setInputFiles([
+    { name: "keep.png", mimeType: "image/png", buffer: Buffer.from([1]) },
+    { name: "drop.png", mimeType: "image/png", buffer: Buffer.from([2]) },
+  ]);
+  await expect(page.locator('.fk-thumb.file[data-status="uploaded"]')).toHaveCount(2);
+  await page.getByRole("button", { name: "Remove drop.png" }).click();
+  await expect(page.locator(".fk-files .fk-thumb")).toHaveCount(1);
+  await page.getByPlaceholder(placeholder).fill("only one image please");
+  const feedback = page.waitForRequest("**/api/feedback**");
+  await page.getByRole("button", send).click();
+  const keys = (await feedback).postDataJSON().attachmentKeys as string[];
+  expect(keys).toHaveLength(1);
+  expect(keys[0]).toMatch(/^fk_test\/pick-\d\.png$/);
+});
+
 test("drop processes every file and keeps independent status chips through failure and cap rejection", async ({ page }) => {
   await installMocks(page, { post1: { v: 1, status: "created", id: "5" } });
   let upload = 0;
@@ -169,10 +190,10 @@ test("drop processes every file and keeps independent status chips through failu
     node.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }));
   });
 
-  await expect(page.locator(".fk-files .fk-chip")).toHaveCount(6);
-  await expect(page.locator('.fk-chip.file[data-status="uploaded"]')).toHaveCount(4);
-  await expect(page.locator('.fk-chip.file[data-status="failed"]')).toHaveCount(1);
-  await expect(page.locator('.fk-chip.file[data-status="limit"]')).toContainText(["evidence-6.png"]); // screenshots and images share the cap of 5
-  const chips = await page.locator(".fk-chip.file").allTextContents();
+  await expect(page.locator(".fk-files .fk-thumb")).toHaveCount(6);
+  await expect(page.locator('.fk-thumb.file[data-status="uploaded"]')).toHaveCount(4);
+  await expect(page.locator('.fk-thumb.file[data-status="failed"]')).toHaveCount(1);
+  await expect(page.locator('.fk-thumb.file[data-status="limit"] img')).toHaveAttribute("alt", "evidence-6.png"); // screenshots and images share the cap of 5
+  const chips = await page.locator(".fk-files img").evaluateAll((imgs) => imgs.map((i) => i.getAttribute("alt") ?? ""));
   for (let i = 1; i <= 6; i++) expect(chips.some((text) => text.includes(`evidence-${i}.png`))).toBe(true);
 });

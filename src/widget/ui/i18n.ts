@@ -40,6 +40,7 @@ type Key =
   | "captureStarted"
   | "capturing"
   | "removeShot"
+  | "removeFile"
   | "uploadFailed"
   | "uploadLimit"
   | "privacyLink"
@@ -98,6 +99,7 @@ const STR: Record<Locale, Record<Key, string>> = {
     capturing: "Capturing…",
     captureFailed: "Could not capture this page. You can still send your feedback.",
     removeShot: "Remove screenshot {n}",
+    removeFile: "Remove {name}",
     uploadFailed: "upload failed",
     uploadLimit: "limit reached",
     privacyLink: "Privacy",
@@ -155,6 +157,7 @@ const STR: Record<Locale, Record<Key, string>> = {
     capturing: "Aufnahme …",
     captureFailed: "Die Seite konnte nicht aufgenommen werden. Dein Feedback kannst du trotzdem senden.",
     removeShot: "Screenshot {n} entfernen",
+    removeFile: "{name} entfernen",
     uploadFailed: "Upload fehlgeschlagen",
     uploadLimit: "Limit erreicht",
     privacyLink: "Datenschutz",

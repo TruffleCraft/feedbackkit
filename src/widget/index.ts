@@ -105,7 +105,7 @@ async function boot() {
   let feedbackId = "";
   let base1: FeedbackPayload | null = null; // POST-1 payload, reused for POST-2
   let attachedKeys: string[] = []; // R2 keys of manually attached files (uploaded on pick)
-  let pendingAttachments: Promise<"uploaded" | "failed" | "limit">[] = [];
+  let pendingAttachments: Promise<{ status: "uploaded" | "failed" | "limit"; key?: string }>[] = [];
   let shots: { blob: Blob; url: string }[] = []; // the draft's page captures (#91), marked up in place
   let editing = -1; // index of the screenshot open in the annotator
   let draft = false; // closed from the form: the next open shows the same text and media
@@ -180,6 +180,11 @@ async function boot() {
     },
     onAddScreenshot: () => void addShot(),
     onEditShot: (i) => void editShot(i),
+    onRemoveFile: (key) => {
+      const index = attachedKeys.indexOf(key);
+      if (index >= 0) attachedKeys.splice(index, 1);
+      showShots();
+    },
     onRemoveShot: (i) => {
       const [removed] = shots.splice(i, 1);
       if (removed) URL.revokeObjectURL(removed.url);
@@ -322,13 +327,14 @@ async function boot() {
   }
 
   // Manual file attach (picked in the form) → upload now, key rides along on submit.
-  async function attach(file: File): Promise<"uploaded" | "failed" | "limit"> {
-    if (attachedKeys.length + pendingAttachments.length + shots.length >= 5) return "limit"; // contract cap: 5 attachments
+  async function attach(file: File): Promise<{ status: "uploaded" | "failed" | "limit"; key?: string }> {
+    if (attachedKeys.length + pendingAttachments.length + shots.length >= 5) return { status: "limit" }; // contract cap: 5 attachments
     if (!feedbackId) feedbackId = uuid();
     const bucket = attachedKeys; // capture: a close→reopen (resetAttempt) rebinds attachedKeys,
     const key = await api.uploadScreenshot(feedbackId, file, "upload"); // so a stale upload lands in the OLD bucket, not the new session
     if (key) bucket.push(key);
-    return key ? "uploaded" : "failed";
+    showShots(); // the screenshot button's cap depends on the attachment count
+    return key ? { status: "uploaded", key } : { status: "failed" };
   }
 
   ui.render(state);
