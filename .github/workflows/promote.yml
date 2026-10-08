@@ -29,6 +29,7 @@ jobs:
       FK_D1_ID: ${{ vars.FK_D1_ID }}
       FK_R2_BUCKET: ${{ vars.FK_R2_BUCKET }}
       FK_CUSTOM_DOMAIN: ${{ vars.FK_CUSTOM_DOMAIN }}
+      FK_OAUTH_KV_ID: ${{ vars.FK_OAUTH_KV_ID }} # optional: binds OAUTH_KV, turns on /mcp (ADR-015)
       DEV_TAG: ${{ inputs.dev_tag }}
       GH_TOKEN: ${{ github.token }}
     steps:

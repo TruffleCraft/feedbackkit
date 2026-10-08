@@ -33,6 +33,15 @@ if (customDomain && !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(customDomain)) {
   process.exit(1);
 }
 const routes = customDomain ? `routes = [{ pattern = "${customDomain}", custom_domain = true }]` : "";
+// Optional: the MCP server (ADR-015) keeps OAuth clients, grants and tokens in
+// a KV namespace. FK_OAUTH_KV_ID binds it as OAUTH_KV; without it the binding
+// is left out and /mcp answers 404, so a fork without KV still deploys.
+const oauthKvId = process.env.FK_OAUTH_KV_ID?.trim();
+if (oauthKvId && !/^[0-9a-f]{32}$/i.test(oauthKvId)) {
+  console.error(`materialize: FK_OAUTH_KV_ID must be a KV namespace id (32 hex characters), got "${oauthKvId}"`);
+  process.exit(1);
+}
+const oauthKv = oauthKvId ? `[[kv_namespaces]]\nbinding = "OAUTH_KV"\nid = "${oauthKvId}"` : "";
 // Release identity (ADR-013): set by the release workflows, defaults for local
 // and fork builds. FK_RELEASE is the semver of this build, FK_CHANNEL stable|dev.
 const release = process.env.FK_RELEASE?.trim() || "0.0.0-local";
@@ -46,6 +55,7 @@ const template = readFileSync(join(root, "wrangler.template.toml"), "utf8");
 const rendered = template.replace(/\$\{(\w+)\}/g, (_, name) => {
   if (name === "WIDGET_VERSION") return widgetVersion;
   if (name === "FK_ROUTES") return routes;
+  if (name === "FK_OAUTH_KV") return oauthKv;
   if (name === "FK_RELEASE") return release;
   if (name === "FK_CHANNEL") return channel;
   const v = process.env[name];
@@ -56,4 +66,4 @@ const rendered = template.replace(/\$\{(\w+)\}/g, (_, name) => {
   return v;
 });
 writeFileSync(join(root, "wrangler.toml"), rendered);
-console.log(`materialize: wrote wrangler.toml (${channel} ${release}, widget v=${widgetVersion})`);
+console.log(`materialize: wrote wrangler.toml (${channel} ${release}, widget v=${widgetVersion}${oauthKv ? ", MCP on" : ""})`);

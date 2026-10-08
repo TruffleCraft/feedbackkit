@@ -3,10 +3,15 @@
 #   CLOUDFLARE_ACCOUNT_ID, FK_D1_ID, FK_R2_BUCKET
 # (as Workers Builds build variables, or in your shell for a local deploy).
 # Optional: FK_CUSTOM_DOMAIN (bare hostname) adds a custom-domain route.
+# Optional: FK_OAUTH_KV_ID (KV namespace id) binds OAUTH_KV and turns on the MCP
+# server at /mcp (ADR-015); without it /mcp answers 404.
 name = "feedbackkit"
 main = "src/worker/index.ts"
 compatibility_date = "2025-01-01"
-compatibility_flags = ["nodejs_compat"]
+# global_fetch_strictly_public: outbound fetch always goes over the public
+# internet, never straight to an origin in this zone. The MCP OAuth server needs
+# it to fetch Client ID Metadata Documents safely (ADR-015).
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 account_id = "${CLOUDFLARE_ACCOUNT_ID}"
 ${FK_ROUTES}
 # Release channels (ADR-013, docs/RELEASES.md): production serves stable; the
@@ -28,6 +33,8 @@ migrations_dir = "migrations"
 [[r2_buckets]]
 binding = "UPLOADS"
 bucket_name = "${FK_R2_BUCKET}"
+
+${FK_OAUTH_KV}
 
 [triggers]
 # App-level R2 retention sweep + events rollup (P1.8 / P1.9).

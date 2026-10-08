@@ -309,7 +309,7 @@ opens without a token.
    with these paths:
    - `/admin*`
    - `/api/admin/*`
-   - `/oauth/authorize`, once the gateway has an OAuth sign-in (not yet)
+   - `/oauth/authorize`, if you turn on MCP (see [MCP](#mcp-for-agents))
 
    Add an Allow policy for the people who should get in.
 3. Copy the AUD tag from Zero Trust > Access controls > Applications >
@@ -339,6 +339,49 @@ admin: its JWT has no email, so the gateway still asks for the admin token.
 Optional hardening: in the application's cookie settings, set **SameSite** to
 `Lax`. The gateway already refuses Access sign-ins on cross-site `POST` and
 `DELETE` requests, so this is a second layer.
+
+## MCP for agents
+
+The gateway can run an MCP server at `/mcp`, so Claude Code, claude.ai, ChatGPT
+or Hermes can read projects, feedback, the funnel and project configs. It is
+read-only and optional. Clients connect with OAuth 2.1, and a person approves
+each connection on a consent page after signing in through Cloudflare Access.
+The admin token does not work here. Set up [Access](#sign-in-with-cloudflare-access)
+first.
+
+1. Create a KV namespace for OAuth clients, grants and tokens:
+
+   ```bash
+   pnpm exec wrangler kv namespace create feedbackkit-oauth
+   ```
+
+   Note the `id` it prints.
+2. Set the build variable `FK_OAUTH_KV_ID` to that id: in Workers Builds as a
+   build variable, in your shell for a local deploy, or as the repository
+   variable of the same name for the release workflows. `pnpm materialize`
+   then binds the namespace as `OAUTH_KV`. Without the variable, `/mcp`
+   answers 404 and the rest of the gateway works as before.
+3. Add `/oauth/authorize` as a path to the Access application from the admin
+   setup. Whoever that application's policy lets in can connect an agent.
+4. Deploy, then connect the client to `https://<your-gateway>/mcp`. In Claude
+   Code:
+
+   ```bash
+   claude mcp add --transport http feedbackkit https://<your-gateway>/mcp
+   ```
+
+   The client opens the consent page in your browser. It names the app, the
+   access it asks for and the email you are signed in with. **Allow** connects
+   it, **Cancel** sends it away with nothing.
+
+An agent gets one of two scopes or both. `feedback:read` covers projects,
+feedback items, search and the funnel. `config:read` covers the project config
+export. A client that asks for neither gets `feedback:read`. Tokens last an
+hour and refresh for 30 days. Each connection may make 1000 requests an hour.
+
+Feedback text comes from the people using your sites. The tool descriptions
+tell the agent to treat it as data and to ignore instructions inside it. Still
+review what an agent does after it has read feedback.
 
 ## Fork + auto-deploy (recommended for updates)
 

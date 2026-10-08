@@ -155,3 +155,91 @@ with a per-response nonce CSP (`default-src 'none'; script-src 'self'
 connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action
 'self'`), `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`
 and `Cache-Control: no-store` (ADR-014).
+
+## MCP server (`/mcp`)
+
+Optional, read-only, off unless the operator binds a KV namespace as
+`OAUTH_KV` (build variable `FK_OAUTH_KV_ID`). Without it, `/mcp`, `/oauth/*`
+and `/.well-known/oauth-*` answer 404 (ADR-015).
+
+### OAuth 2.1
+
+The gateway is its own authorization server and the resource server, both from
+`@cloudflare/workers-oauth-provider`: authorization code with S256 PKCE only,
+dynamic client registration and Client ID Metadata Documents, RFC 8414 and
+RFC 9728 metadata, tokens bound to the resource `https://<gateway>/mcp`
+(RFC 8707), rotating refresh tokens. KV stores tokens as hashes and the grant
+props encrypted. Access tokens live one hour, refresh tokens 30 days. `/mcp`
+takes nothing else: no `ADMIN_TOKEN`, no Access JWT, no cookie.
+
+Fetching a Client ID Metadata Document is a request to a URL the client
+chooses. The Worker runs with the `global_fetch_strictly_public` compatibility
+flag, so such a fetch can't reach an origin inside the operator's zone; the
+provider adds its own size and time limits.
+
+### Consent
+
+`/oauth/authorize` is the only route the application owns. A grant needs two
+things:
+
+- A Cloudflare Access identity, checked with the same `verifyAccess()` as the
+  admin. The operator adds `/oauth/authorize` to the admin's Access
+  application, so its policy decides who may connect an agent. Without a valid
+  identity the page says sign-in is required and creates nothing, not even a
+  consent transaction. There is no token fallback: a consent page with a
+  token field would teach people to paste the admin token into a page an app
+  sent them to.
+- A click on **Allow**. The form carries a single-use handle from
+  `beginConsent()`, valid ten minutes and bound to the browser by a
+  `__Host-` cookie with `SameSite=Lax`. The POST must also come from the
+  gateway origin (the same check as the admin), and it verifies the Access
+  identity again. **Cancel** sends the client back with `access_denied`.
+
+The page shows the app name (escaped; for a registered client it is
+self-asserted, and the page says so), the host the tokens go to, a warning
+when that host is the user's own machine, the requested scopes as plain lines
+and the signed-in email. The scopes granted are the ones the stored request
+asked for that the gateway knows, `feedback:read` when it asked for none of
+them; a form field can't add any. The page has no script and a nonce CSP
+(`default-src 'none'; style-src 'nonce-…'; font-src 'self'; img-src data:;
+form-action 'self' <redirect origin>; frame-ancestors 'none'; base-uri
+'none'`) plus `X-Frame-Options: DENY`. `form-action` lists the client's
+redirect origin because browsers apply it to the redirect after the post.
+
+The grant stores the Access email and subject, the client id and name, and
+the scopes. The provider's user id is the URL-encoded email.
+
+### Scopes and tools
+
+| Scope | Tools |
+|---|---|
+| none | `whoami` |
+| `feedback:read` | `list_projects`, `list_feedback`, `get_feedback`, `search_feedback`, `get_funnel`, `search`, `fetch` |
+| `config:read` | `get_config` |
+
+The server registers only the tools a grant's scopes allow, so a call to any
+other tool fails as unknown. The queries are the admin API's
+(`src/worker/admin/queries.ts`). `get_feedback` copies fields from the stored
+payload by name: message, follow-up answer, extracted fields, summary, page URL
+and device. The Turnstile token, the honeypot and any field added later stay
+out until someone names them. The gateway stores no IP address with feedback,
+so none can appear. The host context is included under `hostContext` with
+`verified: false`: the embedding page sets it and the gateway never checks it.
+Search uses `LIKE` with `%`, `_` and `\` escaped and a 200-character limit.
+`get_config` returns secrets by name, never by value.
+
+### Untrusted content
+
+Feedback is written by anyone who can open the widget. Every tool that returns
+it says in its description, and the server says in its instructions, that the
+fields are data to analyze and not instructions to follow. That lowers the risk
+of prompt injection through feedback text; it does not remove it. Operators
+should keep agents that read feedback away from write tools they would not
+trust with a stranger's text.
+
+### Rate limit
+
+`/mcp` counts requests per grant (Access email plus client id) and hour in the
+D1 `counters` table, keyed by an HMAC like the IP limiter, so the table holds no
+email. Above 1000 requests an hour the endpoint answers `429` with
+`Retry-After` until the hour is over.

@@ -27,3 +27,34 @@ export function fakeD1(handler: (sql: string, params: unknown[]) => unknown): D1
     },
   } as unknown as D1Database;
 }
+
+export type MemoryKV = KVNamespace & { data: Map<string, { value: string; metadata?: unknown }> };
+
+// In-memory KV for the OAuth provider tests: get (text/json), put (with
+// metadata), delete, list by prefix. Expiry is ignored; tests are short.
+export function memoryKV(): MemoryKV {
+  const data = new Map<string, { value: string; metadata?: unknown }>();
+  const kv = {
+    data,
+    async get(key: string, opts?: unknown) {
+      const e = data.get(key);
+      if (!e) return null;
+      const type = typeof opts === "string" ? opts : (opts as { type?: string } | undefined)?.type;
+      return type === "json" ? JSON.parse(e.value) : e.value;
+    },
+    async put(key: string, value: string, opts?: { metadata?: unknown }) {
+      data.set(key, { value: String(value), metadata: opts?.metadata });
+    },
+    async delete(key: string) {
+      data.delete(key);
+    },
+    async list(opts: { prefix?: string } = {}) {
+      const keys = [...data.keys()]
+        .filter((k) => k.startsWith(opts.prefix ?? ""))
+        .sort()
+        .map((name) => ({ name, metadata: data.get(name)?.metadata }));
+      return { keys, list_complete: true, cacheStatus: null };
+    },
+  };
+  return kv as unknown as MemoryKV;
+}

@@ -32,6 +32,7 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
       FK_D1_ID: ${{ vars.FK_D1_ID }}
       FK_R2_BUCKET: ${{ vars.FK_R2_BUCKET }}
+      FK_OAUTH_KV_ID: ${{ vars.FK_OAUTH_KV_ID }} # optional: binds OAUTH_KV, turns on /mcp (ADR-015)
       BUMP: ${{ inputs.bump || 'none' }}
       GH_TOKEN: ${{ github.token }}
     steps:
