@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { classifyAndExtract, type ChatFn } from "../src/worker/llm/client.js";
 import { FeedbackConfig } from "../src/shared/contract.js";
 import { BUG_FIXTURES } from "./fixtures/extraction.js";
@@ -274,4 +274,25 @@ describe("extraction eval corpus (contract, mock LLM)", () => {
       expect(r.missing.sort()).toEqual([...fx.expectMissing].sort());
     });
   }
+});
+
+describe("classifyAndExtract — timeout", () => {
+  it("waits up to 25s for a slow model, then degrades instead of hanging", async () => {
+    vi.useFakeTimers();
+    try {
+      let aborted = false;
+      // A model that answers only when the gateway gives up on it.
+      const slow: ChatFn = (_req, signal) =>
+        new Promise((_resolve, reject) => signal.addEventListener("abort", () => ((aborted = true), reject(new Error("aborted")))));
+      const pending = classifyAndExtract({ config, template: bug, message: "…", apiKey: "k", chat: slow });
+      await vi.advanceTimersByTimeAsync(24_900);
+      expect(aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(200);
+      const r = await pending;
+      expect(aborted).toBe(true);
+      expect(r.degraded).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

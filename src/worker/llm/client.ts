@@ -180,7 +180,9 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 15_000);
+  // 25s: reasoning-heavy models can need 15-20s for an auto-typed extraction; the widget
+  // offers "send without a follow-up" after 4s, so a slow model never blocks the user.
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 25_000);
   let raw: string;
   try {
     const base = (config.llm.baseUrl ?? "https://openrouter.ai/api/v1").replace(/\/$/, "");
