@@ -13,6 +13,9 @@ export interface RenderContext {
   hostContext?: Record<string, string | number | boolean>; // set by the embedding app, unverified
   attachments?: Array<{ url: string; kind: string }>;
   degraded?: boolean; // LLM unenriched → mark for triage
+  // No model took part (LLM off, no key, over budget): the issue is the user's
+  // text as sent, so no AI note and no body sections that would stay empty.
+  plain?: boolean;
 }
 
 function labelText(label: unknown, locale = "en"): string {
@@ -64,7 +67,7 @@ export function deriveTitle(template: TemplateDefinition, ctx: RenderContext): s
 export function renderIssueBody(template: TemplateDefinition, ctx: RenderContext, locale = "en"): string {
   const parts: string[] = [];
 
-  if (!ctx.degraded) {
+  if (!ctx.degraded && !ctx.plain) {
     parts.push(locale === "de"
       ? "_AI-generierter Entwurf: Bitte strukturierte Felder gegen das unveränderte Originalfeedback prüfen._"
       : "_AI-generated draft: verify structured fields against the unchanged original feedback._");
@@ -72,6 +75,8 @@ export function renderIssueBody(template: TemplateDefinition, ctx: RenderContext
 
   if (template.body.length > 0) {
     for (const section of template.body) {
+      const keys = [...section.template.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]!);
+      if (ctx.plain && keys.length > 0 && keys.every((k) => !ctx.fields[k]?.trim())) continue;
       const heading = section.heading ? `### ${labelText(section.heading, locale)}\n` : "";
       const filled = section.template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
         const v = ctx.fields[key];
@@ -83,6 +88,7 @@ export function renderIssueBody(template: TemplateDefinition, ctx: RenderContext
     // No custom body: dump the required fields, falling back to the raw message.
     for (const f of template.fields) {
       const v = ctx.fields[f.key];
+      if (ctx.plain && !v?.trim()) continue;
       parts.push(`### ${labelText(f.label, locale)}\n${v && v.trim() ? mdInline(v) : "_(not provided)_"}`);
     }
   }
