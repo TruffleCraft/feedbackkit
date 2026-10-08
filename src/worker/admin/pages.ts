@@ -47,10 +47,10 @@ export function adminViewFor(path: string): AdminView | null {
   return null;
 }
 
-const FAVICON =
+export const FAVICON =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect x='3' y='8' width='30' height='14' rx='7' fill='%237c3aed'/%3E%3Crect x='15' y='26' width='30' height='14' rx='7' fill='%23a78bfa'/%3E%3C/svg%3E";
 
-const CSS = `
+export const CSS = `
 @font-face{font-family:"Urbanist";src:url("/urbanist.woff2") format("woff2");font-weight:100 900;font-style:normal;font-display:swap}
 :root{
   --ground:#f6f6f7;--card:#fff;--ink:#1a1a1a;--ink-2:#52525b;--muted:#71717a;

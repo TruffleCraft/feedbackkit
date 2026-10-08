@@ -1,9 +1,12 @@
 # Single-package project. pnpm 11 still wants a packages list (else `pnpm store
 # path` errors with "packages field missing"); "." declares the repo root as the
-# only package. allowBuilds approves the native postinstall scripts we trust.
+# only package. allowBuilds approves the native postinstall scripts we trust
+# (true) and declines the ones we do not need (false).
 packages:
   - .
 allowBuilds:
+  # Pulled in by agents (MCP handler); its postinstall only prints a banner.
+  core-js-pure: false
   esbuild: true
   sharp: true
   workerd: true
