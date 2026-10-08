@@ -45,7 +45,7 @@ cannot create a real issue.
 ## Secrets
 
 - All secrets live **only** in Worker env (`ADMIN_TOKEN`, `GITHUB_PAT_<name>`,
-  `LLM_API_KEY`) — never in the client bundle, never in the public config
+  `LLM_API_KEY`, and the optional `FK_ACCESS_TEAM_DOMAIN` / `FK_ACCESS_AUD`) — never in the client bundle, never in the public config
   projection (`/api/config` whitelists fields; PAT/LLM/origins/prompt internals
   never ship to the browser).
 - The PAT and LLM key are never logged, echoed into an error message, or placed
@@ -91,21 +91,44 @@ an object from R2 does **not** guarantee GitHub's cached copy is gone. Therefore
 
 ## Admin endpoints
 
-Admin routes (`/api/admin/*`, and the `/diag?project=` deep check) require
-`Authorization: Bearer <ADMIN_TOKEN>` and use a constant-time comparison. The
-token is a Worker secret — never commit it, never put it in `NEXT_PUBLIC_*` or
-any client bundle. Cloudflare Access in front of the admin surface is the
-recommended production posture.
+Admin routes (`/api/admin/*`, and the `/diag?project=` deep check) accept one
+of two credentials:
 
-Every `/api/admin/*` route counts failed logins per client (`adm401` counter,
-keyed by the HMAC of the IP, never the address). After 20 failures in an hour
-that client gets `429` for every admin request, including one with the right
-token, until the hour is over. Admin responses carry `Cache-Control: no-store`.
+- **A Cloudflare Access identity.** Only when both `FK_ACCESS_TEAM_DOMAIN` and
+  `FK_ACCESS_AUD` are set. The gateway reads the JWT from the
+  `Cf-Access-Jwt-Assertion` header, which Access adds at the edge, and never
+  from the `CF_Authorization` cookie. It checks the RS256 signature against the
+  team key set at `<team>/cdn-cgi/access/certs` (cached per isolate for an
+  hour, matched by `kid`, refetched for an unknown `kid` at most every 30 s),
+  `iss` equal to the team domain, `aud` containing the AUD tag, and `exp` /
+  `nbf` with 60 s of skew. The token needs an `email` claim, so an Access
+  service token on its own does not open the admin. Any failure means "no
+  identity"; the check never throws. Plain WebCrypto, no JWT dependency.
+- **`Authorization: Bearer <ADMIN_TOKEN>`**, compared in constant time. The
+  token is a Worker secret — never commit it, never put it in `NEXT_PUBLIC_*`
+  or any client bundle. This is the way in for curl and scripts.
+
+Access sets its cookie with `SameSite=None` by default and turns it into the
+JWT header at the edge, so a cross-site form post would arrive with a valid
+Access JWT. For `POST`, `DELETE` and other state-changing methods the gateway
+therefore counts an Access identity only when `Origin` matches the gateway
+origin (or, without `Origin`, `Sec-Fetch-Site: same-origin`). Bearer requests
+need no such check: browsers never attach that header on their own. The admin
+API sends no CORS headers, so other sites can't read its responses either.
+
+Every `/api/admin/*` route counts failed token logins per client (`adm401`
+counter, keyed by the HMAC of the IP, never the address). After 20 failures in
+an hour that client gets `429` for every token request, including one with the
+right token, until the hour is over. A valid Access identity is not a guess and
+passes regardless. `GET /api/admin/me` answers a request with no credentials
+at all with a `401` that is not counted, because the admin UI calls it on every
+page load. Admin responses carry `Cache-Control: no-store`.
 
 The read-only admin API (P2, step 1):
 
 | Route | Returns |
 |---|---|
+| `GET /api/admin/me` | who is signed in: `{v, via: "access", email}` or `{v, via: "token"}` |
 | `GET /api/admin/projects` | id, public key, config version, last update, feedback counts of the last 7 days by outcome |
 | `GET /api/admin/projects/:id/config` | the stored config plus `publicKey` and `configVersion`; re-importable as is via `POST /api/admin/config/import` |
 | `GET /api/admin/projects/:id/feedback?outcome=&cursor=&limit=` | feedback history, newest first, 25 per page (max 100), keyset cursor |
@@ -121,9 +144,12 @@ missing only.
 
 `/admin`, `/admin/projects/:id` and `/admin/system` are public HTML shells
 without data: no D1 read, nothing from the URL in the markup. `dist/admin.js`
-fetches everything from `/api/admin/*` with the token from `sessionStorage`
-(no cookie, so no CSRF surface) and renders API values as text only, never as
-HTML; links and image sources must be `http(s)` URLs. The shells are served
+first asks `GET /api/admin/me` without a token. If Access signed the visitor
+in, it skips the token form, shows the email and links **Sign out** to
+`/cdn-cgi/access/logout`. Otherwise it uses the token from `sessionStorage`.
+Fetches go out with `credentials: "same-origin"` so Access gets its cookie; the
+gateway itself never reads a cookie. API values are rendered as text only,
+never as HTML; links and image sources must be `http(s)` URLs. The shells are served
 with a per-response nonce CSP (`default-src 'none'; script-src 'self'
 'nonce-…'; style-src 'nonce-…'; font-src 'self'; img-src 'self' data: https:;
 connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action

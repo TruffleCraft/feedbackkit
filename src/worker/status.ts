@@ -20,10 +20,21 @@ export function bindingsPresence(env: Env): { DB: boolean; UPLOADS: boolean; ASS
 // Non-sensitive presence booleans for /diag and the landing page: which setup
 // steps are done, never the values. Any GITHUB_PAT_* secret counts — the name
 // suffix is per-project config (tracker.patSecret), not fixed.
-export function secretsPresence(env: Env): { adminToken: boolean; githubPat: boolean; llmKey: boolean } {
+// accessTeamDomain / accessAud: Cloudflare Access sign-in for the admin (optional).
+export interface SecretsPresence {
+  adminToken: boolean;
+  githubPat: boolean;
+  llmKey: boolean;
+  accessTeamDomain: boolean;
+  accessAud: boolean;
+}
+
+export function secretsPresence(env: Env): SecretsPresence {
   return {
     adminToken: Boolean(env["ADMIN_TOKEN"]),
     githubPat: Object.keys(env).some((k) => k.startsWith("GITHUB_PAT_") && Boolean(env[k])),
     llmKey: Boolean(env["LLM_API_KEY"]),
+    accessTeamDomain: Boolean(env["FK_ACCESS_TEAM_DOMAIN"]),
+    accessAud: Boolean(env["FK_ACCESS_AUD"]),
   };
 }

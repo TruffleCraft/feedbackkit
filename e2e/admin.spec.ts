@@ -13,6 +13,9 @@ test.beforeEach(({ page }) => {
   consoleErrors = [];
   allowStatus = [];
   page.on("console", (m) => {
+    // Every load probes /api/admin/me without a token first; outside Access
+    // that is an expected 401.
+    if (m.type() === "error" && m.text().includes("status of 401") && new URL(m.location().url || "http://x/").pathname === "/api/admin/me") return;
     if (m.type() === "error") consoleErrors.push(m.text());
   });
   page.on("pageerror", (e) => consoleErrors.push(String(e)));
@@ -74,6 +77,53 @@ test.describe("login", () => {
     await page.goto("/admin/system");
     await expect(page.getByText("The saved token no longer works. Sign in again.")).toBeVisible();
     await expect(page.locator("#view-system")).toBeHidden();
+  });
+});
+
+test.describe("Cloudflare Access", () => {
+  test("skips the login when /api/admin/me reports an Access sign-in", async ({ page }) => {
+    const { authHeaders } = await installAdminMocks(page, { access: "dana@example.com" });
+    await page.goto("/admin");
+    await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+    await expect(page.locator("#projects-rows tr")).toHaveCount(3);
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeHidden();
+    await expect(page.getByText("Signed in as dana@example.com")).toBeVisible();
+
+    // Sign out goes to Access, not back to the token form.
+    const out = page.getByRole("link", { name: "Sign out" });
+    await expect(out).toHaveAttribute("href", "/cdn-cgi/access/logout");
+    await expect(page.getByRole("button", { name: "Sign out" })).toBeHidden();
+
+    // No token anywhere: none stored, none sent.
+    expect(await page.evaluate(() => sessionStorage.getItem("fk-admin-token"))).toBeNull();
+    expect(authHeaders.length).toBeGreaterThan(1);
+    expect(authHeaders.every((h) => h === "")).toBe(true);
+  });
+
+  test("a long email fits the header on any width", async ({ page }, info) => {
+    const email = "dana.whitfield-okonkwo@harborline-logistics.example";
+    await installAdminMocks(page, { access: email });
+    await page.goto("/admin/system");
+    await expect(page.getByText(`Signed in as ${email}`)).toBeAttached();
+    await expect(page.locator("#who")).toHaveAttribute("title", email);
+    await noHorizontalScroll(page);
+  });
+
+  test("ignores a stale stored token when Access signed the visitor in", async ({ page }) => {
+    const { authHeaders } = await installAdminMocks(page, { access: "dana@example.com" });
+    await signedIn(page);
+    await page.goto("/admin/system");
+    await expect(page.getByRole("heading", { name: "System" })).toBeVisible();
+    await expect(page.getByText("Signed in as dana@example.com")).toBeVisible();
+    expect(authHeaders.every((h) => h === "")).toBe(true);
+  });
+
+  test("without Access, the probe falls back to the token login", async ({ page }) => {
+    const { authHeaders } = await installAdminMocks(page);
+    await page.goto("/admin");
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await expect(page.locator("#who")).toBeHidden();
+    expect(authHeaders).toEqual([""]);
   });
 });
 
