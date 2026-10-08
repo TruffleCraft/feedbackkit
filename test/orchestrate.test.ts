@@ -261,6 +261,21 @@ describe("orchestrateFeedback — POST-1", () => {
     expect(db.feedback[0]).toMatchObject({ outcome: "ai-failed" });
   });
 
+  it("the model leaves followUpQuestion empty although fields are missing → created as incomplete, no label question", async () => {
+    const db = fakeDb();
+    const gh = ghCapture();
+    const r = await orchestrateFeedback(env(db.db), loaded(), payload({ message: "siehe Screenshot" }), {
+      apiKey: "k",
+      chat: chatReturning({ type: "bug", summary: "Hilfe-Bereich wirkt fremd", followUpQuestion: "", repro: "", expected: "", actual: "Die Sektion passt nicht zum Rest" }),
+      fetchImpl: gh.fetchImpl,
+      now: 1000,
+      newId: () => "fid-noq",
+    });
+    expect(r.body.status).toBe("accepted_incomplete");
+    expect(gh.calls).toHaveLength(1);
+    expect(JSON.stringify(r.body)).not.toContain("Kurz noch");
+  });
+
   it("LLM off / no key: asks a fallback follow-up (no LLM call)", async () => {
     const db = fakeDb();
     const gh = ghCapture();
