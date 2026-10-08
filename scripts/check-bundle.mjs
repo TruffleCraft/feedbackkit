@@ -29,3 +29,20 @@ if (gz > BUDGET_GZ) {
   console.error(`check-bundle: OVER BUDGET by ${kb(gz - BUDGET_GZ)} kB gz`);
   process.exit(1);
 }
+
+// The admin module (P2, ADR-014) only loads on /admin, but stays a small
+// vanilla module: a framework would blow this budget first.
+const ADMIN_BUDGET_GZ = 15 * 1024;
+let admin;
+try {
+  admin = readFileSync(join(root, "dist", "admin.js"));
+} catch {
+  console.error("check-bundle: dist/admin.js missing — run `pnpm build:widget` first");
+  process.exit(1);
+}
+const adminGz = gzipSync(admin).length;
+console.log(`admin bundle: ${kb(admin.length)} kB min · ${kb(adminGz)} kB gz (budget ${kb(ADMIN_BUDGET_GZ)} kB gz)`);
+if (adminGz > ADMIN_BUDGET_GZ) {
+  console.error(`check-bundle: admin OVER BUDGET by ${kb(adminGz - ADMIN_BUDGET_GZ)} kB gz`);
+  process.exit(1);
+}

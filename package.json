@@ -12,7 +12,7 @@
   "scripts": {
     "materialize": "node scripts/materialize-wrangler.mjs",
     "build:widget": "node scripts/build-widget.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.widget.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.widget.json && tsc --noEmit -p tsconfig.admin.json",
     "test": "vitest run",
     "e2e": "pnpm build:widget && playwright test",
     "check:bundle": "node scripts/check-bundle.mjs",

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// Builds the Shadow-DOM widget bundle into ./dist. Until the widget source lands
-// (P1.10) this emits a placeholder so `wrangler deploy` has an assets dir.
+// Builds the Shadow-DOM widget bundle and the admin module into ./dist. Until
+// the widget source lands (P1.10) this emits a placeholder so `wrangler deploy`
+// has an assets dir.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -15,9 +16,12 @@ mkdirSync(dist, { recursive: true });
 // latin subset as one variable woff2. Loaded cross-origin by host pages, so the
 // asset needs an explicit CORS header.
 const fontSrc = join(root, "node_modules", "@fontsource-variable", "urbanist", "files", "urbanist-latin-wght-normal.woff2");
+// Static-asset headers (Workers assets read dist/_headers). The admin module is
+// loaded by URL without a version, so it must revalidate on every page load.
+let headers = "/admin.js\n  Cache-Control: no-cache\n  X-Content-Type-Options: nosniff\n";
 if (existsSync(fontSrc)) {
   copyFileSync(fontSrc, join(dist, "urbanist.woff2"));
-  writeFileSync(join(dist, "_headers"), "/urbanist.woff2\n  Access-Control-Allow-Origin: *\n  Cache-Control: public, max-age=0, must-revalidate\n");
+  headers += "/urbanist.woff2\n  Access-Control-Allow-Origin: *\n  Cache-Control: public, max-age=0, must-revalidate\n";
 } else {
   console.warn("build:widget: @fontsource-variable/urbanist missing — run pnpm install; the widget falls back to system fonts");
 }
@@ -52,3 +56,23 @@ if (existsSync(entry)) {
   writeFileSync(join(root, "site", "src", "widget-ver.ts"), `export const WIDGET_VER = "dev";\n`);
   console.log("build:widget: no widget source yet — wrote placeholder dist/widget.js");
 }
+
+// Admin module (P2, ADR-014): loaded by the Worker-rendered /admin shells. Built
+// here, after the widget, because this script wipes dist/ at the start.
+{
+  const { build } = await import("esbuild");
+  const result = await build({
+    entryPoints: [join(root, "src", "admin", "main.ts")],
+    bundle: true,
+    format: "iife",
+    minify: true,
+    target: "es2022",
+    outfile: join(dist, "admin.js"),
+    metafile: true,
+    legalComments: "none",
+  });
+  const bytes = Object.values(result.metafile.outputs)[0]?.bytes ?? 0;
+  console.log(`build:widget: bundled src/admin → dist/admin.js (${(bytes / 1024).toFixed(1)} kB min)`);
+}
+
+writeFileSync(join(dist, "_headers"), headers);

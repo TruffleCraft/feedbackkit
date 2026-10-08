@@ -116,3 +116,16 @@ Feedback items contain what the user wrote (message, summary, page URL without
 query) and attachment URLs. They never contain IP addresses, device info, the
 host context, or secret values; the system view reports secrets as present or
 missing only.
+
+### Admin pages
+
+`/admin`, `/admin/projects/:id` and `/admin/system` are public HTML shells
+without data: no D1 read, nothing from the URL in the markup. `dist/admin.js`
+fetches everything from `/api/admin/*` with the token from `sessionStorage`
+(no cookie, so no CSRF surface) and renders API values as text only, never as
+HTML; links and image sources must be `http(s)` URLs. The shells are served
+with a per-response nonce CSP (`default-src 'none'; script-src 'self'
+'nonce-…'; style-src 'nonce-…'; font-src 'self'; img-src 'self' data: https:;
+connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action
+'self'`), `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`
+and `Cache-Control: no-store` (ADR-014).

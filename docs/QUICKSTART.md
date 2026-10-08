@@ -267,6 +267,34 @@ check is needed) and sends a fresh token with every POST. The gateway redeems
 it at Siteverify and requires success, action `feedback` and a hostname from
 `auth.origins`; anything else gets a 403.
 
+## Admin
+
+Open `https://<your-worker>.workers.dev/admin` and sign in with your
+`ADMIN_TOKEN`. The page keeps the token in `sessionStorage` for this tab only
+and sends it as a Bearer header. It sets no cookie.
+
+In this release the admin pages are read-only. The project list shows each
+project with its feedback count of the last 7 days. A project page has the
+snippet and allowed origins, the feedback types with their fields, and the
+feedback history with the funnel of the last 30 days; screenshots open full
+size from your R2 public URL. The system page lists what needs attention first
+(a missing GitHub token, one that expires within 14 days, an AI budget above
+80 %), then the AI calls per project and the gateway status. The AI budget
+resets at 00:00 UTC.
+
+Changing configs, fields and retrying failed issues follow in a later release.
+Until then, import configs with `POST /api/admin/config/import` (step 4).
+
+After 20 wrong tokens in an hour, the gateway blocks admin requests from that
+network for the rest of the hour (HTTP 429).
+
+We recommend putting the admin surface behind
+[Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/applications/configure-apps/self-hosted-public-app/)
+so each person signs in with their own account before the token is even asked
+for. Add a self-hosted application for your gateway hostname with two paths,
+`/admin*` and `/api/admin/*`, and allow only your team's emails. Scripts that
+call the admin API then need an Access service token.
+
 ## Fork + auto-deploy (recommended for updates)
 
 After step 1–5 work locally: fork the repo, connect it to **Cloudflare Workers
