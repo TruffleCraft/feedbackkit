@@ -17,7 +17,7 @@ issue-spam / LLM-cost relay:
 
 | Control | Where |
 |---|---|
-| Per-IP hourly rate limit (`rateLimit.perHour`) | atomic D1 upsert, fail-open + loud log |
+| Per-IP hourly rate limit (`rateLimit.perHour`) | atomic D1 upsert, fail-open + loud log; the key is a keyed hash of the IP (never the address), the daily cron deletes finished rows |
 | LLM **daily budget cap** (`llm.dailyBudget`) — over budget → required-field mode, no LLM cost | per-project D1 counter |
 | Honeypot field → silent fake-success | `/api/feedback` |
 | Payload size + field caps (Zod), bounded body read | wire contract + streaming read |

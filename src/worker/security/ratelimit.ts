@@ -34,6 +34,19 @@ export async function hitRateLimit(
   }
 }
 
+// The limiter key never holds a raw IP: it is an HMAC-SHA256 of the address
+// (keyed from the ADMIN_TOKEN secret), cut to 128 bits. The hash is enough to
+// count requests per client, cannot be turned back into an address without the
+// key, and the daily cron deletes the row (see pruneIdleCounters).
+export async function ipKey(env: Env, scope: string, ip: string): Promise<string> {
+  const secret = typeof env.ADMIN_TOKEN === "string" && env.ADMIN_TOKEN ? env.ADMIN_TOKEN : "feedbackkit-no-admin-token";
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(`fk-ip-v1:${ip}`)));
+  const hex = Array.from(mac.slice(0, 16), (b) => b.toString(16).padStart(2, "0")).join("");
+  return `${scope}:${hex}`;
+}
+
 // Current hour bucket (seconds since epoch, floored to the hour).
 export function hourWindow(now = Date.now()): number {
   return Math.floor(now / 3_600_000) * 3600;

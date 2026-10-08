@@ -1,4 +1,5 @@
 import type { Env } from "../env.js";
+import { hourWindow } from "../security/ratelimit.js";
 
 // Daily cron, next to the R2 sweep: D1 rows follow the same app-level retention
 // as attachments (storage.retentionDays, ADR-006). The `feedback` table holds the
@@ -29,6 +30,7 @@ export async function pruneExpiredRecords(env: Env, now = Date.now()): Promise<{
     }
   }
   await env.DB.prepare("DELETE FROM dedup WHERE created_at < ?1").bind(now - DEDUP_TTL_MS).run();
+  await pruneIdleCounters(env, now);
   return { feedback, events };
 }
 
@@ -40,4 +42,12 @@ function retentionDays(raw: string): number | null {
   } catch {
     return null;
   }
+}
+
+/** Rate-limit rows are hourly buckets keyed by a hashed IP; once their hour is
+ * over they are of no use, so the daily cron removes them (a row survives at
+ * most one day after its last request). `llm:` rows are daily budget counters
+ * with a day number as window and stay. */
+export async function pruneIdleCounters(env: Env, now = Date.now()): Promise<void> {
+  await env.DB.prepare("DELETE FROM counters WHERE key NOT LIKE 'llm:%' AND window_start < ?1").bind(hourWindow(now)).run();
 }
