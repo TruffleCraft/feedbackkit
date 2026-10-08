@@ -74,7 +74,7 @@ test("renders full-viewport even when an ancestor is transformed (fixed-position
   expect(box!.height).toBeGreaterThanOrEqual(vp.height - 2);
 });
 
-test("panel is lower-right on desktop, bottom-aligned on mobile, with a clear backdrop", async ({ page }) => {
+test("panel is lower-right on desktop with a light scrim, full-screen on phones", async ({ page }) => {
   await installMocks(page, { post1: {} });
   await page.goto("/");
   await page.getByRole("button", feedbackBtn).click();
@@ -82,11 +82,49 @@ test("panel is lower-right on desktop, bottom-aligned on mobile, with a clear ba
   await panelLocator.evaluate((node) => Promise.all(node.getAnimations().map((animation) => animation.finished)));
   const panel = (await panelLocator.boundingBox())!;
   const vp = page.viewportSize()!;
-  expect(vp.height - panel.y - panel.height).toBeLessThanOrEqual(vp.width <= 600 ? 1 : 22);
-  if (vp.width > 600) expect(vp.width - panel.x - panel.width).toBeLessThanOrEqual(22);
+  if (vp.width > 600) {
+    expect(vp.height - panel.y - panel.height).toBeLessThanOrEqual(22);
+    expect(vp.width - panel.x - panel.width).toBeLessThanOrEqual(22);
+  } else {
+    expect(panel.x).toBeLessThanOrEqual(1);
+    expect(panel.y).toBeLessThanOrEqual(1);
+    expect(panel.width).toBeGreaterThanOrEqual(vp.width - 1);
+    expect(panel.height).toBeGreaterThanOrEqual(vp.height - 1);
+    // The input sits at the bottom of the sheet, the head at the top.
+    const composer = (await page.locator(".fk-composer").boundingBox())!;
+    expect(vp.height - composer.y - composer.height).toBeLessThanOrEqual(40);
+  }
   const backdrop = page.locator(".fk-backdrop");
-  await expect(backdrop).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(backdrop).toHaveCSS("background-color", "rgba(0, 0, 0, 0.05)");
   await expect(backdrop).toHaveCSS("backdrop-filter", "none");
+});
+
+test("phones: the page is pinned while open and returns to its scroll position", async ({ page }) => {
+  await installMocks(page, { post1: {} });
+  await page.goto("/");
+  test.skip(page.viewportSize()!.width > 600, "phone layout only");
+  await expect(page.getByRole("button", feedbackBtn)).toBeVisible();
+  // Setup only: under parallel load the first scroll can land before layout settles, so retry it.
+  await expect.poll(() => page.evaluate(() => (window.scrollTo(0, 300), window.scrollY))).toBe(300);
+  await page.getByRole("button", feedbackBtn).click();
+  await expect(page.locator(".fk-panel")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => [document.body.style.position, document.body.style.top])).toEqual(["fixed", "-300px"]);
+  await page.getByRole("button", closeBtn).click();
+  await expect.poll(() => page.evaluate(() => [document.body.style.position, window.scrollY])).toEqual(["", 300]);
+});
+
+test("a stray click outside keeps unsent text; without text it closes", async ({ page }) => {
+  await installMocks(page, { post1: {} });
+  await page.goto("/");
+  test.skip(page.viewportSize()!.width <= 600, "no outside area on phones");
+  await page.getByRole("button", feedbackBtn).click();
+  await page.getByPlaceholder(/in your own words/i).fill("half a thought");
+  await page.mouse.click(10, 10);
+  await expect(page.locator(".fk-panel")).toBeVisible();
+  await expect(page.getByPlaceholder(/in your own words/i)).toHaveValue("half a thought");
+  await page.getByPlaceholder(/in your own words/i).fill("");
+  await page.mouse.click(10, 10);
+  await expect(page.locator(".fk-panel")).toBeHidden();
 });
 
 test("host theme follows document data-theme and falls back to color scheme", async ({ page }) => {

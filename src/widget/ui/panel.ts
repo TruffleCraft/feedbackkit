@@ -122,12 +122,15 @@ export class WidgetUI {
   private summaryEl!: HTMLParagraphElement;
   private doneTag!: HTMLSpanElement;
   private issueLink!: HTMLAnchorElement;
+  private finishBtn!: HTMLButtonElement;
   private annotator!: AnnotatorUI;
   private shotOn = false; // opt-in: the page is only captured when the user asks for it
   private annotatorReturnFocus: HTMLElement | null = null;
   private hostReturnFocus: HTMLElement | null = null; // focus to restore when there is no trigger
   private scrollLock = "";
   private locked = false;
+  private scrollY = 0;
+  private pinned: [string, string, string, string] | null = null; // the body's own inline position/top/left/right while we pin it
   private hasOpened = false;
   private activeType = "";
 
@@ -182,7 +185,13 @@ export class WidgetUI {
     this.panel.addEventListener("click", (e) => e.stopPropagation());
 
     this.backdrop = el("div", { className: "fk-backdrop", hidden: true }, [this.panel]);
-    this.backdrop.addEventListener("click", () => this.h.onClose()); // click outside = close
+    this.backdrop.addEventListener("click", () => {
+      // Click outside = close, but a stray tap must not throw away unsent text.
+      const unsent = (!this.views["form"]!.hidden && this.textarea.value.trim()) || (!this.answerWrap.hidden && this.answerBox.value.trim());
+      if (!unsent) this.h.onClose();
+    });
+    // iOS does not restore the visual viewport reliably when the keyboard closes; re-measure.
+    this.panel.addEventListener("focusout", () => setTimeout(this.syncViewport, 300));
     this.backdrop.addEventListener("keydown", (e) => {
       if ((e as KeyboardEvent).key === "Escape") this.h.onClose();
     });
@@ -427,11 +436,13 @@ export class WidgetUI {
     this.card = el("div", { className: "fk-card" }, [el("span", { className: "fk-eyebrow", textContent: this.tr("understood") }), this.summaryEl, this.doneTag]);
     const restart = el("button", { className: "fk-btn fk-ghost", type: "button", textContent: this.tr("sendAnother") });
     restart.addEventListener("click", () => this.h.onRestart());
+    this.finishBtn = el("button", { className: "fk-btn", type: "button", textContent: this.tr("finish") });
+    this.finishBtn.addEventListener("click", () => this.h.onClose());
     this.issueLink = el("a", { className: "fk-btn", target: "_blank", rel: "noopener noreferrer" }, [this.tr("viewIssue"), icon("ext")]);
     const view = el("div", { className: "fk-view" }, [
       el("div", { className: "fk-done-head" }, [icon("check", "fk-check"), el("h2", { className: "fk-h", textContent: this.tr("doneTitle") })]),
       this.card,
-      el("div", { className: "fk-row", role: "group" }, [restart, this.issueLink]),
+      el("div", { className: "fk-row", role: "group" }, [restart, this.finishBtn, this.issueLink]),
     ]);
     this.views["done"] = view;
     return view;
@@ -457,16 +468,42 @@ export class WidgetUI {
     for (const [k, v] of Object.entries(this.views)) v.hidden = k !== name;
   }
 
+  /** The visible area (shrinks with the on-screen keyboard) sizes the phone sheet. */
+  private syncViewport = () => {
+    const vv = window.visualViewport;
+    if (!vv || !this.locked) return;
+    this.backdrop.style.setProperty("--fk-vvh", `${vv.height}px`);
+    this.backdrop.style.setProperty("--fk-vvtop", `${vv.offsetTop}px`);
+  };
+
   private lockScroll(lock: boolean) {
     const root = document.documentElement;
+    const body = document.body.style;
+    const vv = window.visualViewport;
     if (lock) {
       if (this.locked) return; // capture the page's original overflow EXACTLY once
       this.scrollLock = root.style.overflow;
       root.style.overflow = "hidden";
+      // iOS Safari scrolls the page despite overflow:hidden; on phones the body is pinned instead.
+      if (matchMedia("(max-width:600px)").matches) {
+        this.scrollY = window.scrollY;
+        this.pinned = [body.position, body.top, body.left, body.right];
+        [body.position, body.top, body.left, body.right] = ["fixed", `-${this.scrollY}px`, "0", "0"];
+      }
       this.locked = true;
+      this.syncViewport();
+      vv?.addEventListener("resize", this.syncViewport);
+      vv?.addEventListener("scroll", this.syncViewport);
     } else {
       if (!this.locked) return; // never write overflow we didn't set (would wipe the host's)
       root.style.overflow = this.scrollLock;
+      if (this.pinned) {
+        [body.position, body.top, body.left, body.right] = this.pinned;
+        this.pinned = null;
+        window.scrollTo({ top: this.scrollY, behavior: "instant" });
+      }
+      vv?.removeEventListener("resize", this.syncViewport);
+      vv?.removeEventListener("scroll", this.syncViewport);
       this.locked = false;
     }
   }
@@ -529,6 +566,7 @@ export class WidgetUI {
         // javascript: URL would be click-XSS).
         const url = state.issueUrl && /^https:\/\//i.test(state.issueUrl) ? state.issueUrl : "";
         this.issueLink.hidden = !url;
+        this.finishBtn.hidden = !!url; // one primary action: the ticket, or simply done
         if (url) this.issueLink.href = url;
         this.live.textContent = this.tr("doneMsg");
         break;

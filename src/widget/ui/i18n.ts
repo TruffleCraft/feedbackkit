@@ -6,6 +6,7 @@ type Key =
   | "title"
   | "close"
   | "heading"
+  | "finish"
   | "textLabel"
   | "textPlaceholder"
   | "send"
@@ -62,7 +63,7 @@ const STR: Record<Locale, Record<Key, string>> = {
     trigger: "Feedback",
     title: "Feedback",
     close: "Close",
-    heading: "What did you notice?",
+    heading: "What's on your mind?",
     textLabel: "Your message",
     textPlaceholder: "Describe it in your own words. If something is missing, we'll ask.",
     send: "Send",
@@ -90,6 +91,7 @@ const STR: Record<Locale, Record<Key, string>> = {
     understood: "How we understood it",
     viewIssue: "View ticket",
     sendAnother: "Report something else",
+    finish: "Done",
     failed: "Something went wrong. Please try again.",
     retry: "Try again",
     captureStarted: "Capturing the visible page…",
@@ -118,7 +120,7 @@ const STR: Record<Locale, Record<Key, string>> = {
     trigger: "Feedback",
     title: "Feedback",
     close: "Schließen",
-    heading: "Was ist dir aufgefallen?",
+    heading: "Was möchtest du uns sagen?",
     textLabel: "Deine Nachricht",
     textPlaceholder: "Beschreib es in deinen Worten. Wenn etwas fehlt, fragen wir nach.",
     send: "Senden",
@@ -146,6 +148,7 @@ const STR: Record<Locale, Record<Key, string>> = {
     understood: "So haben wir es verstanden",
     viewIssue: "Ticket ansehen",
     sendAnother: "Noch etwas melden",
+    finish: "Fertig",
     failed: "Etwas ist schiefgelaufen. Bitte versuch es noch einmal.",
     retry: "Erneut versuchen",
     captureStarted: "Sichtbaren Bereich aufnehmen …",

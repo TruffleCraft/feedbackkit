@@ -7,11 +7,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-// Whole all-in-one bundle incl. html-to-image. The 21 kB ceiling includes the
+// Whole all-in-one bundle incl. html-to-image. The 22 kB ceiling includes the
 // screenshot editor, bounded text layout, multi-attachment UI, the capture
-// policy, host context, open() API, the Turnstile loader and the conversation
-// UI (thread, "what gets sent" disclosure, done card).
-const BUDGET_GZ = 21 * 1024;
+// policy, host context, open() API, the Turnstile loader, the conversation
+// UI (thread, "what gets sent" disclosure, done card) and the full-screen
+// phone sheet (visual-viewport sizing, iOS scroll pin).
+const BUDGET_GZ = 22 * 1024;
 
 let buf;
 try {
