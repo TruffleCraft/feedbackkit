@@ -8,6 +8,7 @@ import { redactPageUrl } from "../src/shared/page-url.js";
 import { readHostContext } from "../src/widget/lib/host-context.js";
 import { orchestrateFeedback, applyCapturePolicy } from "../src/worker/orchestrate.js";
 import { pruneExpiredRecords, DEDUP_TTL_MS } from "../src/worker/storage/retention.js";
+import { ipKey, hourWindow } from "../src/worker/security/ratelimit.js";
 import { app } from "../src/worker/app.js";
 import { __clearConfigCache } from "../src/worker/config.js";
 import { verifyTurnstile, TURNSTILE_ACTION } from "../src/worker/security/turnstile.js";
@@ -276,5 +277,27 @@ describe("POST /api/feedback with Turnstile enabled", () => {
     );
     expect(res.status).toBe(403);
     expect(((await res.json()) as { error: string }).error).toBe("verification failed");
+  });
+});
+
+describe("rate-limit keys never hold a raw IP", () => {
+  it("hashes the address: stable per IP, different per IP and per secret, no raw address in the key", async () => {
+    const env = { ADMIN_TOKEN: "secret-a" } as unknown as Env;
+    const a1 = await ipKey(env, "fb:nora", "203.0.113.7");
+    const a2 = await ipKey(env, "fb:nora", "203.0.113.7");
+    const b = await ipKey(env, "fb:nora", "203.0.113.8");
+    const c = await ipKey({ ADMIN_TOKEN: "secret-b" } as unknown as Env, "fb:nora", "203.0.113.7");
+    expect(a1).toBe(a2);
+    expect(a1).not.toBe(b);
+    expect(a1).not.toBe(c);
+    expect(a1).toMatch(/^fb:nora:[0-9a-f]{32}$/);
+    expect(a1).not.toContain("203.0.113");
+  });
+
+  it("the daily cron removes finished hourly rows and keeps the daily LLM budget rows", async () => {
+    const now = 1_800_000_000_000;
+    const { db, deletes } = retentionDb([]);
+    await pruneExpiredRecords({ DB: db } as unknown as Env, now);
+    expect(deletes).toContainEqual({ sql: "DELETE FROM counters WHERE key NOT LIKE 'llm:%' AND window_start < ?1", params: [hourWindow(now)] });
   });
 });

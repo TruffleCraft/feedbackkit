@@ -7,7 +7,7 @@ import { checkSchema, countProjects } from "./db.js";
 import { renderLanding, LANDING_CSP } from "./landing.js";
 import { loadProject } from "./config.js";
 import { originAllowed } from "./security/origin.js";
-import { hitRateLimit, hourWindow } from "./security/ratelimit.js";
+import { hitRateLimit, hourWindow, ipKey } from "./security/ratelimit.js";
 import { verifyTurnstile } from "./security/turnstile.js";
 import { checkRepoAccess } from "./providers/github.js";
 import { sniffImage, storeAttachment, deleteAssetsForFeedback, publicUrl, MAX_UPLOAD_BYTES } from "./storage/r2.js";
@@ -124,7 +124,7 @@ app.get("/diag", async (c) => {
     tracker = llm = "unauthorized — deep check requires Authorization: Bearer <ADMIN_TOKEN>";
   } else if (project) {
     const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
-    const rl = await hitRateLimit(c.env, `diag:${ip}`, hourWindow(), 60);
+    const rl = await hitRateLimit(c.env, await ipKey(c.env, "diag", ip), hourWindow(), 60);
     if (!rl.allowed) {
       return c.json({ service: "feedbackkit", ...releaseOf(c.env), error: "rate limited" }, 429);
     }
@@ -223,7 +223,7 @@ app.get("/api/config", async (c) => {
 
   // Per-IP throttle (defense-in-depth; misses are also negative-cached in loadProject).
   const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
-  const rl = await hitRateLimit(c.env, `cfg:${ip}`, hourWindow(), 600);
+  const rl = await hitRateLimit(c.env, await ipKey(c.env, "cfg", ip), hourWindow(), 600);
   if (!rl.allowed) return c.json({ v: WIRE_VERSION, status: "error", error: "rate limited" }, 429);
 
   let loaded;
@@ -270,7 +270,7 @@ app.post("/api/upload", async (c) => {
   if (!key) return c.json({ v: WIRE_VERSION, status: "error", error: "missing ?project" }, 400);
 
   const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
-  const rl = await hitRateLimit(c.env, `up:${ip}`, hourWindow(), 60);
+  const rl = await hitRateLimit(c.env, await ipKey(c.env, "up", ip), hourWindow(), 60);
   if (!rl.allowed) return c.json({ v: WIRE_VERSION, status: "error", error: "rate limited" }, 429);
 
   let loaded;
@@ -467,7 +467,7 @@ app.post("/api/feedback", async (c) => {
 
   const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
   // Keyed per project: each project's perHour applies to its own traffic only.
-  const rl = await hitRateLimit(c.env, `fb:${loaded.config.projectId}:${ip}`, hourWindow(), loaded.config.rateLimit.perHour);
+  const rl = await hitRateLimit(c.env, await ipKey(c.env, `fb:${loaded.config.projectId}`, ip), hourWindow(), loaded.config.rateLimit.perHour);
   if (!rl.allowed) return c.json({ v: WIRE_VERSION, status: "error", error: "rate limited" }, 429);
 
   const origin = c.req.header("Origin");
