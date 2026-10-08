@@ -8,8 +8,8 @@ const placeholder = /in your own words/i;
 
 async function openAnnotator(page: import("@playwright/test").Page) {
   await page.getByRole("button", { name: "Feedback" }).click();
-  await page.getByRole("button", { name: "Screenshot", exact: true }).click(); // screenshot is opt-in; "Mark up" appears once it is on
-  await page.getByRole("button", { name: "Mark up" }).click();
+  await page.getByRole("button", { name: "Screenshot", exact: true }).click(); // opt-in: captures now and adds a thumbnail
+  await page.getByRole("button", { name: "Mark up screenshot 1" }).click({ timeout: 10_000 });
   await expect(page.locator(".fk-canvas")).toBeVisible({ timeout: 10_000 }); // html-to-image capture can take a moment
 }
 
@@ -17,6 +17,8 @@ test("annotate: capture → draw → use → flattened shot uploads and key ride
   await installMocks(page, { post1: { v: 1, status: "created", id: "1", issueUrl: "https://github.com/acme/site/issues/1" } });
   await page.goto("/");
   await openAnnotator(page);
+  const thumb = page.locator(".fk-thumb img");
+  const before = await thumb.getAttribute("src");
 
   await expect(page.locator(".fk-panel")).toHaveAttribute("inert", "");
   await expect(page.locator(".fk-backdrop")).toHaveAttribute("aria-hidden", "true");
@@ -36,10 +38,11 @@ test("annotate: capture → draw → use → flattened shot uploads and key ride
   await page.mouse.move(box.x + 140, box.y + 100, { steps: 4 });
   await page.mouse.up();
 
-  // Use it → overlay closes and the screenshot chip records the edit.
+  // Use it → overlay closes and the thumbnail shows the marked-up image.
   await page.getByRole("button", { name: "Use screenshot" }).click();
   await expect(page.locator(".fk-editor")).toBeHidden();
-  await expect(page.locator(".fk-shot .txt")).toContainText("edited");
+  await expect(page.locator(".fk-thumb")).toHaveCount(1);
+  await expect(thumb).not.toHaveAttribute("src", before!);
 
   // Send → the edited blob uploads (screenshot kind) and its key is on the payload.
   await page.getByPlaceholder(placeholder).fill("the header overlaps the menu");
@@ -81,6 +84,7 @@ test("annotate: cancel leaves no edited shot; undo/clear controls exist", async 
   await installMocks(page, { post1: { v: 1, status: "created", id: "1" } });
   await page.goto("/");
   await openAnnotator(page);
+  const before = await page.locator(".fk-thumb img").getAttribute("src");
 
   await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled(); // nothing drawn yet
   await page.getByRole("button", { name: "Rectangle" }).click();
@@ -95,9 +99,9 @@ test("annotate: cancel leaves no edited shot; undo/clear controls exist", async 
 
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.locator(".fk-editor")).toBeHidden();
-  await expect(page.locator(".fk-shot .txt")).not.toContainText("edited");
+  await expect(page.locator(".fk-thumb img")).toHaveAttribute("src", before!);
   await expect(page.locator(".fk-panel")).not.toHaveAttribute("inert", "");
-  await expect(page.getByRole("button", { name: "Mark up" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Mark up screenshot 1" })).toBeFocused();
   await expect(page.getByPlaceholder(placeholder)).toBeVisible(); // back on the form
 });
 
@@ -125,4 +129,49 @@ test("annotate: text size controls are accessible and input stays inside the can
   await input.press("Enter");
   await expect(input).toBeHidden();
   await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
+});
+
+test("screenshots: several captures upload in order, × removes one, four is the limit", async ({ page }) => {
+  await installMocks(page, { post1: { v: 1, status: "created", id: "1" } });
+  const uploads: string[] = [];
+  page.on("request", (r) => {
+    if (r.url().includes("/api/upload")) uploads.push(r.url());
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Feedback" }).click();
+  const shotBtn = page.getByRole("button", { name: "Screenshot", exact: true });
+  for (let n = 1; n <= 4; n++) {
+    await shotBtn.click();
+    await expect(page.locator(".fk-thumb")).toHaveCount(n, { timeout: 10_000 });
+  }
+  await expect(shotBtn).toBeDisabled(); // four screenshots per report
+  await page.getByRole("button", { name: "Remove screenshot 2" }).click();
+  await expect(page.locator(".fk-thumb")).toHaveCount(3);
+  await expect(shotBtn).toBeEnabled();
+  await page.getByRole("button", { name: "What gets sent?" }).click();
+  await expect(page.locator("#fk-sent")).toContainText("Screenshots: 3");
+  await page.getByPlaceholder(placeholder).fill("three views of the bug");
+  const [feedback] = await Promise.all([page.waitForRequest("**/api/feedback**"), page.getByRole("button", { name: "Send", exact: true }).click()]);
+  expect(uploads).toHaveLength(3);
+  expect(uploads.every((u) => u.includes("kind=screenshot"))).toBe(true);
+  expect(feedback.postDataJSON().attachmentKeys).toHaveLength(3);
+});
+
+test("draft: closing from the form keeps text and screenshots for the next open", async ({ page }) => {
+  await installMocks(page, { post1: { v: 1, status: "created", id: "1" } });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Feedback" }).click();
+  await page.getByPlaceholder(placeholder).fill("first half of a thought");
+  await page.getByRole("button", { name: "Screenshot", exact: true }).click();
+  await expect(page.locator(".fk-thumb")).toHaveCount(1, { timeout: 10_000 });
+  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Feedback" }).click();
+  await expect(page.getByPlaceholder(placeholder)).toHaveValue("first half of a thought");
+  await expect(page.locator(".fk-thumb")).toHaveCount(1);
+  const [feedback] = await Promise.all([page.waitForRequest("**/api/feedback**"), page.getByRole("button", { name: "Send", exact: true }).click()]);
+  expect(feedback.postDataJSON().attachmentKeys).toHaveLength(1);
+  // After sending, the next report starts empty.
+  await page.getByRole("button", { name: "Report something else" }).click();
+  await expect(page.getByPlaceholder(placeholder)).toHaveValue("");
+  await expect(page.locator(".fk-thumb")).toHaveCount(0);
 });

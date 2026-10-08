@@ -38,15 +38,18 @@ export interface UIHandlers {
   onOpen(): void;
   onClose(): void;
   /** type is "" when the gateway classifies (autoType). */
-  onSubmit(type: string, text: string, screenshot: boolean): void;
+  onSubmit(type: string, text: string): void;
   onSendNow(): void;
   onComplete(answer: string): void;
   onAttach(file: File): Promise<"uploaded" | "failed" | "limit">;
   onRetry(): void;
   onRestart(): void;
-  /** "Mark up" clicked → index captures the page, then calls openAnnotator(). */
-  onEditScreenshot(): void;
-  /** Annotator finished → index uses this blob at submit instead of a fresh capture. */
+  /** "Screenshot" clicked → index captures the visible page and adds it (setShots). */
+  onAddScreenshot(): void;
+  /** A thumbnail clicked → index opens that screenshot in the annotator (openAnnotator). */
+  onEditShot(index: number): void;
+  onRemoveShot(index: number): void;
+  /** Annotator finished → index replaces the screenshot being edited with this blob. */
   onAnnotated(blob: Blob): void;
 }
 
@@ -78,6 +81,7 @@ const IC = {
   eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
   ext: '<path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/>',
+  pen: '<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
   logo: LOGO,
 };
 function icon(name: keyof typeof IC, cls = "fk-ic"): HTMLSpanElement {
@@ -103,7 +107,7 @@ export class WidgetUI {
   private mediaHint!: HTMLParagraphElement;
   private shotBtn!: HTMLButtonElement;
   private shotLabelEl!: HTMLSpanElement;
-  private shotMarkupBtn!: HTMLButtonElement;
+  private thumbs!: HTMLDivElement;
   private discloseBtn!: HTMLButtonElement;
   private sentList!: HTMLUListElement;
   private sentShotLi!: HTMLLIElement;
@@ -124,7 +128,7 @@ export class WidgetUI {
   private issueLink!: HTMLAnchorElement;
   private finishBtn!: HTMLButtonElement;
   private annotator!: AnnotatorUI;
-  private shotOn = false; // opt-in: the page is only captured when the user asks for it
+  private shotCount = 0; // screenshots in the draft (opt-in: the page is only captured when the user asks)
   private annotatorReturnFocus: HTMLElement | null = null;
   private hostReturnFocus: HTMLElement | null = null; // focus to restore when there is no trigger
   private scrollLock = "";
@@ -204,7 +208,7 @@ export class WidgetUI {
   private submit() {
     const text = this.textarea.value.trim();
     if (!text) return this.textarea.focus(); // nothing to send yet
-    this.h.onSubmit(this.config.autoType ? "" : this.activeType, text, this.shotAllowed && this.shotOn);
+    this.h.onSubmit(this.config.autoType ? "" : this.activeType, text);
   }
 
   private buildForm(): HTMLElement {
@@ -233,21 +237,24 @@ export class WidgetUI {
 
     this.shotLabelEl = el("span", { className: "txt", textContent: this.tr("screenshotChip") });
     this.shotBtn = el("button", { className: "fk-pill fk-shot", type: "button", hidden: !this.shotAllowed }, [icon("shot"), this.shotLabelEl]);
-    this.shotBtn.addEventListener("click", () => this.setShot(!this.shotOn));
-    this.shotMarkupBtn = el("button", { className: "fk-pill", type: "button", textContent: this.tr("editShot"), hidden: true });
-    this.shotMarkupBtn.addEventListener("click", () => this.h.onEditScreenshot());
+    this.shotBtn.addEventListener("click", () => {
+      this.annotatorReturnFocus = this.shotBtn;
+      this.h.onAddScreenshot();
+    });
 
     const send = el("button", { className: "fk-send", type: "button", ariaLabel: this.tr("send") }, [icon("up")]);
     send.addEventListener("click", () => this.submit());
 
+    this.thumbs = el("div", { className: "fk-thumbs" });
     this.fileChips = el("div", { className: "fk-files" });
     this.mediaHint = el("p", { className: "fk-hint", hidden: true });
     const composer = el("div", { className: "fk-composer" }, [
       el("label", { className: "fk-sr", htmlFor: "fk-text", textContent: this.tr("textLabel") }),
       this.textarea,
+      this.thumbs,
       this.fileChips,
       this.mediaHint,
-      el("div", { className: "fk-tools" }, [addImages, this.shotBtn, this.shotMarkupBtn, send]),
+      el("div", { className: "fk-tools" }, [addImages, this.shotBtn, send]),
       this.attachInput,
     ]);
     for (const event of ["dragenter", "dragover"]) composer.addEventListener(event, (e) => { e.preventDefault(); composer.classList.add("fk-dragover"); });
@@ -277,11 +284,29 @@ export class WidgetUI {
     this.discloseBtn.setAttribute("aria-expanded", String(open));
   }
 
-  private setShot(on: boolean) {
-    this.shotOn = on;
-    this.shotBtn.setAttribute("aria-pressed", String(on));
-    this.shotMarkupBtn.hidden = !on;
-    if (this.sentShotLi) this.sentShotLi.textContent = `${this.tr("sentShot")}: ${this.tr(on ? "yes" : "no")}`;
+  private sentShotText() {
+    return `${this.tr("sentShot")}: ${this.shotCount || this.tr("no")}`;
+  }
+
+  /** The draft's screenshots as thumbnails: click one to mark it up, × to remove it. */
+  setShots(urls: string[], canAdd: boolean) {
+    this.shotCount = urls.length;
+    this.thumbs.replaceChildren(
+      ...urls.map((url, i) => {
+        const n = String(i + 1);
+        const edit = el("button", { className: "fk-thumb-img", type: "button", ariaLabel: this.tr("editShot").replace("{n}", n) }, [el("img", { src: url, alt: "" }), icon("pen", "fk-thumb-pen")]);
+        edit.addEventListener("click", () => {
+          this.annotatorReturnFocus = edit;
+          this.h.onEditShot(i);
+        });
+        const remove = el("button", { className: "fk-thumb-x", type: "button", ariaLabel: this.tr("removeShot").replace("{n}", n) }, [icon("close")]);
+        remove.addEventListener("click", () => this.h.onRemoveShot(i));
+        return el("span", { className: "fk-thumb" }, [edit, remove]);
+      }),
+    );
+    this.shotBtn.disabled = !canAdd;
+    this.shotLabelEl.textContent = this.tr("screenshotChip");
+    if (this.sentShotLi) this.sentShotLi.textContent = this.sentShotText();
   }
 
   private acceptFiles(files: FileList | undefined | null) {
@@ -305,7 +330,7 @@ export class WidgetUI {
     if (ctx.url) items.push(li("sentPage", ctx.url));
     if (ctx.browser) items.push(li("sentBrowser", ctx.browser));
     if (ctx.console) items.push(li("sentConsole", String(ctx.consoleErrors ?? 0)));
-    if (this.shotAllowed) items.push((this.sentShotLi = li("sentShot", this.tr(this.shotOn ? "yes" : "no"))));
+    if (this.shotAllowed) items.push((this.sentShotLi = el("li", { textContent: this.sentShotText() })));
     if (ctx.contextKeys?.length) items.push(li("sentContext", ctx.contextKeys.join(", ")));
     this.sentList.replaceChildren(...items);
   }
@@ -313,8 +338,6 @@ export class WidgetUI {
   private buildAnnotate() {
     this.annotator = new AnnotatorUI(this.config.locale, {
       onDone: (blob) => {
-        this.setShot(true);
-        this.shotLabelEl.textContent = `${this.tr("screenshotChip")} ${this.tr("shotReady")}`;
         this.closeAnnotator();
         this.h.onAnnotated(blob);
       },
@@ -337,8 +360,6 @@ export class WidgetUI {
   /** Called by index once the page capture is ready. */
   openAnnotator(img: HTMLImageElement) {
     this.mediaHint.hidden = true;
-    this.shotMarkupBtn.disabled = false;
-    this.shotMarkupBtn.textContent = this.tr("editShot");
     this.panel.setAttribute("inert", "");
     this.backdrop.setAttribute("aria-hidden", "true");
     this.annotator.root.hidden = false;
@@ -356,27 +377,32 @@ export class WidgetUI {
   }
 
   captureStarted() {
-    this.annotatorReturnFocus = this.shadow.activeElement as HTMLElement | null;
     this.mediaHint.textContent = this.tr("captureStarted");
     this.mediaHint.hidden = false;
-    this.shotMarkupBtn.disabled = true;
-    this.shotMarkupBtn.textContent = this.tr("capturing");
+    this.shotBtn.disabled = true;
+    this.shotLabelEl.textContent = this.tr("capturing");
+  }
+
+  captureDone() {
+    this.mediaHint.hidden = true;
+    this.shotLabelEl.textContent = this.tr("screenshotChip");
   }
 
   /** Capture failed — tell the user, feedback itself is never blocked. */
   captureFailed() {
     this.mediaHint.textContent = this.tr("captureFailed");
     this.mediaHint.hidden = false;
-    this.shotMarkupBtn.disabled = false;
-    this.shotMarkupBtn.textContent = this.tr("editShot");
+    this.shotBtn.disabled = false;
+    this.shotLabelEl.textContent = this.tr("screenshotChip");
   }
 
-  /** New attempt → clear all transient form and media state without rebuilding DOM. */
-  private resetShotUI() {
-    this.setShot(false);
-    this.shotLabelEl.textContent = this.tr("screenshotChip");
-    this.shotMarkupBtn.disabled = false;
-    this.shotMarkupBtn.textContent = this.tr("editShot");
+  /** New attempt → clear the draft (text, answer, type, media) without rebuilding DOM.
+   * Closing the panel from the form keeps the draft; index calls this only for a fresh attempt. */
+  resetDraft() {
+    this.textarea.value = "";
+    this.answerBox.value = "";
+    this.selectType(this.config.types[0]?.type ?? "");
+    this.setShots([], true);
     this.fileChips.replaceChildren();
     this.attachInput.value = "";
     this.mediaHint.hidden = true;
@@ -530,11 +556,7 @@ export class WidgetUI {
 
     switch (state.name) {
       case "form":
-        this.show("form");
-        this.textarea.value = "";
-        this.answerBox.value = "";
-        this.selectType(this.config.types[0]?.type ?? "");
-        this.resetShotUI(); // "form" is only entered on a fresh attempt (open/retry)
+        this.show("form"); // a kept draft (closed from the form) is shown as it was
         this.setDisclosure(false);
         this.live.textContent = this.tr("heading");
         this.textarea.focus();
