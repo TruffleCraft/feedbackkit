@@ -90,8 +90,8 @@ function icon(name: keyof typeof IC, cls = "fk-ic"): HTMLSpanElement {
   s.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${IC[name]}</svg>`;
   return s;
 }
-// FeedbackKit mark: two chat lines, the message and the reply.
-const MARK = '<svg viewBox="0 0 48 48"><rect x="3" y="8" width="30" height="14" rx="7" fill="#7c3aed"/><rect x="15" y="26" width="30" height="14" rx="7" fill="#a78bfa"/></svg>';
+// FeedbackKit mark: two chat lines, the message and the reply, in the host's accent.
+const MARK = '<svg viewBox="0 0 48 48"><rect x="3" y="8" width="30" height="14" rx="7" style="fill:var(--fk-accent)"/><rect x="15" y="26" width="30" height="14" rx="7" style="fill:var(--fk-accent-2)"/></svg>';
 
 export class WidgetUI {
   private trigger!: HTMLButtonElement;
