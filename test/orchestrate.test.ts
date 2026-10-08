@@ -373,6 +373,19 @@ describe("orchestrateFeedback — POST-2 (freetext answer → one re-extraction)
     expect(gh.calls[0]!.body.body).toContain("auf der Projekte-Seite"); // folded into the issue
   });
 
+  it("LLM off on both POSTs: a plain issue without the AI note or empty sections", async () => {
+    const db = fakeDb();
+    const gh = ghCapture();
+    await orchestrateFeedback(env(db.db), loaded(baseConfig({ llm: { provider: "off" } })), payload({ message: "Kein Screenshot-Knopf", followUpText: "", extracted: {} }), {
+      chat: chatMustNotRun,
+      fetchImpl: gh.fetchImpl,
+    });
+    const body = gh.calls[0]!.body.body;
+    expect(body).not.toContain("AI-generierter Entwurf");
+    expect(body).not.toContain("not provided");
+    expect(body).toContain("> Kein Screenshot-Knopf");
+  });
+
   it("rejects non-canonical select values echoed by POST-2", async () => {
     const config = baseConfig({
       templates: [{

@@ -64,6 +64,21 @@ describe("renderIssueBody", () => {
     expect(body).toContain("please triage");
   });
 
+  it("without any model (plain) drops the AI note and sections that would stay empty", () => {
+    const body = renderIssueBody(bug, ctx({ plain: true, fields: {} }), "de");
+    expect(body).not.toContain("AI-generierter Entwurf");
+    expect(body).not.toContain("not provided");
+    expect(body).not.toContain("### Steps to reproduce");
+    expect(body).toContain("### Original feedback\n> save button does nothing");
+    expect(body).toContain("### Environment");
+  });
+
+  it("plain keeps a section once one of its fields is filled", () => {
+    const body = renderIssueBody(bug, ctx({ plain: true, fields: { expected: "it saves" } }));
+    expect(body).toContain("Expected: it saves");
+    expect(body).not.toContain("### Steps to reproduce");
+  });
+
   it("localizes the provenance note", () => {
     const body = renderIssueBody(bug, ctx(), "de");
     expect(body).toContain("AI-generierter Entwurf");

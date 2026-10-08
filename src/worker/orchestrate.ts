@@ -169,7 +169,7 @@ export async function orchestrateFeedback(
     const unknownType = autoType && (!result || result.degraded);
     const missing = result && !result.degraded ? result.missing : unknownType ? [] : requiredAskable(template).map((f) => f.key);
     const create = (o: Partial<CreateOpts>) =>
-      finalizeCreate(env, loaded, payload, tpl, { fields: extracted, summary: result?.summary, degraded: false, incomplete: false, d1Degraded, now, newId, fetchImpl: deps.fetchImpl, ...o });
+      finalizeCreate(env, loaded, payload, tpl, { fields: extracted, summary: result?.summary, degraded: false, plain: !result, incomplete: false, d1Degraded, now, newId, fetchImpl: deps.fetchImpl, ...o });
 
     if (result?.degraded) {
       console.warn("feedbackkit llm degraded", {
@@ -218,7 +218,9 @@ export async function orchestrateFeedback(
     .map((f) => f.key);
   // Always create now — never a second question (ADR-012). The answer is folded
   // into the issue via `combined` so it's never lost even if re-extraction fails.
-  return finalizeCreate(env, loaded, payload, template, { fields: cleaned, message: combined, summary: reExtract?.summary ?? payload.summary, degraded: false, incomplete: stillMissing.length > 0, d1Degraded, now, newId, fetchImpl: deps.fetchImpl });
+  // Nothing from a model on either POST (no echoed summary or fields, no re-extraction) → plain issue.
+  const plain = !reExtract && !payload.summary && Object.keys(payload.extracted ?? {}).length === 0;
+  return finalizeCreate(env, loaded, payload, template, { fields: cleaned, message: combined, summary: reExtract?.summary ?? payload.summary, degraded: false, plain, incomplete: stillMissing.length > 0, d1Degraded, now, newId, fetchImpl: deps.fetchImpl });
 }
 
 interface CreateOpts {
@@ -226,6 +228,7 @@ interface CreateOpts {
   message?: string; // effective message for rendering (POST-2 folds in the follow-up answer)
   summary?: string;
   degraded: boolean; // LLM unenriched
+  plain?: boolean; // no model took part at all (see RenderContext.plain)
   incomplete: boolean; // required fields still missing
   d1Degraded: boolean;
   now: number;
@@ -260,6 +263,7 @@ async function finalizeCreate(
     hostContext: payload.context,
     attachments: buildAttachments(config, payload),
     degraded: opts.degraded,
+    plain: opts.plain,
   };
   const title = deriveTitle(template, ctx);
   const issueBody = renderIssueBody(template, ctx, config.locale);
