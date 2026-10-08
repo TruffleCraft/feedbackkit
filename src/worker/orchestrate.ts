@@ -186,9 +186,13 @@ export async function orchestrateFeedback(
     // The model is unsure which type fits (e.g. new feature vs. change request): ask, even with nothing missing.
     const clarifyType = !!result?.typeUnclear && !!result.followUpQuestion?.trim();
     if (missing.length === 0 && !clarifyType) return create({}); // nothing required missing (extracted all, or no required fields) → create
+    // The model ran and chose not to ask (it saw nothing sensible to ask, e.g. a
+    // marked-up screenshot that says it all): send it as incomplete rather than
+    // falling back to a question glued together from field labels.
+    if (result && !clarifyType && !result.followUpQuestion?.trim()) return create({ incomplete: true });
     // Too many to reasonably ask → create-anyway (if allowed) instead of a wall of questions.
     if (result && missing.length > FIELD_CEILING && config.createAnyway.onIncomplete) return create({ incomplete: true });
-    // Ask ONE follow-up: the model-composed question, or a label-based fallback.
+    // Ask ONE follow-up: the model-composed question, or a label-based fallback when no model ran.
     const question = (result?.followUpQuestion && result.followUpQuestion.trim()) || fallbackQuestion(config, template, missing);
     // An unclear type is still sent (POST-2 needs a fallback) but flagged, so the widget does not claim it yet.
     return { http: 200, body: { v: WIRE_VERSION, status: "follow_up", question, extracted, summary: result?.summary, type: template.type, ...(clarifyType ? { typeUnclear: true } : {}) } };
