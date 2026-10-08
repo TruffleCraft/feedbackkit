@@ -183,7 +183,9 @@ export async function orchestrateFeedback(
       return { http: 200, body: { v: WIRE_VERSION, status: "follow_up", question: fallbackQuestion(config, template, missing), extracted: {}, summary: result.summary, type: template.type } };
     }
     if (unknownType && !result) return create({ incomplete: true });
-    if (missing.length === 0) return create({}); // nothing required missing (extracted all, or no required fields) → create
+    // The model is unsure which type fits (e.g. new feature vs. change request): ask, even with nothing missing.
+    const clarifyType = !!result?.typeUnclear && !!result.followUpQuestion?.trim();
+    if (missing.length === 0 && !clarifyType) return create({}); // nothing required missing (extracted all, or no required fields) → create
     // Too many to reasonably ask → create-anyway (if allowed) instead of a wall of questions.
     if (result && missing.length > FIELD_CEILING && config.createAnyway.onIncomplete) return create({ incomplete: true });
     // Ask ONE follow-up: the model-composed question, or a label-based fallback.
@@ -197,7 +199,10 @@ export async function orchestrateFeedback(
   // Only re-extract when there's actually a new answer to parse. An empty answer
   // (the "send now"/"send anyway" bail) skips the LLM entirely and just uses what
   // POST-1 already understood (echoed) — no redundant call, no lost extraction.
-  const reExtract = answer ? await extractWithBudget(env, config, template, combined, deps, extractionContext(payload)) : null; // context, text-only (no screenshot)
+  // A gateway-chosen type stays open: the answer may settle it (never a user- or host-chosen one).
+  const reType = payload.autoTyped === true && autoTypeEnabled(config);
+  const reExtract = answer ? await extractWithBudget(env, config, template, combined, deps, extractionContext(payload), reType) : null; // context, text-only (no screenshot)
+  if (reType && reExtract && !reExtract.degraded && reExtract.type) template = resolveTemplate(config, reExtract.type) ?? template;
   let fields: Record<string, string> = { ...(payload.extracted ?? {}) };
   if (reExtract && !reExtract.degraded) fields = { ...fields, ...reExtract.extracted };
   const cleaned: Record<string, string> = {};

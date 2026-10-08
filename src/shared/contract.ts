@@ -172,6 +172,7 @@ export const FeedbackPayload = z.object({
   followUpText: z.string().max(4000).optional(), // 2nd POST: freetext answer to the follow-up question
   extracted: z.record(z.string().max(4000)).optional(), // echoed back on 2nd POST — capped (no size-bypass)
   summary: z.string().max(500).optional(), // LLM output echoed by the widget on POST-2
+  autoTyped: z.boolean().optional(), // POST-2: the type came from the gateway, so the answer may still change it
   attachmentKeys: z.array(z.string()).max(5).default([]),
   deviceInfo: DeviceInfo.optional(),
   consoleErrors: z.array(ConsoleEntry).max(10).default([]),

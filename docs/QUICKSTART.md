@@ -173,7 +173,10 @@ and deploy; `pnpm materialize` adds the custom-domain route.
   public sites whose tracker is private or should stay unnamed.
 - With an LLM configured, `askType: false` and more than one template, the
   gateway classifies each report itself and the widget shows no type picker.
-  `askType: true` (or `llm.provider: "off"`) brings the picker back.
+  When the text fits more than one type (a new feature or a change to something
+  that exists), the one follow-up question settles it, and the answer may move
+  the report to the other type. `askType: true` (or `llm.provider: "off"`)
+  brings the picker back.
 - The page URL is always reported as origin + path; query strings and fragments
   are dropped (they carry login tokens).
 - With `retentionDays`, the daily cron deletes attachments, stored submissions

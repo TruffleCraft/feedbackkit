@@ -37,6 +37,7 @@ test("follow_up: shows ONE conversational question, freetext answer → created"
   ]);
   expect(req.postDataJSON().followUpText).toContain("save the form"); // freetext answer, not per-field
   expect(req.postDataJSON().summary).toBe("Save action fails");
+  expect(req.postDataJSON().autoTyped).toBeUndefined(); // a type the widget chose stays fixed
   await expect(page.getByText("Thanks, got it.")).toBeVisible();
   await expect(page.locator(".fk-summary")).toHaveText("Save action fails"); // how it was understood
   await expect(page.locator(".fk-card .fk-tag")).toHaveText("Bug");
@@ -62,7 +63,7 @@ test("auto-type: no type picker, no type sent; the gateway's pick is shown and c
   await expect(page.getByText("Filed as Idea")).toBeVisible();
   await page.locator("#fk-answer").fill("reading at night");
   const [req2] = await Promise.all([page.waitForRequest("**/api/feedback**"), page.locator("#fk-answer").press("Enter")]);
-  expect(req2.postDataJSON()).toMatchObject({ type: "idea", followUpText: "reading at night" });
+  expect(req2.postDataJSON()).toMatchObject({ type: "idea", autoTyped: true, followUpText: "reading at night" }); // the answer may still settle the type
   await expect(page.locator(".fk-summary")).toHaveText("Dark mode for the editor");
   await expect(page.getByRole("link", { name: "View ticket" })).toBeHidden(); // no issue URL → no link
 });

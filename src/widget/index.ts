@@ -285,6 +285,7 @@ async function boot() {
       if (res.status === "follow_up") {
         base1.summary = res.summary;
         if (res.type) base1.type = res.type; // POST-2 completes the type the gateway chose
+        if (!type) base1.autoTyped = true; // …and lets the answer settle it
         api.event("need_fields");
         // User pre-chose "send now": skip the question, but keep POST-1's extraction.
         if (bailed) return complete("", res.extracted);
