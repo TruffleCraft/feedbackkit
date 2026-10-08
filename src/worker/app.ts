@@ -15,6 +15,7 @@ import { ConfigError } from "./errors.js";
 import { VERSION, releaseOf, bindingsPresence, secretsPresence } from "./status.js";
 import { adminAuthed, adminGate } from "./admin/auth.js";
 import { registerAdminRoutes } from "./admin/routes.js";
+import { registerAdminPages } from "./admin/pages.js";
 import type { Env } from "./env.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -564,6 +565,8 @@ app.get("/t/:key", (c) => {
 
 // Read-only admin API (P2, step 1). Registered before the catch-all below.
 registerAdminRoutes(app);
+// Admin shell pages (P2, step 3): /admin, /admin/projects/:id, /admin/system.
+registerAdminPages(app);
 
 app.all("/api/admin/*", notImplemented("P2"));
 
