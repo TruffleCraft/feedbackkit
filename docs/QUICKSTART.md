@@ -238,6 +238,8 @@ the widget's defaults:
   --fk-shadow: 0 8px 24px rgba(40, 36, 28, .08);
   --fk-radius: 16px;         /* the panel on wider screens (default 30px) */
   --fk-radius-box: 12px;     /* composer, chat bubbles, done card (default 22px) */
+  --fk-weight-title: 500;    /* heading and summary (default 900 and 800) */
+  --fk-weight-strong: 500;   /* the follow-up question (default 700) */
 }
 html.dark [data-feedbackkit="host"] { /* repeat the tokens for your dark theme */ }
 ```

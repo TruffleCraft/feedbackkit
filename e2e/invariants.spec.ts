@@ -149,7 +149,7 @@ test("host theming: tokens set on the host element override the widget's own, in
   await installMocks(page, { post1: {} });
   await page.goto("/");
   await page.addStyleTag({
-    content: '[data-feedbackkit="host"]{--fk-accent:rgb(88, 114, 99);--fk-accent-ink:rgb(251, 250, 247);--fk-accent-2:rgb(136, 171, 152);--fk-bg:rgb(251, 250, 247);--fk-radius:16px;--fk-radius-box:12px}',
+    content: '[data-feedbackkit="host"]{--fk-accent:rgb(88, 114, 99);--fk-accent-ink:rgb(251, 250, 247);--fk-accent-2:rgb(136, 171, 152);--fk-bg:rgb(251, 250, 247);--fk-radius:16px;--fk-radius-box:12px;--fk-weight-title:500}',
   });
   await page.getByRole("button", feedbackBtn).click();
   await expect(page.locator(".fk-panel")).toHaveCSS("background-color", "rgb(251, 250, 247)"); // beats the dark default
@@ -158,4 +158,5 @@ test("host theming: tokens set on the host element override the widget's own, in
   await expect(page.locator(".fk-mark rect").last()).toHaveCSS("fill", "rgb(136, 171, 152)");
   if (page.viewportSize()!.width > 600) await expect(page.locator(".fk-panel")).toHaveCSS("border-radius", "16px"); // phones: full screen, no radius
   await expect(page.locator(".fk-composer")).toHaveCSS("border-radius", "12px");
+  await expect(page.locator(".fk-h").first()).toHaveCSS("font-weight", "500");
 });

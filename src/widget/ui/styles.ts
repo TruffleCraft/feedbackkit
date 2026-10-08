@@ -56,7 +56,7 @@ export const STYLES = `
   border-radius:999px; background:var(--fk-soft); color:var(--fk-ink-2); }
 .fk-x:hover { color:var(--fk-ink); }
 .fk-view { display:flex; flex-direction:column; gap:16px; }
-.fk-h { margin:0; font-size:28px; line-height:1.15; font-weight:900; }
+.fk-h { margin:0; font-size:28px; line-height:1.15; font-weight:var(--fk-weight-title,900); }
 .fk-tabs { display:flex; flex-wrap:wrap; gap:6px; }
 .fk-type { padding:6px 13px; border:1px solid var(--fk-line-2); border-radius:999px; background:transparent;
   color:var(--fk-ink-2); font-size:13px; font-weight:600; }
@@ -110,7 +110,7 @@ export const STYLES = `
 @keyframes fk-pulse { 50% { opacity:.4; } }
 .fk-tag { align-self:flex-start; padding:5px 12px; border-radius:999px; background:var(--fk-accent-soft); color:var(--fk-accent-text); font-size:13px; font-weight:700; }
 .fk-q { align-self:flex-start; max-width:90%; margin:0; padding:14px 16px; background:var(--fk-accent-soft); border:1px solid var(--fk-accent);
-  border-radius:var(--fk-radius-box) var(--fk-radius-box) var(--fk-radius-box) 6px; font-size:18px; line-height:1.4; font-weight:700; }
+  border-radius:var(--fk-radius-box) var(--fk-radius-box) var(--fk-radius-box) 6px; font-size:18px; line-height:1.4; font-weight:var(--fk-weight-strong,700); }
 .fk-answer { display:flex; align-items:center; gap:8px; padding:8px 8px 8px 18px; background:var(--fk-soft);
   border:1.5px solid var(--fk-line-2); border-radius:999px; }
 .fk-panel .fk-text,.fk-panel .fk-answer input { outline:0; }
@@ -124,7 +124,7 @@ export const STYLES = `
 .fk-check svg { width:26px; height:26px; }
 .fk-card { display:flex; flex-direction:column; gap:12px; padding:18px; background:var(--fk-soft); border-radius:var(--fk-radius-box); }
 .fk-eyebrow { color:var(--fk-ink-2); font-size:13px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
-.fk-summary { margin:0; font-size:18px; line-height:1.35; font-weight:800; overflow-wrap:anywhere; }
+.fk-summary { margin:0; font-size:18px; line-height:1.35; font-weight:var(--fk-weight-title,800); overflow-wrap:anywhere; }
 .fk-row { display:flex; gap:10px; }
 .fk-btn { flex:1; min-height:48px; display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:0 20px;
   border:1px solid var(--fk-accent); border-radius:999px; background:var(--fk-accent); color:var(--fk-accent-ink);
