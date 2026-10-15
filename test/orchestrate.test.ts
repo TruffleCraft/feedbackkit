@@ -126,6 +126,34 @@ describe("orchestrateFeedback — POST-1", () => {
     expect(db.dedup.has(UUID)).toBe(true); // terminal success is idempotency-stored
   });
 
+  it("passes the template's issue type and org issue fields to GitHub", async () => {
+    const db = fakeDb();
+    const calls: Array<Record<string, unknown>> = [];
+    const fetchImpl: FetchFn = async (_url, init) => {
+      calls.push(JSON.parse(init.body as string));
+      return new Response(JSON.stringify({ html_url: "https://github.com/acme/site/issues/2", number: 2 }), { status: 201 });
+    };
+    const cfg = baseConfig({
+      templates: [
+        {
+          type: "bug",
+          label: "Bug",
+          fields: [{ key: "repro", label: "Schritte", kind: "longtext", required: true }],
+          tracker: { labels: ["needs-triage"], type: "Bug", issueFields: [{ fieldId: 48425579, value: "FeedbackKit" }] },
+        },
+      ],
+    });
+    const r = await orchestrateFeedback(env(db.db), loaded(cfg), payload(), {
+      apiKey: "k",
+      chat: chatReturning({ type: "bug", summary: "Saving fails", repro: "klick" }),
+      fetchImpl,
+      now: 1000,
+      newId: () => "fid2",
+    });
+    expect(r.body).toMatchObject({ status: "created" });
+    expect(calls[0]).toMatchObject({ type: "Bug", issue_field_values: [{ field_id: 48425579, value: "FeedbackKit" }] });
+  });
+
   it("reads the screenshot from R2 and sends it to the LLM as a base64 data URL + page context", async () => {
     const db = fakeDb();
     const gh = ghCapture();

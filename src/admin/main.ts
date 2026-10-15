@@ -30,7 +30,7 @@ interface Template {
   type: string;
   label: Label;
   fields?: FieldSpec[];
-  tracker?: { repo?: string; labels?: string[] };
+  tracker?: { repo?: string; labels?: string[]; type?: string; issueFields?: { fieldId: number }[] };
   noIssue?: boolean;
 }
 interface ProjectConfig {
@@ -548,7 +548,9 @@ function renderTypes(cfg: ProjectConfig) {
             fields.length === 1 ? "1 field" : `${fields.length} fields`,
             `${required} required`,
             t.tracker?.repo ?? cfg.tracker.defaultRepo,
+            t.tracker?.type ? `type ${t.tracker.type}` : null,
             labels.length ? `labels ${labels.join(", ")}` : null,
+            t.tracker?.issueFields?.length ? `${t.tracker.issueFields.length} issue field${t.tracker.issueFields.length === 1 ? "" : "s"}` : null,
           ]
             .filter(Boolean)
             .join(" · ");
