@@ -157,6 +157,27 @@ A custom domain keeps these entries stable: set the build variable
 `FK_CUSTOM_DOMAIN=feedback.example.com` (zone in the same Cloudflare account)
 and deploy; `pnpm materialize` adds the custom-domain route.
 
+### Issue type and issue fields (organisation repos)
+
+GitHub organisations can type issues (Bug, Feature, Task) and give them fields
+such as Priority. A template sets both next to its labels:
+
+```jsonc
+"tracker": {
+  "type": "Bug",                                              // issue type by name
+  "issueFields": [{ "fieldId": 12345678, "value": "FeedbackKit" }], // single select: option name
+  "labels": ["needs-triage"]
+}
+```
+
+- Find the field ids with `gh api orgs/<org>/issue-fields`.
+- Personal repos have neither; GitHub ignores both there and the issue is
+  created as usual.
+- If GitHub rejects the type or a field (an unknown name, a deleted field), the
+  gateway creates the issue once more without them, so no feedback is lost.
+- GitHub sets the type only for tokens with push access, the same as labels.
+  After setup, send one test report and check type and fields on the issue.
+
 ### Privacy and capture settings (project config)
 
 ```jsonc

@@ -1,6 +1,6 @@
 import { WIRE_VERSION, type FeedbackConfig, type FeedbackPayload, type FeedbackResponse, type TemplateDefinition } from "../shared/contract.js";
 import { classifyAndExtract, type ChatFn, type ExtractionResult } from "./llm/client.js";
-import { createIssue, TrackerError, type FetchFn } from "./providers/github.js";
+import { createIssue, TrackerError, type FetchFn, type IssueFieldValue } from "./providers/github.js";
 import { deriveTitle, renderIssueBody, type RenderContext } from "../shared/render.js";
 import { publicUrl } from "./storage/r2.js";
 import { redactPageUrl } from "../shared/page-url.js";
@@ -294,7 +294,8 @@ async function finalizeCreate(
     now: opts.now,
   };
   // Everything a later admin retry needs to create the issue without the LLM.
-  const draft: IssueDraft = { title, body: issueBody, labels, repo };
+  const { type: issueType, issueFields } = template.tracker;
+  const draft: IssueDraft = { title, body: issueBody, labels, repo, ...(issueType ? { type: issueType } : {}), ...(issueFields.length ? { issueFields } : {}) };
 
   // noIssue template (e.g. praise): persist only, no tracker call.
   if (template.noIssue) {
@@ -313,7 +314,7 @@ async function finalizeCreate(
   }
 
   try {
-    const issue = await createIssue({ pat, repo, title, body: issueBody, labels, fetchImpl: opts.fetchImpl });
+    const issue = await createIssue({ pat, repo, title, body: issueBody, labels, type: issueType, issueFields, fetchImpl: opts.fetchImpl });
     const outcome = opts.degraded ? "ai-failed" : opts.incomplete ? "accepted_incomplete" : "created";
     await persistFeedback(env, { ...row, outcome, issueUrl: issue.url });
     const status: "created" | "accepted_incomplete" = opts.degraded || opts.incomplete ? "accepted_incomplete" : "created";
@@ -391,6 +392,8 @@ export interface IssueDraft {
   body: string;
   labels: string[];
   repo: string;
+  type?: string;
+  issueFields?: IssueFieldValue[];
 }
 
 interface FeedbackRow {

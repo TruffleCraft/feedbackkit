@@ -45,6 +45,20 @@ export const TemplateDefinition = z.object({
       repo: z.string().optional(),
       labels: z.array(z.string()).default([]),
       boardItemType: z.string().optional(),
+      // GitHub issue type by name ("Bug", "Feature", "Task"). Issue types exist only
+      // in organisation repos; elsewhere GitHub drops it silently.
+      type: z.string().min(1).optional(),
+      // Organisation issue fields (e.g. Priority, a "Source" select), by numeric
+      // field id: `gh api orgs/<org>/issue-fields`. Single select takes the option
+      // name. Non-org repos drop them silently.
+      issueFields: z
+        .array(
+          z.object({
+            fieldId: z.number().int().positive(),
+            value: z.union([z.string().min(1), z.number(), z.array(z.string().min(1)).min(1)]),
+          }),
+        )
+        .default([]),
     })
     .default({ labels: [] }),
   noIssue: z.boolean().default(false), // praise → persist only

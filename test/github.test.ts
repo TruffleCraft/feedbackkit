@@ -16,6 +16,50 @@ describe("createIssue", () => {
     expect((captured!.init.headers as Record<string, string>).Authorization).toBe("Bearer tok");
   });
 
+  it("sends the issue type and org issue fields when configured", async () => {
+    let sent: Record<string, unknown> = {};
+    const f: FetchFn = async (_url, init) => {
+      sent = JSON.parse(init.body as string);
+      return new Response(JSON.stringify({ html_url: "https://github.com/acme/site/issues/8", number: 8 }), { status: 201 });
+    };
+    await createIssue({
+      pat: "tok", repo: "acme/site", title: "t", body: "b", labels: [],
+      type: "Bug", issueFields: [{ fieldId: 12345678, value: "FeedbackKit" }], fetchImpl: f,
+    });
+    expect(sent).toEqual({ title: "t", body: "b", labels: [], type: "Bug", issue_field_values: [{ field_id: 12345678, value: "FeedbackKit" }] });
+  });
+
+  it("leaves type and issue_field_values out when not configured", async () => {
+    let sent: Record<string, unknown> = {};
+    const f: FetchFn = async (_url, init) => {
+      sent = JSON.parse(init.body as string);
+      return new Response(JSON.stringify({ html_url: "https://github.com/acme/site/issues/9", number: 9 }), { status: 201 });
+    };
+    await createIssue({ pat: "tok", repo: "acme/site", title: "t", body: "b", issueFields: [], fetchImpl: f });
+    expect(sent).toEqual({ title: "t", body: "b", labels: [] });
+  });
+
+  it("on 422 retries once without type/fields so the issue still gets created", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const f: FetchFn = async (_url, init) => {
+      bodies.push(JSON.parse(init.body as string));
+      return bodies.length === 1
+        ? new Response("{}", { status: 422 })
+        : new Response(JSON.stringify({ html_url: "https://github.com/acme/site/issues/10", number: 10 }), { status: 201 });
+    };
+    const r = await createIssue({ pat: "t", repo: "acme/site", title: "t", body: "b", labels: ["x"], type: "Nope", fetchImpl: f });
+    expect(r.number).toBe(10);
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toEqual({ title: "t", body: "b", labels: ["x"] });
+  });
+
+  it("does not retry a 422 when no type/fields were sent", async () => {
+    let calls = 0;
+    const f: FetchFn = async () => { calls++; return new Response("{}", { status: 422 }); };
+    await expect(createIssue({ pat: "t", repo: "acme/site", title: "t", body: "b", fetchImpl: f })).rejects.toMatchObject({ status: 422 });
+    expect(calls).toBe(1);
+  });
+
   it("throws TrackerError with the status on failure", async () => {
     const f: FetchFn = async () => new Response("nope", { status: 403 });
     await expect(createIssue({ pat: "t", repo: "acme/site", title: "t", body: "b", fetchImpl: f })).rejects.toMatchObject({
