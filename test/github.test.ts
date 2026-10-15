@@ -24,9 +24,9 @@ describe("createIssue", () => {
     };
     await createIssue({
       pat: "tok", repo: "acme/site", title: "t", body: "b", labels: [],
-      type: "Bug", issueFields: [{ fieldId: 48425579, value: "FeedbackKit" }], fetchImpl: f,
+      type: "Bug", issueFields: [{ fieldId: 12345678, value: "FeedbackKit" }], fetchImpl: f,
     });
-    expect(sent).toEqual({ title: "t", body: "b", labels: [], type: "Bug", issue_field_values: [{ field_id: 48425579, value: "FeedbackKit" }] });
+    expect(sent).toEqual({ title: "t", body: "b", labels: [], type: "Bug", issue_field_values: [{ field_id: 12345678, value: "FeedbackKit" }] });
   });
 
   it("leaves type and issue_field_values out when not configured", async () => {

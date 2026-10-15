@@ -139,7 +139,7 @@ describe("orchestrateFeedback — POST-1", () => {
           type: "bug",
           label: "Bug",
           fields: [{ key: "repro", label: "Schritte", kind: "longtext", required: true }],
-          tracker: { labels: ["needs-triage"], type: "Bug", issueFields: [{ fieldId: 48425579, value: "FeedbackKit" }] },
+          tracker: { labels: ["needs-triage"], type: "Bug", issueFields: [{ fieldId: 12345678, value: "FeedbackKit" }] },
         },
       ],
     });
@@ -151,7 +151,7 @@ describe("orchestrateFeedback — POST-1", () => {
       newId: () => "fid2",
     });
     expect(r.body).toMatchObject({ status: "created" });
-    expect(calls[0]).toMatchObject({ type: "Bug", issue_field_values: [{ field_id: 48425579, value: "FeedbackKit" }] });
+    expect(calls[0]).toMatchObject({ type: "Bug", issue_field_values: [{ field_id: 12345678, value: "FeedbackKit" }] });
   });
 
   it("reads the screenshot from R2 and sends it to the LLM as a base64 data URL + page context", async () => {

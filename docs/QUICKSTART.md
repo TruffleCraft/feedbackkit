@@ -165,7 +165,7 @@ such as Priority. A template sets both next to its labels:
 ```jsonc
 "tracker": {
   "type": "Bug",                                              // issue type by name
-  "issueFields": [{ "fieldId": 48425579, "value": "FeedbackKit" }], // single select: option name
+  "issueFields": [{ "fieldId": 12345678, "value": "FeedbackKit" }], // single select: option name
   "labels": ["needs-triage"]
 }
 ```
