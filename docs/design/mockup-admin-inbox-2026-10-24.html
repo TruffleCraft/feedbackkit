@@ -942,6 +942,22 @@
     font-size: 13px;
   }
 
+  /* Promote dialog: a real overlay, so it may float */
+  dialog#promote-dialog {
+    width: min(640px, calc(100vw - 32px));
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sheet);
+    background: var(--surface);
+    color: var(--text);
+  }
+  dialog#promote-dialog::backdrop { background: rgba(0, 0, 0, 0.32); }
+  .promote-form { display: flex; flex-direction: column; gap: 16px; padding: 24px; }
+  .promote-head h2 { font-size: 18px; line-height: 24px; font-weight: 600; }
+  .promote-head .hint { display: block; margin-top: 2px; font-size: var(--fs-small); color: var(--muted); }
+  .promote-foot { display: flex; justify-content: flex-end; gap: 8px; }
+  #pr-body { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; }
+
   /* Mobile menu toggle */
   .menu-toggle { display: none; }
   .mobile-back { display: none; }
@@ -994,8 +1010,9 @@
     <div class="brand-row">
       <a class="brand" href="#inbox" id="brand-link">
         <svg viewBox="0 0 24 24" aria-hidden="true">
-          <rect x="2" y="4" width="15" height="7" rx="3.5" fill="var(--accent)"/>
-          <rect x="7" y="13" width="15" height="7" rx="3.5" fill="var(--text)" opacity="0.75"/>
+          <!-- brand mark keeps the FeedbackKit violet; the interface accent is teal --><!-- taste-skill-ignore -->
+          <rect x="2" y="4" width="15" height="7" rx="3.5" fill="#7c3aed"/><!-- taste-skill-ignore -->
+          <rect x="7" y="13" width="15" height="7" rx="3.5" fill="#a78bfa"/><!-- taste-skill-ignore -->
         </svg>
         <span>FeedbackKit</span>
       </a>
@@ -1009,17 +1026,17 @@
     <div class="nav-list" role="listbox" aria-label="Projects" id="project-switcher">
       <button type="button" class="nav-item" role="option" aria-selected="true" data-project="pantry-planner">
         <span class="nav-name">pantry-planner</span>
-        <span class="nav-tag">Inbox</span>
+        <span class="nav-tag">Inbox first</span>
         <span class="nav-count" id="nav-open-pantry">6</span>
       </button>
       <button type="button" class="nav-item" role="option" aria-selected="false" data-project="harborline">
         <span class="nav-name">harborline</span>
-        <span class="nav-tag">GitHub</span>
+        <span class="nav-tag">Automatic</span>
         <span class="nav-count" id="nav-open-harbor">2</span>
       </button>
       <button type="button" class="nav-item" role="option" aria-selected="false" data-project="ledgerkite-docs">
         <span class="nav-name">ledgerkite-docs</span>
-        <span class="nav-tag">Inbox</span>
+        <span class="nav-tag">Inbox only</span>
       </button>
     </div>
 
@@ -1268,26 +1285,34 @@
           <div class="settings-section">
             <div class="settings-info">
               <h2>Where reports go</h2>
-              <p>Keep feedback inside the FeedbackKit inbox for projects without a repository, or forward each report to GitHub Issues.</p>
+              <p>Every report lands in the FeedbackKit inbox. With GitHub connected you can promote reports one by one, or let each report open an issue on its own.</p>
             </div>
             <div class="settings-card">
-              <div class="segmented" role="group" aria-label="Destination mode" id="cfg-tracker-mode">
-                <button type="button" data-tracker="none" aria-pressed="true">Inbox only (no Git repository)</button>
-                <button type="button" data-tracker="github" aria-pressed="false">GitHub Issues</button>
+              <div class="segmented" role="group" aria-label="Delivery mode" id="cfg-tracker-mode">
+                <button type="button" data-tracker="none" aria-pressed="false">Inbox only</button>
+                <button type="button" data-tracker="inbox" aria-pressed="true">Inbox first, promote by hand</button>
+                <button type="button" data-tracker="auto" aria-pressed="false">Automatic issues</button>
               </div>
-              <div class="field-grid" id="cfg-github-fields" hidden>
+              <p class="hint" id="cfg-mode-hint">Reports wait in the inbox. “Promote to GitHub issue” opens a draft you can edit before it is created.</p>
+              <div class="field-grid" id="cfg-github-fields">
                 <div class="field">
-                  <label for="cfg-repo">Default GitHub repository</label>
+                  <label for="cfg-repo">GitHub repository</label>
                   <input type="text" class="input" id="cfg-repo" value="pantry-org/pantry-planner">
                   <span class="hint">Format: <code>owner/repo</code></span>
                 </div>
                 <div class="field">
-                  <label for="cfg-pat">Worker token secret name</label>
+                  <label for="cfg-pat">Token secret name</label>
                   <input type="text" class="input" id="cfg-pat" value="GITHUB_PAT_pantry">
-                  <span class="hint">Set with <code>wrangler secret put</code></span>
+                  <span class="hint">The value is set with <code>wrangler secret put GITHUB_PAT_pantry</code></span>
                 </div>
               </div>
-              <p class="hint" id="cfg-inbox-hint">Reports are stored in D1 with their screenshots in R2. Manage statuses, notes, and exports directly in the Inbox tab or through MCP.</p>
+              <div class="switch-row" id="cfg-gh-check">
+                <div class="switch-copy">
+                  <strong>Connection check</strong>
+                  <span id="cfg-gh-check-text">Token found · write access to pantry-org/pantry-planner · expires 7 Jan 2027</span>
+                </div>
+                <span class="pill pos" id="cfg-gh-check-pill">Connected</span>
+              </div>
             </div>
           </div>
 
@@ -1369,7 +1394,7 @@
           <div class="settings-section">
             <div class="settings-info">
               <h2>Feedback types &amp; fields</h2>
-              <p>Each type defines what the model extracts and which missing fields trigger a follow-up question. Keep required fields at 3 or fewer.</p>
+              <p>Each type defines what the model extracts and which missing fields trigger a follow-up question. Keep required fields at 3 or fewer. Delivery can differ per type, for example bugs as automatic issues and praise in the inbox.</p>
             </div>
             <div class="settings-card">
               <div class="table-wrap">
@@ -1378,33 +1403,33 @@
                     <tr>
                       <th scope="col">Type</th>
                       <th scope="col">Required fields</th>
-                      <th scope="col">Destination</th>
+                      <th scope="col">Delivery</th>
                       <th scope="col" class="n">Extracted (30d)</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody id="cfg-type-rows">
                     <tr>
                       <td><strong>Bug</strong> (<code>bug</code>)</td>
                       <td><code>repro</code>, <code>expected</code>, <code>actual</code></td>
-                      <td><span class="pill">Inbox only</span></td>
+                      <td><select class="input type-delivery" aria-label="Delivery for Bug"><option value="default" selected>Project default</option><option value="auto">Automatic issue</option><option value="inbox">Inbox only</option></select></td>
                       <td class="n num">84.2%</td>
                     </tr>
                     <tr>
                       <td><strong>Idea</strong> (<code>idea</code>)</td>
                       <td><code>problem</code></td>
-                      <td><span class="pill">Inbox only</span></td>
+                      <td><select class="input type-delivery" aria-label="Delivery for Idea"><option value="default" selected>Project default</option><option value="auto">Automatic issue</option><option value="inbox">Inbox only</option></select></td>
                       <td class="n num">92.0%</td>
                     </tr>
                     <tr>
                       <td><strong>Change request</strong> (<code>improvement</code>)</td>
                       <td><code>what</code>, <code>desired</code></td>
-                      <td><span class="pill">Inbox only</span></td>
+                      <td><select class="input type-delivery" aria-label="Delivery for Change request"><option value="default" selected>Project default</option><option value="auto">Automatic issue</option><option value="inbox">Inbox only</option></select></td>
                       <td class="n num">88.5%</td>
                     </tr>
                     <tr>
                       <td><strong>Praise</strong> (<code>praise</code>)</td>
                       <td>–</td>
-                      <td><span class="pill">Inbox only</span></td>
+                      <td><select class="input type-delivery" aria-label="Delivery for Praise"><option value="default">Project default</option><option value="auto">Automatic issue</option><option value="inbox" selected>Inbox only</option></select></td>
                       <td class="n num">100.0%</td>
                     </tr>
                   </tbody>
@@ -1546,7 +1571,7 @@ img-src 'self' data: blob:;</pre>
           <div class="panel-head">
             <div>
               <h2>Projects on this gateway</h2>
-              <span>3 configured projects · 2 inbox-only, 1 linked to GitHub Issues</span>
+              <span>3 configured projects · 1 inbox only, 1 inbox first, 1 automatic</span>
             </div>
             <button type="button" class="btn primary" id="btn-create-project-table">Create project</button>
           </div>
@@ -1566,7 +1591,7 @@ img-src 'self' data: blob:;</pre>
               <tbody>
                 <tr>
                   <td><strong>pantry-planner</strong> <span style="color:var(--muted)">·</span> <code>fk_pub_b7e204f1</code></td>
-                  <td><span class="pill">Inbox only</span></td>
+                  <td><span class="pill">Inbox first · GitHub</span></td>
                   <td class="n num">6</td>
                   <td class="n num">19</td>
                   <td class="n">–</td>
@@ -1575,7 +1600,7 @@ img-src 'self' data: blob:;</pre>
                 </tr>
                 <tr>
                   <td><strong>harborline</strong> <span style="color:var(--muted)">·</span> <code>fk_pub_3a91c07e</code></td>
-                  <td><span class="pill pos">GitHub · harborline/web</span></td>
+                  <td><span class="pill">Automatic · harborline/web</span></td>
                   <td class="n num">2</td>
                   <td class="n num">38</td>
                   <td class="n"><span class="pill neg">1 retryable</span></td>
@@ -1620,7 +1645,7 @@ img-src 'self' data: blob:;</pre>
                     <td><strong>pantry-planner</strong></td>
                     <td class="n num">14</td>
                     <td class="n num">150</td>
-                    <td><span class="pill">Inbox only (no Git)</span></td>
+                    <td><span class="pill pos">PAT valid · 75 days left</span></td>
                   </tr>
                   <tr>
                     <td><strong>harborline</strong></td>
@@ -1657,6 +1682,40 @@ img-src 'self' data: blob:;</pre>
   </div>
 </div>
 
+<dialog id="promote-dialog" aria-labelledby="promote-h">
+  <form method="dialog" class="promote-form" id="promote-form">
+    <div class="promote-head">
+      <h2 id="promote-h">Promote to GitHub issue</h2>
+      <span class="hint" id="promote-src">From report srv-4019 · rendered with the Bug template</span>
+    </div>
+    <div class="field">
+      <label for="pr-title">Title</label>
+      <input type="text" class="input" id="pr-title">
+    </div>
+    <div class="field-grid">
+      <div class="field">
+        <label for="pr-repo">Repository</label>
+        <input type="text" class="input" id="pr-repo" readonly>
+        <span class="hint">From the project's GitHub connection</span>
+      </div>
+      <div class="field">
+        <label for="pr-labels">Labels</label>
+        <input type="text" class="input" id="pr-labels">
+        <span class="hint">Comma separated · from the type's template</span>
+      </div>
+    </div>
+    <div class="field">
+      <label for="pr-body">Body</label>
+      <textarea class="input" id="pr-body" rows="10"></textarea>
+      <span class="hint">Screenshot links and device context are added as in automatic issues. The internal triage note is not included.</span>
+    </div>
+    <div class="promote-foot">
+      <button type="button" class="btn" id="pr-cancel">Cancel</button>
+      <button type="button" class="btn primary" id="pr-create">Create issue</button>
+    </div>
+  </form>
+</dialog>
+
 <script>
   // Dataset for two projects: Pantry Planner (Inbox-only, non-Git) and Harborline (GitHub-coupled)
   const PROJECTS = {
@@ -1665,8 +1724,11 @@ img-src 'self' data: blob:;</pre>
       title: "Pantry Planner",
       publicKey: "fk_pub_b7e204f1",
       fullKey: "fk_pub_b7e204f19c6a",
-      mode: "Inbox only · no Git",
-      trackerKind: "none",
+      mode: "Inbox first · GitHub connected",
+      trackerKind: "inbox",
+      repo: "pantry-org/pantry-planner",
+      pat: "GITHUB_PAT_pantry",
+      nextIssue: 58,
       configVersion: 4,
       finding: "6 reports waiting for triage in the inbox · 3 reports on /shopping-list mention unit scaling after changing servings.",
       items: [
@@ -1853,8 +1915,11 @@ img-src 'self' data: blob:;</pre>
       title: "Harborline Marina",
       publicKey: "fk_pub_3a91c07e",
       fullKey: "fk_pub_3a91c07e5d22",
-      mode: "GitHub · harborline/web",
-      trackerKind: "github",
+      mode: "Automatic issues · harborline/web",
+      trackerKind: "auto",
+      repo: "harborline/web",
+      pat: "GITHUB_PAT_HARBOR",
+      nextIssue: 215,
       configVersion: 12,
       finding: "1 report failed to create a GitHub issue (502, draft saved for 1-click retry) · 1 open praise item in inbox.",
       items: [
@@ -1898,7 +1963,7 @@ img-src 'self' data: blob:;</pre>
           a: null,
           model: "openai/gpt-4o-mini",
           hasShot: false,
-          note: "Saved without a GitHub issue (noIssue: true).",
+          note: "Praise is set to “Inbox only”, so no issue was opened.",
           browser: "Chrome 134 · macOS",
           vp: "1440 × 900 px",
           console: "0 errors",
@@ -1932,8 +1997,10 @@ img-src 'self' data: blob:;</pre>
       title: "LedgerKite Docs",
       publicKey: "fk_pub_51d8ee0a",
       fullKey: "fk_pub_51d8ee0a73b4",
-      mode: "Inbox only · AI off",
+      mode: "Inbox only · no Git",
       trackerKind: "none",
+      repo: "",
+      pat: "",
       configVersion: 2,
       finding: "All 4 documentation reports from this week are resolved.",
       items: [
@@ -1969,9 +2036,35 @@ img-src 'self' data: blob:;</pre>
 
   const $ = (id) => document.getElementById(id);
 
+  const issueNumber = (url) => (/\/issues\/(\d+)/.exec(url || "") || [])[1] || "?";
+
+  const MODE_TEXT = {
+    none: { pill: "Inbox only · no Git", hint: "Reports stay in FeedbackKit. Connect a repository later to promote single reports to GitHub." },
+    inbox: { pill: "Inbox first · GitHub connected", hint: "Reports wait in the inbox. “Promote to GitHub issue” opens a draft you can edit before it is created." },
+    auto: { pill: "Automatic issues", hint: "Each report opens a GitHub issue right away. Types set to “Inbox only” below stay in the inbox." }
+  };
+
+  function applyMode(p) {
+    const m = MODE_TEXT[p.trackerKind];
+    p.mode = p.trackerKind === "auto" ? `Automatic issues · ${p.repo}` : m.pill;
+    $("project-mode-pill").textContent = p.mode;
+    $("cfg-mode-hint").textContent = m.hint;
+    const connected = p.trackerKind !== "none";
+    $("cfg-github-fields").hidden = !connected;
+    $("cfg-gh-check").hidden = !connected;
+    if (connected) {
+      $("cfg-repo").value = p.repo || "";
+      $("cfg-pat").value = p.pat || `GITHUB_PAT_${p.id.split("-")[0]}`;
+    }
+    for (const b of document.querySelectorAll("#cfg-tracker-mode [data-tracker]")) {
+      b.setAttribute("aria-pressed", b.dataset.tracker === p.trackerKind ? "true" : "false");
+    }
+    syncConfigJson();
+  }
+
   function statusPill(item) {
     if (item.issueFailed) return { cls: "pill neg", text: "Issue failed" };
-    if (item.issueUrl) return { cls: "pill pos", text: "Issue #214" };
+    if (item.issueUrl) return { cls: "pill pos", text: `Issue #${issueNumber(item.issueUrl)}` };
     if (item.status === "open") return { cls: "pill warn", text: "Needs triage" };
     if (item.status === "in_progress") return { cls: "pill", text: "In progress" };
     if (item.status === "resolved") return { cls: "pill pos", text: "Resolved" };
@@ -1989,6 +2082,7 @@ img-src 'self' data: blob:;</pre>
     $("cnt-all").textContent = String(counts.all);
     $("sidebar-open-count").textContent = String(counts.open);
     $("header-finding-pill").textContent = `${counts.open} open report${counts.open === 1 ? "" : "s"}`;
+    $("page-sub").textContent = p.finding.replace(/^\d+ reports? waiting/, `${counts.open} report${counts.open === 1 ? "" : "s"} waiting`);
     if (currentProject === "pantry-planner") $("nav-open-pantry").textContent = String(counts.open);
     if (currentProject === "harborline") $("nav-open-harbor").textContent = String(counts.open);
   }
@@ -2000,6 +2094,8 @@ img-src 'self' data: blob:;</pre>
     listEl.replaceChildren();
 
     const filtered = p.items.filter((it) => {
+      // a report changed in this view stays until another one is opened
+      if (it.sticky) return true;
       if (currentStatusFilter !== "all" && it.status !== currentStatusFilter) return false;
       if (currentTypeFilter !== "all" && it.type !== currentTypeFilter) return false;
       if (currentQuery) {
@@ -2064,6 +2160,7 @@ img-src 'self' data: blob:;</pre>
       btn.append(top, sub);
 
       btn.addEventListener("click", () => {
+        for (const x of p.items) if (x.id !== it.id) x.sticky = false;
         selectedItemId = it.id;
         it.unread = false;
         renderQueue();
@@ -2099,18 +2196,24 @@ img-src 'self' data: blob:;</pre>
 
     // Tracker line & action button
     const ghBtn = $("btn-create-gh-issue");
+    ghBtn.hidden = false;
     if (it.issueFailed) {
       $("det-tracker-line").textContent = "GitHub issue creation failed (HTTP 502) · Rendered draft stored in D1";
       ghBtn.textContent = "Retry issue creation";
-      ghBtn.hidden = false;
+      ghBtn.dataset.action = "retry";
     } else if (it.issueUrl) {
-      $("det-tracker-line").textContent = "Synced to GitHub issue harborline/web#214";
-      ghBtn.textContent = "Open #214 on GitHub";
-      ghBtn.hidden = false;
+      const n = issueNumber(it.issueUrl);
+      $("det-tracker-line").textContent = `Linked to GitHub issue ${p.repo}#${n}`;
+      ghBtn.textContent = `Open #${n} on GitHub`;
+      ghBtn.dataset.action = "open";
+    } else if (p.trackerKind === "none") {
+      $("det-tracker-line").textContent = "Stored in FeedbackKit inbox · This project has no GitHub connection";
+      ghBtn.textContent = "Connect GitHub";
+      ghBtn.dataset.action = "connect";
     } else {
-      $("det-tracker-line").textContent = "Stored in FeedbackKit inbox · No GitHub issue linked";
+      $("det-tracker-line").textContent = `Stored in FeedbackKit inbox · Not yet in ${p.repo}`;
       ghBtn.textContent = "Promote to GitHub issue";
-      ghBtn.hidden = false;
+      ghBtn.dataset.action = "promote";
     }
 
     // Primary header button reflects current item
@@ -2157,9 +2260,8 @@ img-src 'self' data: blob:;</pre>
       locale: "en",
       enabled: $("cfg-enabled").checked,
       askType: false,
-      tracker: p.trackerKind === "none"
-        ? { kind: "none" }
-        : { kind: "github", defaultRepo: $("cfg-repo").value, patSecret: $("cfg-pat").value },
+      ...(p.trackerKind === "none" ? {} : { tracker: { kind: "github", defaultRepo: $("cfg-repo").value, patSecret: $("cfg-pat").value } }),
+      delivery: p.trackerKind === "auto" ? "auto" : "inbox",
       llm: {
         provider: $("cfg-llm-provider").value,
         model: $("cfg-llm-model").value,
@@ -2174,8 +2276,9 @@ img-src 'self' data: blob:;</pre>
         origins: [...document.querySelectorAll("#cfg-origin-chips code")].map((c) => c.textContent)
       },
       templates: [
-        { type: "bug", label: "Bug", noIssue: p.trackerKind === "none", fields: [{ key: "repro", label: "Steps to reproduce", kind: "longtext", required: true }] },
-        { type: "idea", label: "Idea", noIssue: p.trackerKind === "none", fields: [{ key: "problem", label: "Problem it solves", kind: "longtext", required: true }] }
+        { type: "bug", label: "Bug", fields: [{ key: "repro", label: "Steps to reproduce", kind: "longtext", required: true }], tracker: { labels: ["bug"] } },
+        { type: "idea", label: "Idea", fields: [{ key: "problem", label: "Problem it solves", kind: "longtext", required: true }], tracker: { labels: ["idea"] } },
+        { type: "praise", label: "Praise", delivery: "inbox" }
       ]
     };
     $("cfg-json-textarea").value = JSON.stringify(sampleCfg, null, 2);
@@ -2184,6 +2287,7 @@ img-src 'self' data: blob:;</pre>
   function switchProject(pid) {
     currentProject = pid;
     const p = PROJECTS[pid];
+    for (const x of p.items) x.sticky = false;
     selectedItemId = p.items[0]?.id || "";
     currentStatusFilter = p.items.some((i) => i.status === "open") ? "open" : "all";
     for (const t of document.querySelectorAll("#status-tabs .status-tab")) {
@@ -2202,13 +2306,7 @@ img-src 'self' data: blob:;</pre>
     $("btn-publish-config").textContent = `Publish config v${p.configVersion + 1}`;
     $("setup-snippet").textContent = `<script src="https://feedback.harborline.example/widget.js" data-project="${p.fullKey}"><\/script>`;
 
-    const isGithub = p.trackerKind === "github";
-    $("cfg-github-fields").hidden = !isGithub;
-    $("cfg-inbox-hint").hidden = isGithub;
-    for (const b of document.querySelectorAll("#cfg-tracker-mode [data-tracker]")) {
-      b.setAttribute("aria-pressed", b.dataset.tracker === p.trackerKind ? "true" : "false");
-    }
-    syncConfigJson();
+    applyMode(p);
     renderQueue();
   }
 
@@ -2317,6 +2415,7 @@ img-src 'self' data: blob:;</pre>
   for (const st of document.querySelectorAll("#status-tabs .status-tab")) {
     st.addEventListener("click", () => {
       currentStatusFilter = st.dataset.status;
+      for (const x of PROJECTS[currentProject].items) x.sticky = false;
       for (const c of document.querySelectorAll("#status-tabs .status-tab")) {
         c.setAttribute("aria-pressed", c === st ? "true" : "false");
       }
@@ -2344,6 +2443,7 @@ img-src 'self' data: blob:;</pre>
       const it = p.items.find((x) => x.id === selectedItemId);
       if (!it) return;
       it.status = b.dataset.setStatus;
+      it.sticky = true;
       renderQueue();
     });
   }
@@ -2353,6 +2453,7 @@ img-src 'self' data: blob:;</pre>
     const it = p.items.find((x) => x.id === selectedItemId);
     if (!it) return;
     it.status = it.status === "resolved" ? "open" : "resolved";
+    it.sticky = true;
     renderQueue();
   });
 
@@ -2383,16 +2484,50 @@ img-src 'self' data: blob:;</pre>
     b.addEventListener("click", () => {
       const p = PROJECTS[currentProject];
       p.trackerKind = b.dataset.tracker;
-      p.mode = p.trackerKind === "none" ? "Inbox only · no Git" : `GitHub · ${$("cfg-repo").value}`;
-      $("project-mode-pill").textContent = p.mode;
-      for (const x of document.querySelectorAll("#cfg-tracker-mode [data-tracker]")) {
-        x.setAttribute("aria-pressed", x === b ? "true" : "false");
+      if (p.trackerKind !== "none" && !p.repo) {
+        p.repo = `${p.id}-org/${p.id}`;
+        p.nextIssue = 1;
       }
-      $("cfg-github-fields").hidden = p.trackerKind !== "github";
-      $("cfg-inbox-hint").hidden = p.trackerKind === "github";
-      syncConfigJson();
+      applyMode(p);
+      renderDetail();
     });
   }
+
+  // Detail action: promote, retry, open, or connect, depending on the project's mode
+  $("btn-create-gh-issue").addEventListener("click", () => {
+    const p = PROJECTS[currentProject];
+    const it = p.items.find((x) => x.id === selectedItemId);
+    if (!it) return;
+    const action = $("btn-create-gh-issue").dataset.action;
+    if (action === "connect") return showScreen("config");
+    if (action === "open") return;
+    if (action === "retry") {
+      it.issueFailed = false;
+      it.issueUrl = `https://github.com/${p.repo}/issues/${p.nextIssue++}`;
+      it.status = "in_progress";
+      it.sticky = true;
+      renderQueue();
+      return;
+    }
+    $("promote-src").textContent = `From report ${it.id} · rendered with the ${it.typeLabel} template`;
+    $("pr-title").value = `[${it.typeLabel.toUpperCase()}] ${it.title}`;
+    $("pr-repo").value = p.repo;
+    $("pr-labels").value = `${it.type}, source/feedbackkit`;
+    const fieldLines = (it.fields || []).map(([k, v]) => `### ${k}\n${v}`).join("\n\n");
+    $("pr-body").value = `${fieldLines}\n\n### Original message\n> ${it.msg}\n\n---\nPage: ${it.page} · ${it.browser} · ${it.vp}\nFeedbackKit report ${it.id}`;
+    $("promote-dialog").showModal();
+  });
+  $("pr-cancel").addEventListener("click", () => $("promote-dialog").close());
+  $("pr-create").addEventListener("click", () => {
+    const p = PROJECTS[currentProject];
+    const it = p.items.find((x) => x.id === selectedItemId);
+    if (!it) return;
+    it.issueUrl = `https://github.com/${p.repo}/issues/${p.nextIssue++}`;
+    it.status = "in_progress";
+      it.sticky = true;
+    $("promote-dialog").close();
+    renderQueue();
+  });
 
   $("btn-add-origin").addEventListener("click", () => {
     const val = $("new-origin-input").value.trim();
