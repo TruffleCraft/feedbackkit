@@ -534,23 +534,35 @@
   }
   .item-row-top {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     gap: 8px;
   }
+  .type-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-small);
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .type-tag svg { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   .item-title {
     font-size: 13.5px;
     line-height: 19px;
     color: var(--text);
     font-weight: 400;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    display: flex;
-    align-items: center;
-    gap: 6px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
   }
+  .item-title .dot { display: inline-block; margin: 0 6px 1px 0; vertical-align: middle; }
   .item-row.unread .item-title { font-weight: 600; }
+  .type-field { display: inline-flex; align-items: center; gap: 8px; }
+  .type-field select.input { width: auto; height: 28px; font-weight: 600; padding: 0 8px; }
+  .type-source { font-size: var(--fs-small); color: var(--muted); }
   .item-time {
     font-size: var(--fs-small);
     color: var(--muted);
@@ -1145,7 +1157,7 @@
                   <option value="all">All types</option>
                   <option value="bug">Bug</option>
                   <option value="idea">Idea</option>
-                  <option value="improvement">Change</option>
+                  <option value="improvement">Change request</option>
                   <option value="praise">Praise</option>
                 </select>
               </div>
@@ -1159,7 +1171,16 @@
               <div class="detail-bar">
                 <div class="detail-subline">
                   <button type="button" class="btn mobile-back" id="mobile-back-btn">Back to queue</button>
-                  <span class="pill" id="det-type">Bug</span>
+                  <span class="type-field">
+                    <span class="type-tag" id="det-type-glyph"></span>
+                    <select class="input" id="det-type" aria-label="Feedback type">
+                      <option value="bug">Bug</option>
+                      <option value="idea">Idea</option>
+                      <option value="improvement">Change request</option>
+                      <option value="praise">Praise</option>
+                    </select>
+                    <span class="type-source" id="det-type-source">Detected by AI</span>
+                  </span>
                   <code id="det-id">srv-4019</code>
                   <span id="det-time">18 min ago</span>
                   <span>·</span>
@@ -1784,7 +1805,7 @@ img-src 'self' data: blob:;</pre>
           status: "open",
           unread: true,
           type: "improvement",
-          typeLabel: "Change",
+          typeLabel: "Change request",
           time: "5 h ago",
           page: "/shopping-list",
           title: "Keep checked-off aisle items collapsed at the bottom while in the supermarket",
@@ -1830,7 +1851,7 @@ img-src 'self' data: blob:;</pre>
           status: "open",
           unread: false,
           type: "improvement",
-          typeLabel: "Change",
+          typeLabel: "Change request",
           time: "2 days ago",
           page: "/shopping-list",
           title: "Show metric grams next to cups when printing the weekend prep sheet",
@@ -1928,7 +1949,7 @@ img-src 'self' data: blob:;</pre>
           status: "open",
           unread: true,
           type: "bug",
-          typeLabel: "Bug · Retryable",
+          typeLabel: "Bug",
           time: "2 h ago",
           page: "/bookings",
           issueUrl: null,
@@ -1953,7 +1974,7 @@ img-src 'self' data: blob:;</pre>
           status: "open",
           unread: false,
           type: "praise",
-          typeLabel: "Praise · Inbox",
+          typeLabel: "Praise",
           time: "5 h ago",
           page: "/bookings",
           issueUrl: null,
@@ -1974,7 +1995,7 @@ img-src 'self' data: blob:;</pre>
           status: "resolved",
           unread: false,
           type: "bug",
-          typeLabel: "Issue #214",
+          typeLabel: "Bug",
           time: "Yesterday",
           page: "/calendar",
           issueUrl: "https://github.com/harborline/web/issues/214",
@@ -2009,7 +2030,7 @@ img-src 'self' data: blob:;</pre>
           status: "resolved",
           unread: false,
           type: "bug",
-          typeLabel: "Docs fix",
+          typeLabel: "Bug",
           time: "Yesterday",
           page: "/docs/webhooks",
           title: "Webhook signature example uses sha384 instead of sha256",
@@ -2035,6 +2056,22 @@ img-src 'self' data: blob:;</pre>
   let selectedItemId = "srv-4019";
 
   const $ = (id) => document.getElementById(id);
+
+  // Each feedback type has its own outline glyph and word, so the kind reads at a glance without a hue per type
+  const TYPES = {
+    bug: { label: "Bug", glyph: '<path d="M9 7.5a3 3 0 0 1 6 0"/><rect x="7" y="8" width="10" height="11" rx="5"/><path d="M12 11v8M3.5 12H7M17 12h3.5M5 7l2.5 2M19 7l-2.5 2M5 18l2.5-2M19 18l-2.5-2"/>' },
+    idea: { label: "Idea", glyph: '<path d="M9 18h6M10 21h4"/><path d="M8.5 14.5A6 6 0 1 1 15.5 14.5c-.9.8-1.5 1.6-1.5 2.5h-4c0-.9-.6-1.7-1.5-2.5z"/>' },
+    improvement: { label: "Change request", glyph: '<path d="M4 7h13l-3-3M20 17H7l3 3"/>' },
+    praise: { label: "Praise", glyph: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>' }
+  };
+  function typeTag(type) {
+    const t = TYPES[type] || { label: type, glyph: "" };
+    const span = document.createElement("span");
+    span.className = "type-tag";
+    span.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${t.glyph}</svg>`;
+    span.append(t.label);
+    return span;
+  }
 
   const issueNumber = (url) => (/\/issues\/(\d+)/.exec(url || "") || [])[1] || "?";
 
@@ -2125,28 +2162,31 @@ img-src 'self' data: blob:;</pre>
       btn.setAttribute("role", "option");
       btn.setAttribute("aria-selected", it.id === selectedItemId ? "true" : "false");
 
+      // line 1: what kind of report (glyph + word) and when
       const top = document.createElement("div");
       top.className = "item-row-top";
+      const timeSpan = document.createElement("span");
+      timeSpan.className = "item-time";
+      timeSpan.textContent = it.time;
+      top.append(typeTag(it.type), timeSpan);
 
+      // line 2: the report itself, up to two lines
       const titleSpan = document.createElement("span");
       titleSpan.className = "item-title";
       if (it.unread) {
         const dot = document.createElement("span");
         dot.className = "dot";
+        dot.setAttribute("aria-label", "Unread");
         titleSpan.appendChild(dot);
       }
       titleSpan.append(it.title);
 
-      const timeSpan = document.createElement("span");
-      timeSpan.className = "item-time";
-      timeSpan.textContent = it.time;
-      top.append(titleSpan, timeSpan);
-
+      // line 3: where it came from, and its status when the tab doesn't say it
       const sub = document.createElement("div");
       sub.className = "item-row-sub";
       const left = document.createElement("span");
       left.className = "item-meta-left";
-      left.textContent = `${it.typeLabel} · ${it.page}`;
+      left.textContent = it.page;
 
       // One status mark per row, and none when the tab already says it
       sub.append(left);
@@ -2157,7 +2197,7 @@ img-src 'self' data: blob:;</pre>
         pill.textContent = sp.text;
         sub.append(pill);
       }
-      btn.append(top, sub);
+      btn.append(top, titleSpan, sub);
 
       btn.addEventListener("click", () => {
         for (const x of p.items) if (x.id !== it.id) x.sticky = false;
@@ -2177,7 +2217,14 @@ img-src 'self' data: blob:;</pre>
     const it = p.items.find((x) => x.id === selectedItemId) || p.items[0];
     if (!it) return;
 
-    $("det-type").textContent = it.typeLabel;
+    const typeSel = $("det-type");
+    typeSel.value = it.type;
+    $("det-type-glyph").replaceChildren(typeTag(it.type).querySelector("svg"));
+    const linked = !!it.issueUrl;
+    typeSel.disabled = linked;
+    $("det-type-source").textContent = linked
+      ? "Set by the issue's labels in GitHub"
+      : it.typeSource === "admin" ? "Changed by you" : it.typeSource === "visitor" ? "Chosen by the visitor" : "Detected by AI · correct it here";
     $("det-id").textContent = it.id;
     $("det-time").textContent = it.time;
     $("det-page").textContent = it.page;
@@ -2510,12 +2557,22 @@ img-src 'self' data: blob:;</pre>
       return;
     }
     $("promote-src").textContent = `From report ${it.id} · rendered with the ${it.typeLabel} template`;
-    $("pr-title").value = `[${it.typeLabel.toUpperCase()}] ${it.title}`;
+    $("pr-title").value = `[${it.type.toUpperCase()}] ${it.title}`;
     $("pr-repo").value = p.repo;
     $("pr-labels").value = `${it.type}, source/feedbackkit`;
     const fieldLines = (it.fields || []).map(([k, v]) => `### ${k}\n${v}`).join("\n\n");
     $("pr-body").value = `${fieldLines}\n\n### Original message\n> ${it.msg}\n\n---\nPage: ${it.page} · ${it.browser} · ${it.vp}\nFeedbackKit report ${it.id}`;
     $("promote-dialog").showModal();
+  });
+  $("det-type").addEventListener("change", (e) => {
+    const p = PROJECTS[currentProject];
+    const it = p.items.find((x) => x.id === selectedItemId);
+    if (!it) return;
+    it.type = e.target.value;
+    it.typeLabel = TYPES[it.type].label;
+    it.typeSource = "admin";
+    it.sticky = true;
+    renderQueue();
   });
   $("pr-cancel").addEventListener("click", () => $("promote-dialog").close());
   $("pr-create").addEventListener("click", () => {
