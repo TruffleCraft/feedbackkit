@@ -43,3 +43,20 @@ stable. Nothing was stored.
 level in `meta.delivery_capability`), or keep `tracker` and `noIssue` for now.
 On a local `wrangler dev` database, insert the row yourself:
 `INSERT INTO meta (key, value) VALUES ('delivery_capability', '1')`.
+
+## Delivery retry (`POST /api/admin/feedback/:id/retry`)
+
+Body: `{}` or `{ "createAnyway": true }`. A delivered report answers `200` with
+`status: "delivered"` and the issue URL or the Project item.
+
+| Code | HTTP | Meaning | What to do |
+|---|---|---|---|
+| `FK_RETRY_IN_PROGRESS` | 409, `Retry-After` | Another delivery of this report holds the claim (at most 2 minutes). | Wait and retry. |
+| `FK_DELIVERY_UNKNOWN` with `needsCreateAnyway: true` | 409 | An earlier attempt may have created the draft, and none with this report's marker was found in the newest 500 items. | Look in the Project. If it is not there, retry with `{"createAnyway": true}`. |
+| `FK_DELIVERY_UNKNOWN` | 502 | GitHub did not answer clearly this time (timeout, 5xx). | Retry; the next attempt looks for the marker first. |
+| `FK_DELIVERY_FAILED` | 502, `githubStatus` | GitHub refused (401/403: token or permission, 404: project or repo not found, 422: invalid). | Fix the token or config, then retry. |
+| `FK_NOT_RETRYABLE` | 409 | The report is stored locally, or predates stored drafts. | Nothing to deliver. |
+| `FK_NOT_FOUND` | 404 | No report with this id. | Check the id. |
+
+Widgets never see these codes: a report saved with a pending delivery is
+answered as `issue_failed`, as before.

@@ -187,7 +187,7 @@ them; see the gate below.
 |---|---|
 | `"issue"` | A GitHub issue in `tracker.defaultRepo` (or the type's `tracker.repo`). The default when `tracker` is set. |
 | `"local"` | Stored in FeedbackKit only, never an issue. The default without `tracker`. `noIssue: true` means the same. |
-| `"project"` | A draft issue in a private organisation GitHub Project (`tracker.project: { "org": "acme", "number": 3 }`). Coming in a later release; until then such reports are stored and never become public issues. |
+| `"project"` | A draft issue in a private organisation GitHub Project (`tracker.project`), see below. |
 
 The order: the type's `delivery`, then the type's `noIssue`, then the project's
 `delivery`, then the default. `tracker` is optional when every type is local.
@@ -201,6 +201,90 @@ gateways from opening issues.
 `tracker` (422 `FK_CONFIG_SHAPE_UNSUPPORTED`, see [ERRORS.md](ERRORS.md)) until
 a stable release that handles them is live. Configs without these keys are not
 affected.
+
+### Deliver to a GitHub Project
+
+Reports become draft issues in a private organisation Project: triage, notes,
+assignees and "Convert to issue" all happen in GitHub. FeedbackKit stores the
+item id and links to the Project; it does not mirror the status back.
+
+1. **Create the Project** in your organisation (Projects → New project) and keep
+   it private. The number is in its URL: `github.com/orgs/acme/projects/3` → `3`.
+   User-owned Projects are not supported (fine-grained tokens can't reach them).
+2. **Add three fields** (all optional, a missing one is skipped with a warning):
+   `Type` (single select, one option per report type, e.g. `Bug`), `Page`
+   (text), `Source` (single select with the option `FeedbackKit`).
+3. **Grant the token:** the fine-grained PAT of the project needs the
+   organisation permission **Projects: read and write**. For least privilege use
+   a separate token and name it in `tracker.project.patSecret`.
+4. **Import the config** (one of the three below).
+5. **Check and test:** the admin System page lists missing fields and options.
+   Then send one real test report:
+   `curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" https://<gateway>/api/admin/projects/<id>/test-report`.
+   Its draft appears in the Project; the System page then shows writing as verified.
+
+Screenshots in drafts (and local reports) link to `/admin/assets/…` on the
+gateway, which only opens for a Cloudflare Access sign-in, not to the public R2
+URL. Drafts don't notify anyone until they are converted to issues.
+
+**Every type to the Project:**
+
+```json
+{
+  "projectId": "acme-app",
+  "delivery": "project",
+  "templates": [
+    { "type": "bug", "label": "Bug" },
+    { "type": "idea", "label": "Idea" }
+  ],
+  "llm": { "provider": "openrouter", "model": "google/gemini-2.5-flash-lite" },
+  "tracker": {
+    "kind": "github",
+    "patSecret": "GITHUB_PAT_default",
+    "project": { "org": "acme", "number": 3, "typeOptions": { "bug": "Bug", "idea": "Idea" } }
+  },
+  "auth": { "origins": ["https://app.acme.dev"] }
+}
+```
+
+**Bugs as public issues, everything else to the Project:**
+
+```json
+{
+  "projectId": "acme-app",
+  "delivery": "project",
+  "templates": [
+    { "type": "bug", "label": "Bug", "delivery": "issue", "tracker": { "labels": ["type/bug"] } },
+    { "type": "idea", "label": "Idea" }
+  ],
+  "llm": { "provider": "openrouter", "model": "google/gemini-2.5-flash-lite" },
+  "tracker": { "kind": "github", "defaultRepo": "acme/app", "patSecret": "GITHUB_PAT_default", "project": { "org": "acme", "number": 3 } },
+  "auth": { "origins": ["https://app.acme.dev"] }
+}
+```
+
+**Stored in FeedbackKit only (no GitHub at all):**
+
+```json
+{
+  "projectId": "acme-app",
+  "delivery": "local",
+  "templates": [{ "type": "bug", "label": "Bug" }],
+  "llm": { "provider": "off" },
+  "auth": { "origins": ["https://app.acme.dev"] }
+}
+```
+
+**From `noIssue`:** keep `"noIssue": true` on each type and add
+`"delivery": "project"` (plus `tracker.project` and the project-level
+`"delivery"`). A gateway older than the delivery model then still stores the
+report instead of opening an issue.
+
+When GitHub refuses a draft, the report is saved and marked failed; when the
+answer is lost, it is marked unknown. Retry it with
+`POST /api/admin/feedback/<id>/retry`: an unknown report is first looked up in
+the Project by its hidden marker, so a retry never creates a second draft
+without asking (see [ERRORS.md](ERRORS.md)).
 
 ### Privacy and capture settings (project config)
 

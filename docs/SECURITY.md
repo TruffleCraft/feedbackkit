@@ -84,6 +84,17 @@ FeedbackKit stores screenshots and image uploads in a Cloudflare R2 bucket.
 - **On-demand delete:** `DELETE /api/admin/assets?feedbackId=<uuid>` (admin-authed)
   removes every attachment tied to one feedback submission.
 
+### Private deliveries
+
+Reports delivered to a GitHub Project or stored locally link their screenshots
+to `GET /admin/assets/<key>` on the gateway instead of the public R2 URL. The
+route needs an admin sign-in (Cloudflare Access in a browser, or the admin
+token), answers `Cache-Control: private, no-store` and a sandboxing CSP, and
+only serves keys still indexed in `assets`. The objects stay in the public
+bucket, so anyone who already has a public URL keeps it; the drafts never
+contain one. Screenshots of a report delivered late stay at least 7 days after
+the delivery (`expires_at` is extended, never shortened).
+
 ### camo residual risk
 
 GitHub proxies and **caches** inline images through its camo service. Deleting
@@ -97,8 +108,8 @@ an object from R2 does **not** guarantee GitHub's cached copy is gone. Therefore
 
 ## Admin endpoints
 
-Admin routes (`/api/admin/*`, and the `/diag?project=` deep check) accept one
-of two credentials:
+Admin routes (`/api/admin/*`, `/admin/assets/*`, and the `/diag?project=` deep
+check) accept one of two credentials:
 
 - **A Cloudflare Access identity.** Only when both `FK_ACCESS_TEAM_DOMAIN` and
   `FK_ACCESS_AUD` are set. The gateway reads the JWT from the
