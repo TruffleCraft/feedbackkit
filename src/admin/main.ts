@@ -78,6 +78,8 @@ interface SystemProject {
     access: { ok: boolean; status: number; reason: string | null } | null;
     patExpiry: { raw: string; at: string | null; daysLeft: number | null } | null;
   };
+  /** Unhandled reports that retention deletes within 7 days (null: no retentionDays). */
+  retention?: { retentionDays: number; dueSoon: number; items: Array<{ id: string; deletesAt: number }> } | null;
 }
 interface SystemInfo {
   version: string;
@@ -651,6 +653,15 @@ function attentionItems(s: SystemInfo): HTMLElement[] {
     if (t.patExpiry?.at && typeof days === "number" && days <= PAT_WARN_DAYS) {
       const when = dateFmt.format(new Date(t.patExpiry.at));
       item(p.id, days < 0 ? `GitHub token expired on ${when}.` : `GitHub token expires on ${when}.`);
+    }
+    const due = p.retention;
+    if (due && due.dueSoon > 0 && due.items[0]) {
+      const first = dateFmt.format(new Date(due.items[0].deletesAt));
+      item(
+        p.id,
+        `has ${due.dueSoon} unhandled ${due.dueSoon === 1 ? "report" : "reports"} that retention deletes within 7 days (${due.retentionDays}-day limit), the first on ${first}. `,
+        el("a", { href: `/admin/projects/${encodeURIComponent(p.id)}` }, "Open the history"),
+      );
     }
     if (p.llm.provider !== "off" && p.llm.dailyBudget > 0 && p.llm.usedToday / p.llm.dailyBudget > BUDGET_WARN) {
       item(p.id, `has used ${p.llm.usedToday} of ${p.llm.dailyBudget} AI calls today. The count resets at 00:00 UTC.`);

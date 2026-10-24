@@ -3,6 +3,7 @@ import { WIRE_VERSION, SCHEMA_VERSION } from "../../shared/contract.js";
 import { checkSchema } from "../db.js";
 import { dayWindow } from "../security/ratelimit.js";
 import { checkRepoAccess } from "../providers/github.js";
+import { retentionNotice } from "../storage/retention.js";
 import { releaseOf, bindingsPresence, secretsPresence } from "../status.js";
 import { adminCheck, adminGate } from "./auth.js";
 import { DAY_MS, QueryError, exportConfig, getFunnel, listFeedback, listProjects, parseConfig, type ProjectRow } from "./queries.js";
@@ -119,10 +120,15 @@ export function registerAdminRoutes(app: AppT): void {
             access = { ok: false, status: 0, reason: `check failed: ${(e as Error).message}` };
           }
         }
+        const retention = await retentionNotice(c.env, cfg.projectId, cfg.storage.retentionDays).catch((e) => {
+          console.warn(`[feedbackkit] retention notice failed for ${p.id}: ${(e as Error).message}`);
+          return null;
+        });
         return {
           id: p.id,
           configVersion: Number(p.config_version),
           configValid: true as const,
+          retention,
           enabled: cfg.enabled,
           llm: {
             provider: cfg.llm.provider,

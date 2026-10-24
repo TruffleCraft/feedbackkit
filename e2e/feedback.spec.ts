@@ -126,15 +126,62 @@ test("LLM degrade / incomplete: accepted_incomplete → soft done", async ({ pag
   await expect(page.getByText("Thanks, got it.")).toBeVisible();
 });
 
-test("error → failed → retry returns to the form", async ({ page }) => {
-  await installMocks(page, { post1: { v: 1, status: "error", error: "boom" } });
+test("503 → failed keeps the report; retry resends the same submission without uploading again", async ({ page }) => {
+  await installMocks(page, { post1: { v: 1, status: "created", id: "1" } });
+  let uploads = 0;
+  await page.route("**/api/upload**", (r) => {
+    uploads++;
+    return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ v: 1, key: `fk_test/shot-${uploads}.webp` }) });
+  });
+  const bodies: Array<Record<string, unknown>> = [];
+  await page.route("**/api/feedback**", (r) => {
+    bodies.push(r.request().postDataJSON() as Record<string, unknown>);
+    if (bodies.length === 1) {
+      return r.fulfill({ status: 503, headers: { "Retry-After": "5" }, contentType: "application/json", body: JSON.stringify({ v: 1, status: "error", error: "report could not be stored, please retry", code: "FK_PERSIST_FAILED", retryable: true }) });
+    }
+    return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ v: 1, status: "created", id: "1" }) });
+  });
   await page.goto("/");
   await page.getByRole("button", { name: "Feedback" }).click();
-  await page.getByPlaceholder(placeholder).fill("x");
+  await page.getByRole("button", { name: "Screenshot", exact: true }).click();
+  await expect(page.locator("#fk-sent")).toContainText("Screenshots: 1", { timeout: 10_000 });
+  await page.getByPlaceholder(placeholder).fill("the export button is gone");
   await page.getByRole("button", send).click();
   await expect(page.getByRole("button", { name: /try again/i })).toBeVisible(); // failed state
+  expect(uploads).toBe(1);
+
   await page.getByRole("button", { name: /try again/i }).click();
-  await expect(page.getByPlaceholder(placeholder)).toBeVisible();
+  await expect(page.getByText("Thanks, got it.")).toBeVisible();
+  expect(bodies).toHaveLength(2);
+  expect(bodies[1]!["feedbackId"]).toBe(bodies[0]!["feedbackId"]); // same submission, server dedup holds
+  expect(bodies[1]!["message"]).toBe("the export button is gone");
+  expect(bodies[1]!["attachmentKeys"]).toEqual(["fk_test/shot-1.webp"]);
+  expect(uploads).toBe(1); // no second upload
+});
+
+test("a failed follow-up answer is resent as POST-2 with the same answer, and the text stays", async ({ page }) => {
+  await installMocks(page, { post1: { v: 1, status: "follow_up", question: "What did you expect?", extracted: { repro: "click" } } });
+  const answers: Array<Record<string, unknown>> = [];
+  await page.route("**/api/feedback**", (r) => {
+    const body = r.request().postDataJSON() as Record<string, unknown>;
+    if (body["followUpText"] === undefined) return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ v: 1, status: "follow_up", question: "What did you expect?", extracted: { repro: "click" } }) });
+    answers.push(body);
+    if (answers.length === 1) return r.abort("failed"); // network error on POST-2
+    return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ v: 1, status: "created", id: "2" }) });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Feedback" }).click();
+  await page.getByPlaceholder(placeholder).fill("save broken");
+  await page.getByRole("button", send).click();
+  await page.locator("#fk-answer").fill("it should save");
+  await page.getByRole("button", send).click();
+  await expect(page.getByRole("button", { name: /try again/i })).toBeVisible();
+  await expect(page.locator("#fk-text")).toHaveValue("save broken"); // restored into the form control
+  await page.getByRole("button", { name: /try again/i }).click();
+  await expect(page.locator(".fk-me")).toHaveText("save broken"); // the resend shows the report
+  await expect(page.getByText("Thanks, got it.")).toBeVisible();
+  expect(answers).toHaveLength(2);
+  expect(answers[1]).toMatchObject({ feedbackId: answers[0]!["feedbackId"], followUpText: "it should save", extracted: { repro: "click" } });
 });
 
 test("send waits for a visible attachment upload before creating feedback", async ({ page }) => {

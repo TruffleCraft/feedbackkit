@@ -13,7 +13,9 @@ import type { Env } from "./env.js";
 // Extract-then-Form protocol. ONE LLM call on POST-1; POST-2 (completed fields)
 // is deterministic and server-re-validated (never trusts a client title/fields).
 // The create-anyway matrix guarantees feedback is never lost: an LLM, D1, or
-// tracker failure downgrades the outcome, it never 500s the submission.
+// tracker failure downgrades the outcome, it never 500s the submission. A report
+// that did not reach the tracker is only acknowledged once D1 confirmed the row;
+// otherwise the gateway answers a retryable 503 and the widget keeps the report.
 
 // Asking more than this many follow-up questions is worse UX than just creating
 // the issue and tagging it for triage (ROADMAP field-ceiling).
@@ -24,6 +26,22 @@ export const realChat: ChatFn = (req, signal) => {
   const { url, init } = req as { url: string; init: RequestInit };
   return fetch(url, { ...init, signal });
 };
+
+export interface OrchestrateResult {
+  http: number;
+  body: FeedbackResponse;
+  headers?: Record<string, string>;
+}
+
+/** 503 for a report that was neither delivered nor stored: nothing was
+ * acknowledged, so the client resends the same submission (same feedbackId). */
+export function persistFailed(): OrchestrateResult {
+  return {
+    http: 503,
+    body: { v: WIRE_VERSION, status: "error", error: "report could not be stored, please retry", code: "FK_PERSIST_FAILED", retryable: true },
+    headers: { "Retry-After": "5" },
+  };
+}
 
 export interface OrchestrateDeps {
   apiKey?: string;
@@ -131,7 +149,7 @@ export async function orchestrateFeedback(
   loaded: LoadedProject,
   payload: FeedbackPayload,
   deps: OrchestrateDeps,
-): Promise<{ http: number; body: FeedbackResponse }> {
+): Promise<OrchestrateResult> {
   const config = loaded.config;
   const now = deps.now ?? Date.now();
   const newId = deps.newId ?? (() => crypto.randomUUID());
@@ -253,7 +271,7 @@ async function finalizeCreate(
   payload: FeedbackPayload,
   template: TemplateDefinition,
   opts: CreateOpts,
-): Promise<{ http: number; body: FeedbackResponse }> {
+): Promise<OrchestrateResult> {
   const config = loaded.config;
   const id = opts.newId();
 
@@ -297,30 +315,30 @@ async function finalizeCreate(
   const { type: issueType, issueFields } = template.tracker;
   const draft: IssueDraft = { title, body: issueBody, labels, repo, ...(issueType ? { type: issueType } : {}), ...(issueFields.length ? { issueFields } : {}) };
 
-  // noIssue template (e.g. praise): persist only, no tracker call.
+  // noIssue template (e.g. praise): persist only, no tracker call. D1 is the only
+  // copy, so the report is acknowledged only after the row is confirmed.
   if (template.noIssue) {
-    await persistFeedback(env, { ...row, outcome: "created", issueUrl: null });
-    const resp: FeedbackResponse = { v: WIRE_VERSION, status: "created", id, ...understood(template, opts) };
+    const stored = await persistFeedback(env, { ...row, outcome: "created", issueUrl: null });
+    if (!stored.ok) return persistFailed();
+    const resp: FeedbackResponse = { v: WIRE_VERSION, status: "created", id: stored.id, ...understood(template, opts) };
     await dedupPut(env, payload.feedbackId, resp, opts.now);
     return { http: 200, body: resp };
   }
+
+  // Not delivered: persist for the admin retry and answer the terminal-but-retryable
+  // issue_failed (not dedup-stored), or 503 when the row could not be stored either.
+  const undelivered = async (reason: string): Promise<OrchestrateResult> => {
+    const stored = await persistFeedback(env, { ...row, outcome: "issue_failed", issueUrl: null, lastError: reason, issueDraft: draft });
+    if (!stored.ok) return persistFailed();
+    return { http: 200, body: { v: WIRE_VERSION, status: "issue_failed", id: stored.id, reason } };
+  };
 
   const pat = env[config.tracker.patSecret] as string | undefined;
-  if (!pat) {
-    // Persist for retry; surface a terminal-but-retryable status (not dedup-stored).
-    const reason = "tracker credential not configured";
-    await persistFeedback(env, { ...row, outcome: "issue_failed", issueUrl: null, lastError: reason, issueDraft: draft });
-    return { http: 200, body: { v: WIRE_VERSION, status: "issue_failed", id, reason } };
-  }
+  if (!pat) return undelivered("tracker credential not configured");
 
+  let issue: { url: string };
   try {
-    const issue = await createIssue({ pat, repo, title, body: issueBody, labels, type: issueType, issueFields, fetchImpl: opts.fetchImpl });
-    const outcome = opts.degraded ? "ai-failed" : opts.incomplete ? "accepted_incomplete" : "created";
-    await persistFeedback(env, { ...row, outcome, issueUrl: issue.url });
-    const status: "created" | "accepted_incomplete" = opts.degraded || opts.incomplete ? "accepted_incomplete" : "created";
-    const resp: FeedbackResponse = { v: WIRE_VERSION, status, id, ...(config.issueLink ? { issueUrl: issue.url } : {}), ...understood(template, opts) };
-    await dedupPut(env, payload.feedbackId, resp, opts.now);
-    return { http: 200, body: resp };
+    issue = await createIssue({ pat, repo, title, body: issueBody, labels, type: issueType, issueFields, fetchImpl: opts.fetchImpl });
   } catch (e) {
     // Tracker failure NEVER loses feedback: persist the payload for admin retry.
     const reason = e instanceof TrackerError ? `tracker error ${e.status}` : "tracker request failed";
@@ -329,9 +347,16 @@ async function finalizeCreate(
       repo,
       reason,
     });
-    await persistFeedback(env, { ...row, outcome: "issue_failed", issueUrl: null, lastError: reason, issueDraft: draft });
-    return { http: 200, body: { v: WIRE_VERSION, status: "issue_failed", id, reason } };
+    return undelivered(reason);
   }
+  // Delivered: the issue holds the report, so a failed journey write only
+  // degrades the history (the response is still a success).
+  const outcome = opts.degraded ? "ai-failed" : opts.incomplete ? "accepted_incomplete" : "created";
+  const stored = await persistFeedback(env, { ...row, outcome, issueUrl: issue.url });
+  const status: "created" | "accepted_incomplete" = opts.degraded || opts.incomplete ? "accepted_incomplete" : "created";
+  const resp: FeedbackResponse = { v: WIRE_VERSION, status, id: stored.ok ? stored.id : id, ...(config.issueLink ? { issueUrl: issue.url } : {}), ...understood(template, opts) };
+  await dedupPut(env, payload.feedbackId, resp, opts.now);
+  return { http: 200, body: resp };
 }
 
 const MAX_LLM_IMAGE_BYTES = 1_500_000; // guard the vision payload (upload path caps at 2 MB)
@@ -365,7 +390,7 @@ function base64FromBytes(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-// ── D1 journey (all best-effort: a write failure degrades, never blocks) ───────
+// ── D1 journey (dedup is best-effort; the feedback row is confirmed, see persistFeedback) ──
 async function dedupGet(env: Env, feedbackId: string): Promise<{ resp: FeedbackResponse | null; degraded: boolean }> {
   try {
     const row = await env.DB.prepare("SELECT response FROM dedup WHERE feedback_id = ?1").bind(feedbackId).first<{ response: string }>();
@@ -396,7 +421,7 @@ export interface IssueDraft {
   issueFields?: IssueFieldValue[];
 }
 
-interface FeedbackRow {
+export interface FeedbackRow {
   id: string;
   projectId: string;
   outcome: string;
@@ -411,12 +436,19 @@ interface FeedbackRow {
   issueDraft?: IssueDraft;
   now: number;
 }
-async function persistFeedback(env: Env, o: FeedbackRow): Promise<void> {
+export type PersistResult = { ok: true; id: string } | { ok: false };
+
+/** Store the journey row and confirm it by reading it back. The row is keyed by
+ * (project, client feedbackId): a resent submission lands on the row an earlier
+ * attempt stored (its id is returned), and a resend that now reached the tracker
+ * upgrades an earlier issue_failed row instead of adding a second one. */
+export async function persistFeedback(env: Env, o: FeedbackRow): Promise<PersistResult> {
+  const clientId = o.payload.feedbackId;
   try {
     await env.DB.prepare(
       `INSERT INTO feedback (id, project_id, outcome, payload, issue_url, created_at,
-         type, title, llm_provider, llm_model, config_version, updated_at, last_error, issue_draft)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14) ON CONFLICT(id) DO NOTHING`,
+         type, title, llm_provider, llm_model, config_version, updated_at, last_error, issue_draft, client_feedback_id)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) ON CONFLICT DO NOTHING`,
     )
       .bind(
         o.id,
@@ -433,9 +465,24 @@ async function persistFeedback(env: Env, o: FeedbackRow): Promise<void> {
         o.now,
         o.lastError ?? null,
         o.issueDraft ? JSON.stringify(o.issueDraft) : null,
+        clientId,
       )
       .run();
+    const row = await env.DB.prepare("SELECT id, outcome FROM feedback WHERE project_id = ?1 AND client_feedback_id = ?2")
+      .bind(o.projectId, clientId)
+      .first<{ id: string; outcome: string }>();
+    if (!row) {
+      console.error("[feedbackkit] feedback row missing after write", { projectId: o.projectId });
+      return { ok: false };
+    }
+    if (row.id !== o.id && row.outcome === "issue_failed" && o.issueUrl) {
+      await env.DB.prepare("UPDATE feedback SET outcome = ?1, issue_url = ?2, last_error = NULL, updated_at = ?3 WHERE id = ?4 AND outcome = 'issue_failed'")
+        .bind(o.outcome, o.issueUrl, o.now, row.id)
+        .run();
+    }
+    return { ok: true, id: row.id };
   } catch (e) {
-    console.warn(`[feedbackkit] feedback journey write failed (D1 degraded): ${(e as Error).message}`);
+    console.error(`[feedbackkit] feedback journey write failed (D1 degraded): ${(e as Error).message}`);
+    return { ok: false };
   }
 }

@@ -204,7 +204,9 @@ such as Priority. A template sets both next to its labels:
 - The page URL is always reported as origin + path; query strings and fragments
   are dropped (they carry login tokens).
 - With `retentionDays`, the daily cron deletes attachments, stored submissions
-  and funnel events older than that.
+  and funnel events older than that, whether or not anyone handled the report.
+  Reports without an issue (`noIssue` types, failed deliveries) are listed on
+  the admin System page and in `/diag?project=<key>` 7 days before they go.
 
 ### Context from a signed-in app
 

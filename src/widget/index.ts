@@ -1,4 +1,4 @@
-import { reduce, type WidgetState } from "./core/state.js";
+import { reduce, type RetrySnapshot, type WidgetState } from "./core/state.js";
 import { createConsoleBuffer, installConsoleBuffer } from "./core/console-buffer.js";
 import { collectDeviceInfo } from "./lib/device-info.js";
 import { captureScreenshot } from "./lib/screenshot.js";
@@ -9,7 +9,7 @@ import { TurnstileGate } from "./lib/turnstile.js";
 import { WidgetUI, type UIConfig } from "./ui/panel.js";
 import type { Locale } from "./ui/i18n.js";
 import { redactPageUrl } from "../shared/page-url.js";
-import type { PublicConfig, FeedbackPayload } from "../shared/contract.js";
+import type { PublicConfig, FeedbackPayload, FeedbackResponse } from "../shared/contract.js";
 
 declare global {
   interface Window {
@@ -103,7 +103,8 @@ async function boot() {
 
   let state: WidgetState = { name: "closed" };
   let feedbackId = "";
-  let base1: FeedbackPayload | null = null; // POST-1 payload, reused for POST-2
+  let base1: FeedbackPayload | null = null; // POST-1 payload, reused for POST-2 and for a retry
+  let sent = { text: "", type: "" }; // what the user sent with POST-1 (type "" = the gateway decides)
   let attachedKeys: string[] = []; // R2 keys of manually attached files (uploaded on pick)
   let pendingAttachments: Promise<{ status: "uploaded" | "failed" | "limit"; key?: string }>[] = [];
   let shots: { blob: Blob; url: string }[] = []; // the draft's page captures (#91), marked up in place
@@ -118,6 +119,7 @@ async function boot() {
     pendingAttachments = [];
     feedbackId = "";
     base1 = null;
+    sent = { text: "", type: "" };
     bailed = false;
     for (const s of shots) URL.revokeObjectURL(s.url);
     shots = [];
@@ -170,10 +172,7 @@ async function boot() {
       });
       return upload;
     },
-    onRetry: () => {
-      resetAttempt();
-      dispatch({ t: "retry" });
-    },
+    onRetry: () => void retry(),
     onRestart: () => {
       resetAttempt();
       dispatch({ t: "restart" });
@@ -252,14 +251,27 @@ async function boot() {
     ui.openAnnotator(img);
   }
 
+  function startSlow(myGen: number) {
+    clearSlow();
+    slowTimer = setTimeout(() => {
+      if (myGen === gen) dispatch({ t: "slowHint" });
+    }, 4000);
+  }
+
+  /** What a retry of this leg resends (null until POST-1's payload exists). */
+  function snapshot(leg: 1 | 2, answer?: string, extracted?: Record<string, string>): RetrySnapshot | undefined {
+    if (!base1) return undefined;
+    return { leg, feedbackId: base1.feedbackId, text: sent.text, type: sent.type, attachmentKeys: [...base1.attachmentKeys], ...(leg === 2 ? { answer: answer ?? "", extracted: { ...(extracted ?? {}) } } : {}) };
+  }
+
+  const failure = (error: string): FeedbackResponse => ({ v: 1, status: "error", error });
+
   async function submit(type: string, text: string) {
     const myGen = ++gen; // this attempt's token; a later submit/close bumps gen and invalidates us
     bailed = false;
     dispatch({ t: "submit" }, () => api.event("submitted"));
     if (state.name !== "extracting") return;
-    slowTimer = setTimeout(() => {
-      if (myGen === gen) dispatch({ t: "slowHint" });
-    }, 4000);
+    startSlow(myGen);
 
     try {
       // Turnstile (if enabled) runs alongside the capture; awaited before the POST.
@@ -278,6 +290,7 @@ async function boot() {
         if (key) attachmentKeys.push(key);
       }
       attachmentKeys.push(...attachedKeys);
+      sent = { text, type };
       base1 = {
         v: 1,
         feedbackId,
@@ -291,39 +304,79 @@ async function boot() {
       };
       const context = readHostContext(window.FeedbackKitContext);
       if (context) base1.context = context;
-      const turnstileToken = await tokenP;
-      if (myGen !== gen) return;
-      const res = await api.submit({ ...base1, turnstileToken });
-      if (myGen !== gen) return;
-      clearSlow();
-      if (res.status === "follow_up") {
-        base1.summary = res.summary;
-        if (res.type) base1.type = res.type; // POST-2 completes the type the gateway chose
-        if (!type) base1.autoTyped = true; // …and lets the answer settle it
-        api.event("need_fields");
-        // User pre-chose "send now": skip the question, but keep POST-1's extraction.
-        if (bailed) return complete("", res.extracted);
-      }
-      dispatch({ t: "response", res });
+      await post1(myGen, tokenP);
     } catch (e) {
       if (myGen !== gen) return;
       clearSlow();
       console.warn(`[feedbackkit] submit failed: ${(e as Error).message}`);
-      dispatch({ t: "response", res: { v: 1, status: "error", error: "submit failed" } });
+      dispatch({ t: "response", res: failure("submit failed"), retry: snapshot(1) });
     }
+  }
+
+  /** POST-1 with the stored payload: the first send, or a retry of it. */
+  async function post1(myGen: number, tokenP?: Promise<string | undefined>) {
+    if (!base1) return;
+    const turnstileToken = await (tokenP ?? gate?.token());
+    if (myGen !== gen) return;
+    const res = await api.submit({ ...base1, turnstileToken });
+    if (myGen !== gen) return;
+    clearSlow();
+    if (res.status === "follow_up") {
+      base1.summary = res.summary;
+      if (res.type) base1.type = res.type; // POST-2 completes the type the gateway chose
+      if (!sent.type) base1.autoTyped = true; // …and lets the answer settle it
+      api.event("need_fields");
+      // User pre-chose "send now": skip the question, but keep POST-1's extraction.
+      if (bailed) return complete("", res.extracted);
+    }
+    dispatch({ t: "response", res, retry: snapshot(1) });
   }
 
   async function complete(answer: string, extractedOverride?: Record<string, string>) {
     if (!base1) return;
     const echoed = extractedOverride ?? (state.name === "asking" ? state.extracted : {}); // what POST-1 already understood
-    const myGen = gen; // stay bound to the current attempt (complete() doesn't start a new one)
     dispatch({ t: "answer" }, () => api.event("completed"));
-    const turnstileToken = gate ? await gate.token() : undefined; // tokens are single-use: fresh one for POST-2
-    if (myGen !== gen) return;
-    const payload: FeedbackPayload = { ...base1, followUpText: answer, extracted: echoed, turnstileToken };
-    const res = await api.submit(payload);
+    await post2(gen, answer, echoed); // stay bound to the current attempt (complete() doesn't start a new one)
+  }
+
+  /** POST-2 (the follow-up answer): the first send, or a retry of it. */
+  async function post2(myGen: number, answer: string, echoed: Record<string, string>) {
+    if (!base1) return;
+    let res: FeedbackResponse;
+    try {
+      const turnstileToken = gate ? await gate.token() : undefined; // tokens are single-use: fresh one per POST
+      if (myGen !== gen) return;
+      res = await api.submit({ ...base1, followUpText: answer, extracted: echoed, turnstileToken });
+    } catch (e) {
+      console.warn(`[feedbackkit] submit failed: ${(e as Error).message}`);
+      res = failure("submit failed");
+    }
     if (myGen !== gen) return; // closed/superseded while POST-2 in flight
-    dispatch({ t: "response", res });
+    dispatch({ t: "response", res, retry: snapshot(2, answer, echoed) });
+  }
+
+  /** Resend the failed leg with the same id, text and uploaded keys (#108):
+   * no reset, no second upload, a fresh Turnstile token. */
+  async function retry() {
+    if (state.name !== "failed") return;
+    const snap = state.retry;
+    if (!snap || !base1 || base1.feedbackId !== snap.feedbackId) {
+      resetAttempt(); // nothing was sent: start over with an empty form
+      return dispatch({ t: "retry" });
+    }
+    const myGen = ++gen;
+    dispatch({ t: "retry" });
+    if (snap.leg === 2) return post2(myGen, snap.answer ?? "", snap.extracted ?? {});
+    bailed = false;
+    startSlow(myGen);
+    try {
+      await post1(myGen);
+    } catch (e) {
+      if (myGen !== gen) return;
+      clearSlow();
+      console.warn(`[feedbackkit] submit failed: ${(e as Error).message}`);
+      dispatch({ t: "response", res: failure("submit failed"), retry: snap });
+    }
   }
 
   // Manual file attach (picked in the form) → upload now, key rides along on submit.

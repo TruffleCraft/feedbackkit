@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { WIRE_VERSION, SCHEMA_VERSION, FeedbackPayload, EventPayload, FeedbackConfig } from "../shared/contract.js";
 import { toPublicConfig } from "../shared/projection.js";
-import { orchestrateFeedback, realChat, dryRunPreview } from "./orchestrate.js";
+import { orchestrateFeedback, realChat, dryRunPreview, persistFailed } from "./orchestrate.js";
 import { renderTestPage, TEST_PAGE_CSP } from "./testpage.js";
 import { checkSchema, countProjects } from "./db.js";
 import { renderLanding, LANDING_CSP } from "./landing.js";
@@ -12,6 +12,7 @@ import { verifyTurnstile } from "./security/turnstile.js";
 import { checkRepoAccess } from "./providers/github.js";
 import { sniffImage, storeAttachment, deleteAssetsForFeedback, publicUrl, MAX_UPLOAD_BYTES } from "./storage/r2.js";
 import { ConfigError } from "./errors.js";
+import { retentionNotice, type RetentionNotice } from "./storage/retention.js";
 import { VERSION, releaseOf, bindingsPresence, secretsPresence } from "./status.js";
 import { adminAuthed, adminGate } from "./admin/auth.js";
 import { registerAdminRoutes } from "./admin/routes.js";
@@ -87,6 +88,7 @@ app.get("/diag", async (c) => {
   let tracker = "skipped — pass ?project=<key>";
   let llm = "skipped — pass ?project=<key>";
   let r2 = "skipped — pass ?project=<key> (admin)";
+  let retention: RetentionNotice | string | null = "skipped — pass ?project=<key> (admin)";
   const project = c.req.query("project");
   if (project && !(await adminAuthed(c))) {
     tracker = llm = "unauthorized — deep check requires Authorization: Bearer <ADMIN_TOKEN> or a Cloudflare Access sign-in";
@@ -128,6 +130,9 @@ app.get("/diag", async (c) => {
       } catch (e) {
         r2 = `FAIL: ${(e as Error).message}`;
       }
+
+      // Unhandled reports that retention deletes within the notice period (#108).
+      retention = await retentionNotice(c.env, loaded.config.projectId, loaded.config.storage.retentionDays).catch((e) => `FAIL: ${(e as Error).message}`);
     }
   }
 
@@ -158,7 +163,7 @@ app.get("/diag", async (c) => {
       projects,
       firstRun,
       nextSteps,
-      checks: { tracker, llm, r2 },
+      checks: { tracker, llm, r2, retention },
       ok,
     },
     ok ? 200 : 503,
@@ -471,14 +476,29 @@ app.post("/api/feedback", async (c) => {
   const apiKey = c.env["LLM_API_KEY"] as string | undefined;
   try {
     const result = await orchestrateFeedback(c.env, loaded, parsed.data, { apiKey, chat: realChat });
-    return c.json(result.body, result.http as 200 | 400);
+    return c.json(result.body, result.http as 200 | 400 | 503, result.headers);
   } catch (e) {
-    // orchestrate is built never to throw; if it ever does, return a terminal
-    // issue_failed (client keeps the feedback) — never a bare 500.
+    // orchestrate is built never to throw. If it ever does, the report counts as
+    // received only when its row is in D1; otherwise the client must resend it.
     console.error(`[feedbackkit] orchestrate crashed: ${(e as Error).message}`);
-    return c.json({ v: WIRE_VERSION, status: "issue_failed", id: parsed.data.feedbackId, reason: "internal error" });
+    const storedId = await storedFeedbackId(c.env, loaded.config.projectId, parsed.data.feedbackId);
+    if (storedId) return c.json({ v: WIRE_VERSION, status: "issue_failed", id: storedId, reason: "internal error" });
+    const failed = persistFailed();
+    return c.json(failed.body, 503, failed.headers);
   }
 });
+
+/** Id of the stored row for a client submission, or null (none, or D1 down). */
+async function storedFeedbackId(env: Env, projectId: string, clientId: string): Promise<string | null> {
+  try {
+    const row = await env.DB.prepare("SELECT id FROM feedback WHERE project_id = ?1 AND client_feedback_id = ?2")
+      .bind(projectId, clientId)
+      .first<{ id: string }>();
+    return row?.id ?? null;
+  } catch {
+    return null;
+  }
+}
 
 app.options("/api/events", (c) => {
   const origin = c.req.header("Origin");

@@ -201,7 +201,8 @@ function retentionDb(projects: Array<{ id: string; config: string }>) {
 
 describe("pruneExpiredRecords", () => {
   const now = 1_800_000_000_000;
-  it("deletes feedback + events past each project's retentionDays, and old dedup rows", async () => {
+  // Feedback rows and their assets: test/durable/retention.test.ts (real D1).
+  it("deletes events past each project's retentionDays, and old dedup rows", async () => {
     const { db, deletes } = retentionDb([
       { id: "nora", config: JSON.stringify({ storage: { retentionDays: 90 } }) },
       { id: "keep", config: JSON.stringify({ storage: {} }) },
@@ -209,11 +210,10 @@ describe("pruneExpiredRecords", () => {
     ]);
     const n = await pruneExpiredRecords({ DB: db } as unknown as Env, now);
     const cutoff = now - 90 * 86_400_000;
-    expect(deletes).toContainEqual({ sql: "DELETE FROM feedback WHERE project_id = ?1 AND created_at < ?2", params: ["nora", cutoff] });
     expect(deletes).toContainEqual({ sql: "DELETE FROM events WHERE project_id = ?1 AND ts < ?2", params: ["nora", cutoff] });
     expect(deletes.some((d) => d.params[0] === "keep" || d.params[0] === "broken")).toBe(false);
     expect(deletes).toContainEqual({ sql: "DELETE FROM dedup WHERE created_at < ?1", params: [now - DEDUP_TTL_MS] });
-    expect(n).toEqual({ feedback: 2, events: 2 });
+    expect(n.events).toBe(2);
   });
 });
 

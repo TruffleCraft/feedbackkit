@@ -13,7 +13,7 @@
     "materialize": "node scripts/materialize-wrangler.mjs",
     "build:widget": "node scripts/build-widget.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.widget.json && tsc --noEmit -p tsconfig.admin.json",
-    "test": "vitest run",
+    "test": "vitest run && vitest run -c vitest.workers.config.ts",
     "e2e": "pnpm build:widget && playwright test",
     "check:bundle": "node scripts/check-bundle.mjs",
     "test-issue": "node scripts/test-issue.mjs",
@@ -33,6 +33,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.8.71",
     "@cloudflare/workers-types": "^4.20250110.0",
     "@fontsource-variable/urbanist": "5.3.0",
     "@playwright/test": "^1.61.1",

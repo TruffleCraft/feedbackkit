@@ -291,11 +291,13 @@ test.describe("system", () => {
     await expect(page.locator("#sys-sub")).toHaveText("0.2.0 on stable · schema v2");
 
     const attention = page.locator("#attention > div");
-    await expect(page.locator("#attn-count")).toHaveText("3");
-    await expect(attention).toHaveCount(3);
+    await expect(page.locator("#attn-count")).toHaveText("4");
+    await expect(attention).toHaveCount(4);
     await expect(attention.nth(0)).toContainText(/harborline GitHub token expires on \d+ \w+ \d{4}\./);
     await expect(attention.nth(1)).toContainText("harborline has used 172 of 200 AI calls today. The count resets at 00:00 UTC.");
     await expect(attention.nth(2)).toContainText("ledgerkite-docs can't create issues: GITHUB_PAT_LEDGER is not set.");
+    await expect(attention.nth(3)).toContainText(/pantry-planner has 2 unhandled reports that retention deletes within 7 days \(30-day limit\), the first on \d+ \w+ \d{4}\. Open the history/);
+    await expect(attention.nth(3).getByRole("link", { name: "Open the history" })).toHaveAttribute("href", "/admin/projects/pantry-planner");
 
     const projectRows = page.locator("#sys-projects tr");
     await expect(projectRows).toHaveCount(3);

@@ -11,6 +11,8 @@ export default defineConfig({
   },
   test: {
     include: ["test/**/*.test.ts"],
+    // test/durable/ runs inside workerd against a real D1 (vitest.workers.config.ts).
+    exclude: ["test/durable/**", "**/node_modules/**"],
     // The provider is ESM in node_modules: inline it so the alias above applies.
     server: { deps: { inline: ["@cloudflare/workers-oauth-provider"] } },
   },

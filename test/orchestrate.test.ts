@@ -37,7 +37,7 @@ const payload = (over: Record<string, unknown> = {}) =>
   FeedbackPayload.parse({ v: 1, feedbackId: UUID, type: "bug", message: "Speichern kaputt", pageUrl: "https://acme.dev", ...over });
 
 // Stateful D1 fake: dedup replay + records feedback/dedup writes.
-function fakeDb(opts: { dedupThrows?: boolean; counterCount?: number } = {}) {
+function fakeDb(opts: { dedupThrows?: boolean; counterCount?: number; feedbackThrows?: boolean } = {}) {
   const dedup = new Map<string, string>();
   const feedback: Array<{ id: unknown; outcome: unknown; issueUrl: unknown; row: Record<string, unknown> }> = [];
   const db = {
@@ -55,11 +55,17 @@ function fakeDb(opts: { dedupThrows?: boolean; counterCount?: number } = {}) {
             const r = dedup.get(String(params[0]));
             return r ? { response: r } : null;
           }
+          if (sql.includes("FROM feedback")) {
+            // persistFeedback's read-back by (project, client feedbackId).
+            const hit = feedback.find((f) => f.row["project_id"] === params[0] && f.row["client_feedback_id"] === params[1]);
+            return hit ? { id: hit.id, outcome: hit.outcome } : null;
+          }
           return null;
         },
         run: async () => {
           if (sql.includes("INSERT INTO dedup")) dedup.set(String(params[0]), String(params[1]));
           if (sql.includes("INSERT INTO feedback")) {
+            if (opts.feedbackThrows) throw new Error("D1 down");
             // Column list of the INSERT, zipped with its bound values.
             const cols = sql.slice(sql.indexOf("(") + 1, sql.indexOf(")")).split(",").map((c) => c.trim());
             const row = Object.fromEntries(cols.map((c, i) => [c, params[i]]));
@@ -464,6 +470,9 @@ describe("orchestrateFeedback — create-anyway on tracker/D1 failure", () => {
     const r = await orchestrateFeedback(env(db.db), loaded(), payload(), { apiKey: "k", chat: fullExtract(), fetchImpl: gh.fetchImpl, newId: () => "fid-f" });
     expect(r.body.status).toBe("issue_failed");
     expect(db.feedback[0]).toMatchObject({ outcome: "issue_failed", issueUrl: null });
+    expect(db.feedback[0]!.row["client_feedback_id"]).toBe(UUID);
+    expect(r.http).toBe(200);
+    expect(r.body).toMatchObject({ id: "fid-f" });
     expect(db.dedup.size).toBe(0);
   });
 
@@ -474,6 +483,37 @@ describe("orchestrateFeedback — create-anyway on tracker/D1 failure", () => {
     expect(r.body.status).toBe("issue_failed");
     expect((r.body as { reason: string }).reason).toContain("credential");
     expect(gh.calls).toHaveLength(0);
+  });
+
+  // #108: a report that did not reach the tracker is acknowledged only after D1
+  // confirmed the row; otherwise a retryable 503 tells the widget to resend.
+  const persistFailed = { http: 503, body: { status: "error", code: "FK_PERSIST_FAILED", retryable: true }, headers: { "Retry-After": "5" } };
+
+  it("tracker fails AND the row cannot be stored → 503 FK_PERSIST_FAILED, not issue_failed", async () => {
+    const db = fakeDb({ feedbackThrows: true });
+    const r = await orchestrateFeedback(env(db.db), loaded(), payload(), { apiKey: "k", chat: fullExtract(), fetchImpl: ghCapture(500).fetchImpl });
+    expect(r).toMatchObject(persistFailed);
+    expect(db.dedup.size).toBe(0);
+  });
+
+  it("missing PAT AND the row cannot be stored → 503 FK_PERSIST_FAILED", async () => {
+    const db = fakeDb({ feedbackThrows: true });
+    const r = await orchestrateFeedback({ DB: db.db } as unknown as Env, loaded(), payload(), { apiKey: "k", chat: fullExtract(), fetchImpl: ghCapture().fetchImpl });
+    expect(r).toMatchObject(persistFailed);
+  });
+
+  it("noIssue AND the row cannot be stored → 503 FK_PERSIST_FAILED, nothing dedup-stored", async () => {
+    const db = fakeDb({ feedbackThrows: true });
+    const r = await orchestrateFeedback(env(db.db), loaded(), payload({ type: "praise", message: "super!" }), { chat: chatMustNotRun, fetchImpl: ghCapture().fetchImpl });
+    expect(r).toMatchObject(persistFailed);
+    expect(db.dedup.size).toBe(0);
+  });
+
+  it("issue created but the row cannot be stored → still a success (the issue holds the report)", async () => {
+    const db = fakeDb({ feedbackThrows: true });
+    const r = await orchestrateFeedback(env(db.db), loaded(), payload(), { apiKey: "k", chat: fullExtract(), fetchImpl: ghCapture().fetchImpl, newId: () => "fid-d" });
+    expect(r.http).toBe(200);
+    expect(r.body).toMatchObject({ status: "created", id: "fid-d" });
   });
 
   it("D1 dedup read down → still creates, tags the issue d1-degraded", async () => {
