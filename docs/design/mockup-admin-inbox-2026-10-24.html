@@ -1,0 +1,2450 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pantry Planner · FeedbackKit Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* Framed sheet style (seed 1891601236, kind support, light + dark)
+     Grid arithmetic at 1440px:
+       window 1440 - sidebar 228 - sheet right inset 8 = 1204px sheet width
+       sheet inner width: 1204 - 2 * 24 (pad) - 2 (border) = 1154px
+       Inbox split: 360px list + 24px gap + 770px detail = 1154px
+       12-col grid: 12 * 74.16px + 11 * 24px = 1154px */
+  :root {
+    --ground: #f3f6f8;
+    --surface: #ffffff;
+    --raised: #f4f6f8;
+    --active: #e6eaee;
+    --border: #e3e7ea;
+    --rule: #eef0f2;
+    --control: #c7ccd1;
+    --text: #131416;
+    --muted: #56595c;
+    --faint: #66696d;
+    --accent: #1b6c80;
+    --primary: #131416;
+    --primary-ink: #ffffff;
+    --positive: #1e7b4f;
+    --negative: #c4242a;
+    --warning: #92400e;
+    --chart-1: #1b6c80;
+    --chart-2: #2f70bb;
+    --chart-3: #a86f0c;
+    --chart-muted: #cfd5da;
+    --chart-mark: #131416;
+    --chart-span: 0.06;
+    --grid: #eef0f2;
+    --axis-ink: #56595c;
+    --ink: #131416;
+    --pill-positive-bg: #dcfae5;
+    --pill-positive-ink: #04250e;
+    --pill-negative-bg: #ffedea;
+    --pill-negative-ink: #831c1e;
+    --pill-warning-bg: #fffbeb;
+    --pill-warning-ink: #92400e;
+    --pill-neutral-bg: #e8ecef;
+    --pill-neutral-ink: #2f3337;
+    --radius-card: 8px;
+    --radius-control: 6px;
+    --radius-sheet: 16px;
+    --sheet-inset: 8px;
+    --row-height: 48px;
+    --sidebar-width: 228px;
+    --gap: 24px;
+    --pad: 24px;
+    --control-height: 32px;
+    --nav-row: 34px;
+    --fs-title: 22px;
+    --fs-section: 16px;
+    --fs-kpi: 28px;
+    --fs-body: 14px;
+    --fs-small: 12px;
+    --font: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --t-press: 120ms;
+    --t-hover: 150ms;
+    --t-ui: 200ms;
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #000000;
+    --surface: #111111;
+    --raised: #1c1c1e;
+    --active: #242426;
+    --border: #262629;
+    --rule: #1b1b1d;
+    --control: #424246;
+    --text: #ffffff;
+    --muted: #b4b4b4;
+    --faint: #949494;
+    --accent: #3ca3bc;
+    --primary: #ffffff;
+    --primary-ink: #000000;
+    --positive: #3fc07a;
+    --negative: #e5566f;
+    --warning: #e5a93b;
+    --chart-1: #3ca3bc;
+    --chart-2: #5b9bd5;
+    --chart-3: #e5a93b;
+    --chart-muted: #3a3a3d;
+    --chart-mark: #ffffff;
+    --chart-span: 0.12;
+    --grid: #262629;
+    --axis-ink: #b4b4b4;
+    --ink: #ffffff;
+    --pill-positive-bg: #172a1d;
+    --pill-positive-ink: #3fc07a;
+    --pill-negative-bg: #2c1a20;
+    --pill-negative-ink: #e5566f;
+    --pill-warning-bg: #2b2414;
+    --pill-warning-ink: #e5a93b;
+    --pill-neutral-bg: #242426;
+    --pill-neutral-ink: #e4e4e7;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--text);
+    font: var(--fs-body)/20px var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4, p, figure, ul, ol, dl, dd, pre { margin: 0; }
+  ul[class], ol[class] { padding: 0; list-style: none; }
+  img, svg { display: block; max-width: 100%; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  a { color: inherit; text-decoration: none; }
+  code, pre, kbd {
+    font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px;
+  }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  .num, table, .kpi-value { font-variant-numeric: tabular-nums; }
+
+  /* ---------- L-frame shell: sidebar + 48px top bar on one ground, inset white sheet ---------- */
+  .frame {
+    display: grid;
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+    min-height: 100svh;
+  }
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100svh;
+    display: flex;
+    flex-direction: column;
+    padding: 14px 12px;
+    overflow-y: auto;
+  }
+  .brand-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 34px;
+    padding: 0 8px;
+    margin-bottom: 12px;
+  }
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--text);
+  }
+  .brand svg { width: 20px; height: 20px; flex: none; }
+  .brand-chan { font-size: var(--fs-small); color: var(--muted); font-weight: 400; }
+
+  .group-label {
+    margin: 18px 8px 6px;
+    font-size: var(--fs-small);
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .group-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 16px 8px 6px;
+    font-size: var(--fs-small);
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .text-act {
+    border: 0;
+    background: none;
+    padding: 2px 4px;
+    color: var(--text);
+    font-size: var(--fs-small);
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .text-act:hover { background: var(--active); }
+
+  .nav-list { display: flex; flex-direction: column; gap: 2px; }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    height: var(--nav-row);
+    padding: 0 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--t-hover) ease, color var(--t-hover) ease;
+  }
+  .nav-item svg { width: 16px; height: 16px; flex: none; stroke: currentColor; stroke-width: 1.5; fill: none; }
+  .nav-item:hover { background: var(--raised); color: var(--text); }
+  .nav-item[aria-current="page"], .nav-item[aria-selected="true"] {
+    background: var(--active);
+    color: var(--text);
+    font-weight: 500;
+  }
+  .nav-item .nav-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nav-item .nav-tag { font-size: 11px; color: var(--muted); font-weight: 400; }
+  .nav-count {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0 7px;
+    height: 19px;
+    display: inline-flex;
+    align-items: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .sidebar-foot {
+    margin-top: auto;
+    padding-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .who-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 8px;
+    font-size: var(--fs-small);
+    color: var(--muted);
+  }
+  .who-email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 500; }
+
+  /* Right column: 48px top bar + inset white sheet */
+  .main-col {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 0 var(--sheet-inset) var(--sheet-inset) 0;
+  }
+  .topbar {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 0 16px 0 var(--pad);
+  }
+  .crumb-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--muted);
+    min-width: 0;
+  }
+  .crumb-bar strong { color: var(--text); font-weight: 500; }
+  .global-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 380px;
+    max-width: 100%;
+    height: 32px;
+    padding: 0 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    color: var(--muted);
+  }
+  .global-search svg { width: 14px; height: 14px; flex: none; stroke: currentColor; stroke-width: 1.6; fill: none; }
+  .global-search input {
+    border: 0;
+    background: transparent;
+    width: 100%;
+    outline: 0;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .global-search input::placeholder { color: var(--faint); }
+  .top-actions { display: flex; align-items: center; gap: 8px; }
+
+  .sheet {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sheet);
+    padding: var(--pad);
+    min-width: 0;
+  }
+
+  /* ---------- Title row & section tabs ---------- */
+  .title-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .title-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .title-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .title-row h1 {
+    font-size: var(--fs-title);
+    line-height: 28px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .title-sub { color: var(--muted); font-size: var(--fs-body); }
+  .title-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+  .view-tabs {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: var(--gap);
+    overflow-x: auto;
+  }
+  .view-tab {
+    position: relative;
+    border: 0;
+    background: none;
+    padding: 8px 0 10px;
+    color: var(--muted);
+    font-weight: 500;
+    font-size: var(--fs-body);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .view-tab:hover { color: var(--text); }
+  .view-tab[aria-selected="true"] { color: var(--text); font-weight: 600; }
+  .view-tab[aria-selected="true"]::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    background: var(--accent);
+  }
+
+  /* ---------- Controls & pills ---------- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: var(--control-height);
+    padding: 0 12px;
+    border-radius: var(--radius-control);
+    border: 1px solid var(--control);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color var(--t-hover) ease, transform var(--t-press) var(--ease-out);
+  }
+  .btn svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.6; fill: none; flex: none; }
+  .btn:hover { background: var(--raised); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary {
+    background: var(--primary);
+    color: var(--primary-ink);
+    border-color: var(--primary);
+  }
+  .btn.primary:hover { opacity: 0.9; }
+  .btn.danger {
+    color: var(--negative);
+    border-color: var(--pill-negative-bg);
+    background: var(--surface);
+  }
+  .btn.danger:hover { background: var(--pill-negative-bg); }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 999px;
+    font-size: var(--fs-small);
+    font-weight: 500;
+    background: var(--pill-neutral-bg);
+    color: var(--pill-neutral-ink);
+    white-space: nowrap;
+    flex: none;
+  }
+  .pill.pos { background: var(--pill-positive-bg); color: var(--pill-positive-ink); }
+  .pill.neg { background: var(--pill-negative-bg); color: var(--pill-negative-ink); }
+  .pill.warn { background: var(--pill-warning-bg); color: var(--pill-warning-ink); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: none; }
+
+  .segmented {
+    display: inline-flex;
+    width: max-content;
+    max-width: 100%;
+    padding: 2px;
+    border-radius: var(--radius-control);
+    background: var(--raised);
+    border: 1px solid var(--border);
+  }
+  .segmented button {
+    height: 26px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .segmented button[aria-pressed="true"] {
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  /* ---------- Inbox triage split layout (360px list + 24px gap + 770px detail = 1154px) ---------- */
+  .inbox-layout {
+    display: grid;
+    grid-template-columns: 360px minmax(0, 1fr);
+    gap: var(--gap);
+    align-items: start;
+  }
+  .inbox-list-pane {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .inbox-toolbar {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .status-tabs {
+    display: flex;
+    gap: 12px;
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 8px;
+    overflow-x: auto;
+  }
+  .status-tab {
+    border: 0;
+    background: none;
+    padding: 2px 0;
+    font-size: 12.5px;
+    color: var(--muted);
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .status-tab[aria-pressed="true"] {
+    color: var(--text);
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-color: var(--accent);
+    text-underline-offset: 6px;
+    text-decoration-thickness: 2px;
+  }
+  .filter-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 118px;
+    gap: 8px;
+  }
+  .input, select.input, textarea.input {
+    height: var(--control-height);
+    padding: 0 10px;
+    border: 1px solid var(--control);
+    border-radius: var(--radius-control);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13px;
+    width: 100%;
+  }
+  textarea.input {
+    height: auto;
+    padding: 8px 10px;
+    line-height: 1.45;
+    resize: vertical;
+  }
+  .input::placeholder, textarea.input::placeholder { color: var(--faint); }
+
+  .item-rows {
+    display: flex;
+    flex-direction: column;
+  }
+  .item-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 14px;
+    border: 0;
+    border-bottom: 1px solid var(--rule);
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+    position: relative;
+  }
+  .item-row:last-child { border-bottom: 0; }
+  .item-row:hover { background: var(--raised); }
+  .item-row[aria-selected="true"] {
+    background: var(--active);
+  }
+  .item-row[aria-selected="true"]::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--accent);
+  }
+  .item-row-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .item-title {
+    font-size: 13.5px;
+    line-height: 19px;
+    color: var(--text);
+    font-weight: 400;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .item-row.unread .item-title { font-weight: 600; }
+  .item-time {
+    font-size: var(--fs-small);
+    color: var(--muted);
+    white-space: nowrap;
+    flex: none;
+    font-variant-numeric: tabular-nums;
+  }
+  .item-row-sub {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: var(--fs-small);
+    color: var(--muted);
+  }
+  .item-meta-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ---------- Right pane: Open report detail ---------- */
+  .detail-pane {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    background: var(--surface);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .detail-head {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .detail-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .detail-title {
+    font-size: 18px;
+    line-height: 24px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .detail-subline {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: var(--fs-small);
+    color: var(--muted);
+  }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 20px;
+    align-items: start;
+  }
+  .detail-main {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+  }
+  .subcard {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 16px;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .subcard-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .subcard-head h2, .subcard-head h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .subcard-head span {
+    font-size: var(--fs-small);
+    color: var(--muted);
+  }
+
+  .msg-turn {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    border-radius: var(--radius-control);
+    background: var(--raised);
+  }
+  .msg-turn.ai-turn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .msg-who {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: var(--fs-small);
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .msg-body {
+    font-size: 13.5px;
+    line-height: 20px;
+    color: var(--text);
+  }
+
+  .extracted-list {
+    display: grid;
+    gap: 10px;
+  }
+  .extracted-row {
+    display: grid;
+    grid-template-columns: 140px minmax(0, 1fr);
+    gap: 12px;
+    align-items: baseline;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .extracted-row:last-child { border-bottom: 0; padding-bottom: 0; }
+  .extracted-key {
+    font-size: var(--fs-small);
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .extracted-val {
+    font-size: 13.5px;
+    color: var(--text);
+  }
+
+  .shot-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+  }
+  .shot-preview {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .shot-thumb {
+    width: 64px;
+    height: 44px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--raised);
+    overflow: hidden;
+    flex: none;
+  }
+
+  /* Context well */
+  .meta-well {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 14px 16px;
+    background: var(--raised);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .meta-well h3 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .kv-list {
+    display: flex;
+    flex-direction: column;
+  }
+  .kv-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: var(--fs-small);
+  }
+  .kv-row:last-child { border-bottom: 0; padding-bottom: 0; }
+  .kv-row dt { color: var(--muted); }
+  .kv-row dd {
+    color: var(--text);
+    font-weight: 500;
+    text-align: right;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ---------- KPIs & Charts ---------- */
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    margin-bottom: var(--gap);
+  }
+  .kpi { padding: 16px 20px; }
+  .kpi + .kpi { border-left: 1px solid var(--border); }
+  .kpi-label { color: var(--muted); font-size: 13px; font-weight: 500; }
+  .kpi-value {
+    margin-top: 6px;
+    font-size: var(--fs-kpi);
+    line-height: 1.15;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+  .kpi-value.lead { font-size: 32px; font-weight: 500; }
+  .kpi-sub { margin-top: 4px; font-size: var(--fs-small); color: var(--muted); }
+  .kpi-sub .good { color: var(--positive); font-weight: 500; }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 7fr 5fr;
+    gap: var(--gap);
+    align-items: start;
+  }
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 20px;
+    min-width: 0;
+  }
+  .panel-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .panel-head h2 { font-size: var(--fs-section); font-weight: 600; }
+  .panel-head span { font-size: var(--fs-small); color: var(--muted); }
+
+  /* ---------- Settings / Configuration two-column rows (§8.2) ---------- */
+  .settings-section {
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr);
+    gap: var(--gap);
+    padding: 24px 0;
+    border-top: 1px solid var(--border);
+    align-items: start;
+  }
+  .settings-section:first-of-type { border-top: 0; padding-top: 4px; }
+  .settings-info h2 { font-size: var(--fs-section); font-weight: 500; margin-bottom: 6px; }
+  .settings-info p { color: var(--muted); font-size: 13.5px; line-height: 20px; }
+  .settings-card {
+    background: var(--raised);
+    border-radius: var(--radius-card);
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .field-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 13px; font-weight: 500; color: var(--text); }
+  .field .hint { font-size: var(--fs-small); color: var(--muted); }
+
+  .origin-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .origin-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    background: var(--surface);
+    border: 1px solid var(--control);
+    border-radius: var(--radius-control);
+    font-size: 12.5px;
+  }
+  .origin-chip button {
+    border: 0;
+    background: none;
+    padding: 0 2px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .origin-chip button:hover { color: var(--negative); }
+
+  .switch-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 8px 0;
+  }
+  .switch-row + .switch-row { border-top: 1px solid var(--border); }
+  .switch-copy strong { display: block; font-size: 13.5px; font-weight: 500; }
+  .switch-copy span { display: block; font-size: var(--fs-small); color: var(--muted); margin-top: 2px; }
+  .switch {
+    appearance: none;
+    width: 32px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--control);
+    position: relative;
+    cursor: pointer;
+    flex: none;
+    transition: background-color var(--t-ui) ease;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #ffffff;
+    transition: transform var(--t-ui) var(--ease-out);
+  }
+  .switch:checked { background: var(--positive); }
+  .switch:checked::after { transform: translateX(12px); }
+
+  /* ---------- Tables ---------- */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    height: 36px;
+    padding: 0 12px;
+    text-align: left;
+    font-weight: 400;
+    font-size: var(--fs-small);
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  td {
+    padding: 12px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: baseline;
+    font-size: 13.5px;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  th.n, td.n { text-align: right; }
+
+  .code-block {
+    background: var(--raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    padding: 12px 14px;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--text);
+  }
+
+  .empty-box {
+    padding: 20px;
+    border: 1px dashed var(--control);
+    border-radius: var(--radius-control);
+    color: var(--muted);
+    text-align: center;
+    font-size: 13px;
+  }
+
+  /* Mobile menu toggle */
+  .menu-toggle { display: none; }
+  .mobile-back { display: none; }
+
+  @media (max-width: 1100px) {
+    .inbox-layout { grid-template-columns: 310px minmax(0, 1fr); }
+    .detail-grid { grid-template-columns: minmax(0, 1fr); }
+    .two-col { grid-template-columns: minmax(0, 1fr); }
+    .settings-section { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  }
+
+  @media (max-width: 860px) {
+    .frame { grid-template-columns: minmax(0, 1fr); }
+    .sidebar {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 30;
+      background: var(--surface);
+      transform: translateX(-100%);
+      transition: transform var(--t-ui) var(--ease-out);
+    }
+    .sidebar.open { transform: none; }
+    .menu-toggle { display: inline-flex; }
+    .main-col { padding: 0; }
+    .topbar { padding: 0 16px; }
+    .global-search { display: none; }
+    .sheet { border-radius: 0; border-left: 0; border-right: 0; border-bottom: 0; padding: 16px; }
+    .inbox-layout { grid-template-columns: minmax(0, 1fr); }
+    .inbox-layout.mobile-detail-open .inbox-list-pane { display: none; }
+    .inbox-layout:not(.mobile-detail-open) .detail-pane { display: none; }
+    .mobile-back { display: inline-flex; }
+    .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .kpi + .kpi { border-left: 0; }
+    .kpi:nth-child(n + 3) { border-top: 1px solid var(--border); }
+    .kpi:nth-child(2n) { border-left: 1px solid var(--border); }
+    .kpi:last-child:nth-child(odd) { grid-column: 1 / -1; }
+    .field-grid { grid-template-columns: minmax(0, 1fr); }
+    .crumb-bar > :not(.menu-toggle), #project-mode-pill { display: none; }
+  }
+  .status-tabs { flex-wrap: wrap; overflow: visible; row-gap: 6px; }
+  .subcard-head { flex-wrap: wrap; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar" aria-label="Workspace navigation">
+    <div class="brand-row">
+      <a class="brand" href="#inbox" id="brand-link">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="2" y="4" width="15" height="7" rx="3.5" fill="var(--accent)"/>
+          <rect x="7" y="13" width="15" height="7" rx="3.5" fill="var(--text)" opacity="0.75"/>
+        </svg>
+        <span>FeedbackKit</span>
+      </a>
+      <span class="brand-chan"><code>v0.3.0</code></span>
+    </div>
+
+    <div class="group-head">
+      <span>Projects</span>
+      <button type="button" class="text-act" id="btn-new-project">+ New</button>
+    </div>
+    <div class="nav-list" role="listbox" aria-label="Projects" id="project-switcher">
+      <button type="button" class="nav-item" role="option" aria-selected="true" data-project="pantry-planner">
+        <span class="nav-name">pantry-planner</span>
+        <span class="nav-tag">Inbox</span>
+        <span class="nav-count" id="nav-open-pantry">6</span>
+      </button>
+      <button type="button" class="nav-item" role="option" aria-selected="false" data-project="harborline">
+        <span class="nav-name">harborline</span>
+        <span class="nav-tag">GitHub</span>
+        <span class="nav-count" id="nav-open-harbor">2</span>
+      </button>
+      <button type="button" class="nav-item" role="option" aria-selected="false" data-project="ledgerkite-docs">
+        <span class="nav-name">ledgerkite-docs</span>
+        <span class="nav-tag">Inbox</span>
+      </button>
+    </div>
+
+    <div class="group-label">Current project</div>
+    <div class="nav-list" id="project-nav">
+      <button type="button" class="nav-item" aria-current="page" data-screen="inbox">
+        <svg viewBox="0 0 24 24"><path d="M4 6h16v12H4z"/><path d="M4 13h5l2 3h2l2-3h5"/></svg>
+        <span class="nav-name">Inbox &amp; triage</span>
+        <span class="nav-count" id="sidebar-open-count">6</span>
+      </button>
+      <button type="button" class="nav-item" data-screen="config">
+        <svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="3"/></svg>
+        <span class="nav-name">Configuration</span>
+      </button>
+      <button type="button" class="nav-item" data-screen="funnel">
+        <svg viewBox="0 0 24 24"><path d="M4 19V5M10 19v-8M16 19v-5M22 19V9"/></svg>
+        <span class="nav-name">Funnel &amp; volume</span>
+      </button>
+      <button type="button" class="nav-item" data-screen="setup">
+        <svg viewBox="0 0 24 24"><path d="m8 9-4 3 4 3M16 9l4 3-4 3M13.5 6l-3 12"/></svg>
+        <span class="nav-name">Snippet &amp; test</span>
+      </button>
+    </div>
+
+    <div class="group-label">Gateway</div>
+    <div class="nav-list" id="gateway-nav">
+      <button type="button" class="nav-item" data-screen="projects">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1"/><rect x="3" y="14" width="18" height="6" rx="1"/></svg>
+        <span class="nav-name">All projects</span>
+      </button>
+      <button type="button" class="nav-item" data-screen="system">
+        <svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V7z"/></svg>
+        <span class="nav-name">System health</span>
+      </button>
+    </div>
+
+    <div class="sidebar-foot">
+      <div class="who-row">
+        <span class="who-email" title="ops@harborline.example">ops@harborline.example</span>
+        <button type="button" class="text-act" id="theme-toggle">Dark</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main area -->
+  <div class="main-col">
+    <header class="topbar">
+      <div class="crumb-bar">
+        <button type="button" class="btn menu-toggle" id="menu-btn" aria-label="Open navigation">Menu</button>
+        <span>Projects</span>
+        <span>/</span>
+        <strong id="crumb-project">pantry-planner</strong>
+        <span>·</span>
+        <code id="crumb-key">fk_pub_b7e204f1</code>
+      </div>
+      <label class="global-search" aria-label="Search reports across this project">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="global-search-input" placeholder="Search reports by text, page, or ID…">
+      </label>
+      <div class="top-actions">
+        <span class="pill" id="project-mode-pill">Inbox only · no Git</span>
+        <button type="button" class="btn" id="top-edit-config">Edit config <code>v4</code></button>
+      </div>
+    </header>
+
+    <main class="sheet" id="main-sheet">
+      <!-- Page header -->
+      <div class="title-row">
+        <div class="title-main">
+          <div class="title-line">
+            <h1 id="page-h1">Pantry Planner</h1>
+            <span class="pill pos" id="header-finding-pill">6 open reports</span>
+          </div>
+          <p class="title-sub" id="page-sub">6 reports waiting for triage in the inbox · 3 reports on /shopping-list mention unit scaling after changing servings.</p>
+        </div>
+        <div class="title-actions">
+          <button type="button" class="btn" id="btn-export-md">Copy open reports for agent</button>
+          <button type="button" class="btn primary" id="btn-primary-job">Resolve selected report</button>
+        </div>
+      </div>
+
+      <!-- Screen tabs -->
+      <div class="view-tabs" role="tablist" aria-label="Project views" id="project-tabs">
+        <button type="button" role="tab" class="view-tab" aria-selected="true" data-tab="inbox">Inbox &amp; triage</button>
+        <button type="button" role="tab" class="view-tab" aria-selected="false" data-tab="config">Configuration</button>
+        <button type="button" role="tab" class="view-tab" aria-selected="false" data-tab="funnel">Funnel &amp; volume</button>
+        <button type="button" role="tab" class="view-tab" aria-selected="false" data-tab="setup">Snippet &amp; test</button>
+      </div>
+
+      <!-- ==================== SCREEN 1: INBOX & TRIAGE ==================== -->
+      <section id="screen-inbox" aria-label="Inbox and triage">
+        <div class="inbox-layout" id="inbox-split">
+          <!-- Left: Report queue -->
+          <div class="inbox-list-pane">
+            <div class="inbox-toolbar">
+              <div class="status-tabs" role="group" aria-label="Filter by triage status" id="status-tabs">
+                <button type="button" class="status-tab" aria-pressed="true" data-status="open">Open (<span id="cnt-open">6</span>)</button>
+                <button type="button" class="status-tab" aria-pressed="false" data-status="in_progress">In progress (<span id="cnt-progress">2</span>)</button>
+                <button type="button" class="status-tab" aria-pressed="false" data-status="resolved">Resolved (<span id="cnt-resolved">14</span>)</button>
+                <button type="button" class="status-tab" aria-pressed="false" data-status="dismissed">Dismissed (<span id="cnt-dismissed">2</span>)</button>
+                <button type="button" class="status-tab" aria-pressed="false" data-status="all">All (<span id="cnt-all">24</span>)</button>
+              </div>
+              <div class="filter-row">
+                <input type="search" class="input" id="inbox-filter-q" placeholder="Filter queue…" aria-label="Filter queue by text">
+                <select class="input" id="inbox-filter-type" aria-label="Filter by feedback type">
+                  <option value="all">All types</option>
+                  <option value="bug">Bug</option>
+                  <option value="idea">Idea</option>
+                  <option value="improvement">Change</option>
+                  <option value="praise">Praise</option>
+                </select>
+              </div>
+            </div>
+            <div class="item-rows" id="item-list" role="listbox" aria-label="Feedback items"></div>
+          </div>
+
+          <!-- Right: Selected report detail -->
+          <article class="detail-pane" id="detail-pane" aria-live="polite">
+            <div class="detail-head">
+              <div class="detail-bar">
+                <div class="detail-subline">
+                  <button type="button" class="btn mobile-back" id="mobile-back-btn">Back to queue</button>
+                  <span class="pill" id="det-type">Bug</span>
+                  <code id="det-id">srv-4019</code>
+                  <span id="det-time">18 min ago</span>
+                  <span>·</span>
+                  <code id="det-page">/shopping-list</code>
+                </div>
+                <div class="segmented" role="group" aria-label="Set report status" id="det-status-group">
+                  <button type="button" data-set-status="open" aria-pressed="true">Open</button>
+                  <button type="button" data-set-status="in_progress" aria-pressed="false">In progress</button>
+                  <button type="button" data-set-status="resolved" aria-pressed="false">Resolved</button>
+                  <button type="button" data-set-status="dismissed" aria-pressed="false">Dismissed</button>
+                </div>
+              </div>
+              <h2 class="detail-title" id="det-title">Scaling a recipe from 2 to 6 servings leaves garlic in fractional cloves (0.33 tbsp)</h2>
+              <div class="detail-bar">
+                <div class="detail-subline" id="det-tracker-line">
+                  <span>Stored in FeedbackKit inbox · No GitHub issue linked</span>
+                </div>
+                <div class="title-actions">
+                  <button type="button" class="btn" id="btn-copy-item">Copy markdown</button>
+                  <button type="button" class="btn" id="btn-create-gh-issue">Create GitHub issue</button>
+                  <button type="button" class="btn danger" id="btn-delete-item">Delete report</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="detail-grid">
+              <div class="detail-main">
+                <!-- Structured fields extracted by AI / form -->
+                <div class="subcard">
+                  <div class="subcard-head">
+                    <h3>Structured fields</h3>
+                    <span id="det-model-note">Extracted by <code>gemma-4-26b-a4b-it</code> · 1 follow-up answered</span>
+                  </div>
+                  <div class="extracted-list" id="det-fields"></div>
+                </div>
+
+                <!-- Conversation thread -->
+                <div class="subcard">
+                  <div class="subcard-head">
+                    <h3>Conversation at the source</h3>
+                    <span>Completed in 19 s</span>
+                  </div>
+                  <div class="msg-turn">
+                    <div class="msg-who"><span>Visitor message</span><span>14:22 UTC</span></div>
+                    <p class="msg-body" id="det-msg">When I scale the lentil soup from 2 to 6 servings, the shopping list converts 1 clove of garlic into "0.33 tbsp garlic" instead of "3 cloves".</p>
+                  </div>
+                  <div class="msg-turn ai-turn" id="det-followup-q-box">
+                    <div class="msg-who"><span>FeedbackKit follow-up question</span><span>Asked after 0.7 s</span></div>
+                    <p class="msg-body" id="det-q">Did this happen right on the recipe card or after merging the recipe into your weekly shopping list?</p>
+                  </div>
+                  <div class="msg-turn" id="det-followup-a-box">
+                    <div class="msg-who"><span>Visitor reply</span><span>+18 s</span></div>
+                    <p class="msg-body" id="det-a">Only after merging into the weekly shopping list when another recipe already had minced garlic in tbsp.</p>
+                  </div>
+                  <div class="shot-row" id="det-shot-row">
+                    <div class="shot-preview">
+                      <div class="shot-thumb">
+                        <svg viewBox="0 0 64 44" width="64" height="44" aria-hidden="true">
+                          <rect width="64" height="44" fill="#e8ecef"/>
+                          <rect x="6" y="6" width="52" height="8" rx="2" fill="#1b6c80" opacity="0.25"/>
+                          <rect x="6" y="18" width="36" height="6" rx="1.5" fill="#56595c" opacity="0.35"/>
+                          <rect x="6" y="28" width="44" height="6" rx="1.5" fill="#c4242a" opacity="0.45"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <div style="font-weight:500;font-size:13px">shopping-list-capture.webp</div>
+                        <div style="font-size:12px;color:var(--muted)">1,280 × 800 · 84 kB · R2 expires in 29 days</div>
+                      </div>
+                    </div>
+                    <button type="button" class="btn danger" id="btn-delete-shot">Delete attachment</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right column inside detail: Triage note & session metadata -->
+              <div class="detail-main">
+                <div class="subcard">
+                  <div class="subcard-head">
+                    <h3>Triage note</h3>
+                    <span id="note-stamp">Saved</span>
+                  </div>
+                  <textarea class="input" rows="3" id="det-note" aria-label="Triage note" placeholder="Add an internal note or link a commit…">Unit normalizer merges cloves into volume when a second recipe uses tbsp. Keep count units separate from volume.</textarea>
+                  <button type="button" class="btn" id="btn-save-note">Save note</button>
+                </div>
+
+                <div class="meta-well">
+                  <h3>Session &amp; device context</h3>
+                  <dl class="kv-list">
+                    <div class="kv-row"><dt>Page</dt><dd><code id="meta-url">/shopping-list</code></dd></div>
+                    <div class="kv-row"><dt>Browser</dt><dd id="meta-browser">Safari 18.4 · iOS</dd></div>
+                    <div class="kv-row"><dt>Viewport</dt><dd class="num" id="meta-vp">390 × 844 px</dd></div>
+                    <div class="kv-row"><dt>Console errors</dt><dd id="meta-console">0 errors</dd></div>
+                    <div class="kv-row"><dt>Host context</dt><dd><code>plan: household</code></dd></div>
+                    <div class="kv-row"><dt>Config version</dt><dd><code>v4</code></dd></div>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ==================== SCREEN 2: CONFIGURATION EDITOR ==================== -->
+      <section id="screen-config" aria-label="Project configuration" hidden>
+        <div class="panel" style="margin-bottom:var(--gap)">
+          <div class="panel-head" style="margin-bottom:0">
+            <div>
+              <h2>Update project configuration</h2>
+              <span>Changes increment the config version (<code id="cfg-ver-label">v4 → v5</code>) and propagate to embedded widgets within 60 seconds.</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div class="segmented" role="group" aria-label="Configuration editor mode">
+                <button type="button" id="mode-visual-btn" aria-pressed="true">Form editor</button>
+                <button type="button" id="mode-json-btn" aria-pressed="false">JSON import / export</button>
+              </div>
+              <button type="button" class="btn primary" id="btn-publish-config">Publish config v5</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Visual Form Editor -->
+        <div id="config-visual-view">
+          <div class="settings-section">
+            <div class="settings-info">
+              <h2>Where reports go</h2>
+              <p>Keep feedback inside the FeedbackKit inbox for projects without a repository, or forward each report to GitHub Issues.</p>
+            </div>
+            <div class="settings-card">
+              <div class="segmented" role="group" aria-label="Destination mode" id="cfg-tracker-mode">
+                <button type="button" data-tracker="none" aria-pressed="true">Inbox only (no Git repository)</button>
+                <button type="button" data-tracker="github" aria-pressed="false">GitHub Issues</button>
+              </div>
+              <div class="field-grid" id="cfg-github-fields" hidden>
+                <div class="field">
+                  <label for="cfg-repo">Default GitHub repository</label>
+                  <input type="text" class="input" id="cfg-repo" value="pantry-org/pantry-planner">
+                  <span class="hint">Format: <code>owner/repo</code></span>
+                </div>
+                <div class="field">
+                  <label for="cfg-pat">Worker token secret name</label>
+                  <input type="text" class="input" id="cfg-pat" value="GITHUB_PAT_pantry">
+                  <span class="hint">Set with <code>wrangler secret put</code></span>
+                </div>
+              </div>
+              <p class="hint" id="cfg-inbox-hint">Reports are stored in D1 with their screenshots in R2. Manage statuses, notes, and exports directly in the Inbox tab or through MCP.</p>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="settings-info">
+              <h2>Allowed origins &amp; privacy</h2>
+              <p>The widget loads only on origins listed here. Wildcard subdomains match a single label.</p>
+            </div>
+            <div class="settings-card">
+              <div class="field">
+                <label for="new-origin-input">Allowed origins (<code>auth.origins</code>)</label>
+                <div class="origin-chips" id="cfg-origin-chips">
+                  <span class="origin-chip"><code>https://pantryplanner.app</code><button type="button" aria-label="Remove https://pantryplanner.app">×</button></span>
+                  <span class="origin-chip"><code>https://*.pantryplanner.pages.dev</code><button type="button" aria-label="Remove https://*.pantryplanner.pages.dev">×</button></span>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:6px">
+                  <input type="url" class="input" id="new-origin-input" placeholder="https://staging.pantryplanner.app">
+                  <button type="button" class="btn" id="btn-add-origin">Add origin</button>
+                </div>
+              </div>
+              <div>
+                <div class="switch-row">
+                  <div class="switch-copy">
+                    <strong>Accept feedback submissions</strong>
+                    <span>Turn off to pause the widget without removing the script tag from your site.</span>
+                  </div>
+                  <input type="checkbox" class="switch" id="cfg-enabled" checked aria-label="Accept feedback submissions">
+                </div>
+                <div class="switch-row">
+                  <div class="switch-copy">
+                    <strong>Page screenshots</strong>
+                    <span>Let visitors attach a capture of the current page. Stored in R2 for 30 days.</span>
+                  </div>
+                  <input type="checkbox" class="switch" id="cfg-screenshot" checked aria-label="Allow page screenshots">
+                </div>
+                <div class="switch-row">
+                  <div class="switch-copy">
+                    <strong>Browser console buffer</strong>
+                    <span>Include the last 10 console errors (PII-filtered) with bug reports.</span>
+                  </div>
+                  <input type="checkbox" class="switch" id="cfg-console" checked aria-label="Capture console buffer">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="settings-info">
+              <h2>AI classification &amp; follow-up</h2>
+              <p>One multimodal call extracts required fields and asks at most one follow-up question when key details are missing.</p>
+            </div>
+            <div class="settings-card">
+              <div class="field-grid">
+                <div class="field">
+                  <label for="cfg-llm-provider">Provider</label>
+                  <select class="input" id="cfg-llm-provider">
+                    <option value="custom" selected>Custom OpenAI-compatible endpoint</option>
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="github-models">GitHub Models</option>
+                    <option value="off">Off (plain required-field form)</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="cfg-llm-model">Model</label>
+                  <input type="text" class="input" id="cfg-llm-model" value="google/gemma-4-26b-a4b-it">
+                </div>
+                <div class="field">
+                  <label for="cfg-llm-budget">Daily call budget (UTC day)</label>
+                  <input type="number" class="input num" id="cfg-llm-budget" value="150">
+                </div>
+                <div class="field">
+                  <label for="cfg-rate-limit">Per-IP rate limit (per hour)</label>
+                  <input type="number" class="input num" id="cfg-rate-limit" value="60">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="settings-info">
+              <h2>Feedback types &amp; fields</h2>
+              <p>Each type defines what the model extracts and which missing fields trigger a follow-up question. Keep required fields at 3 or fewer.</p>
+            </div>
+            <div class="settings-card">
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">Type</th>
+                      <th scope="col">Required fields</th>
+                      <th scope="col">Destination</th>
+                      <th scope="col" class="n">Extracted (30d)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><strong>Bug</strong> (<code>bug</code>)</td>
+                      <td><code>repro</code>, <code>expected</code>, <code>actual</code></td>
+                      <td><span class="pill">Inbox only</span></td>
+                      <td class="n num">84.2%</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Idea</strong> (<code>idea</code>)</td>
+                      <td><code>problem</code></td>
+                      <td><span class="pill">Inbox only</span></td>
+                      <td class="n num">92.0%</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Change request</strong> (<code>improvement</code>)</td>
+                      <td><code>what</code>, <code>desired</code></td>
+                      <td><span class="pill">Inbox only</span></td>
+                      <td class="n num">88.5%</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Praise</strong> (<code>praise</code>)</td>
+                      <td>–</td>
+                      <td><span class="pill">Inbox only</span></td>
+                      <td class="n num">100.0%</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- JSON Import / Export Editor -->
+        <div id="config-json-view" hidden>
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Raw project configuration (<code>pantry-planner.feedbackkit.config.json</code>)</h2>
+                <span>Validated against <code>FeedbackConfig</code> on save. The public key <code>fk_pub_b7e204f19c6a</code> stays pinned.</span>
+              </div>
+              <div style="display:flex;gap:8px">
+                <button type="button" class="btn" id="btn-download-json">Download .json</button>
+                <button type="button" class="btn" id="btn-validate-json">Validate JSON</button>
+              </div>
+            </div>
+            <textarea class="input" id="cfg-json-textarea" rows="18" aria-label="Project configuration JSON" style="font-family:'IBM Plex Mono',monospace;font-size:12.5px"></textarea>
+            <p class="hint" id="json-status-msg" style="margin-top:8px">Schema valid · Ready to publish as <code>v5</code> via <code>POST /api/admin/config/import</code>.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== SCREEN 3: FUNNEL & VOLUME ==================== -->
+      <section id="screen-funnel" aria-label="Funnel and volume" hidden>
+        <div class="kpis" role="region" aria-label="30-day completion funnel">
+          <div class="kpi">
+            <div class="kpi-label">Answered follow-up</div>
+            <div class="kpi-value lead num">78.8<small>%</small></div>
+            <div class="kpi-sub"><span class="good">+6.4%</span> vs prior 30 days (41 of 52)</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Widget opened</div>
+            <div class="kpi-value num">340</div>
+            <div class="kpi-sub">100.0% of opens</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Typed message</div>
+            <div class="kpi-value num">210</div>
+            <div class="kpi-sub">61.8% of opens</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Submitted report</div>
+            <div class="kpi-value num">148</div>
+            <div class="kpi-sub">43.5% of opens</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Asked 1 follow-up</div>
+            <div class="kpi-value num">52</div>
+            <div class="kpi-sub">11 sent anyway · 0 abandoned</div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Reports received per day</h2>
+              <span>Last 14 days · 148 in 30d window</span>
+            </div>
+            <div class="chart" id="volume-chart" style="height:210px"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>30-day outcomes &amp; triage state</h2>
+              <span>148 total reports</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Outcome / state</th>
+                    <th scope="col" class="n">Reports</th>
+                    <th scope="col" class="n">Share</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Saved complete (no follow-up needed)</td>
+                    <td class="n num">96</td>
+                    <td class="n num">64.9%</td>
+                  </tr>
+                  <tr>
+                    <td>Completed after AI follow-up</td>
+                    <td class="n num">41</td>
+                    <td class="n num">27.7%</td>
+                  </tr>
+                  <tr>
+                    <td>Sent incomplete ("Send now")</td>
+                    <td class="n num">11</td>
+                    <td class="n num">7.4%</td>
+                  </tr>
+                  <tr>
+                    <td>AI fallback (unenriched)</td>
+                    <td class="n num">0</td>
+                    <td class="n num">0.0%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== SCREEN 4: SNIPPET & TEST ==================== -->
+      <section id="screen-setup" aria-label="Snippet and test" hidden>
+        <div class="two-col">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Embed snippet</h2>
+              <span>2 attributes · never goes stale</span>
+            </div>
+            <pre class="code-block" id="setup-snippet">&lt;script src="https://feedback.harborline.example/widget.js" data-project="fk_pub_b7e204f19c6a"&gt;&lt;/script&gt;</pre>
+            <div style="display:flex;gap:8px;margin-top:12px">
+              <button type="button" class="btn" id="btn-copy-snippet">Copy script tag</button>
+              <a class="btn" href="#setup" id="test-page-link">Open dry-run test page</a>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Content Security Policy</h2>
+              <span>Required only if your site sends a CSP header</span>
+            </div>
+            <pre class="code-block">script-src 'self' https://feedback.harborline.example;
+connect-src 'self' https://feedback.harborline.example;
+img-src 'self' data: blob:;</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== SCREEN 5: ALL PROJECTS ==================== -->
+      <section id="screen-projects" aria-label="All projects on this gateway" hidden>
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Projects on this gateway</h2>
+              <span>3 configured projects · 2 inbox-only, 1 linked to GitHub Issues</span>
+            </div>
+            <button type="button" class="btn primary" id="btn-create-project-table">Create project</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Project</th>
+                  <th scope="col">Mode</th>
+                  <th scope="col" class="n">Open in inbox</th>
+                  <th scope="col" class="n">Reports (7d)</th>
+                  <th scope="col" class="n">Failed issues</th>
+                  <th scope="col">Config</th>
+                  <th scope="col" class="n">Updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>pantry-planner</strong> <span style="color:var(--muted)">·</span> <code>fk_pub_b7e204f1</code></td>
+                  <td><span class="pill">Inbox only</span></td>
+                  <td class="n num">6</td>
+                  <td class="n num">19</td>
+                  <td class="n">–</td>
+                  <td><code>v4</code></td>
+                  <td class="n">18 min ago</td>
+                </tr>
+                <tr>
+                  <td><strong>harborline</strong> <span style="color:var(--muted)">·</span> <code>fk_pub_3a91c07e</code></td>
+                  <td><span class="pill pos">GitHub · harborline/web</span></td>
+                  <td class="n num">2</td>
+                  <td class="n num">38</td>
+                  <td class="n"><span class="pill neg">1 retryable</span></td>
+                  <td><code>v12</code></td>
+                  <td class="n">3 days ago</td>
+                </tr>
+                <tr>
+                  <td><strong>ledgerkite-docs</strong> <span style="color:var(--muted)">·</span> <code>fk_pub_51d8ee0a</code></td>
+                  <td><span class="pill">Inbox only</span></td>
+                  <td class="n num">0</td>
+                  <td class="n num">4</td>
+                  <td class="n">–</td>
+                  <td><code>v2</code></td>
+                  <td class="n">Yesterday</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== SCREEN 6: SYSTEM HEALTH ==================== -->
+      <section id="screen-system" aria-label="Gateway system health" hidden>
+        <div class="two-col">
+          <div class="panel">
+            <div class="panel-head">
+              <h2>AI daily budget &amp; tracker tokens</h2>
+              <span>Resets at 00:00 UTC · Inbox-only projects need no GitHub token</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Project</th>
+                    <th scope="col" class="n">AI calls today</th>
+                    <th scope="col" class="n">Daily cap</th>
+                    <th scope="col">Tracker status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>pantry-planner</strong></td>
+                    <td class="n num">14</td>
+                    <td class="n num">150</td>
+                    <td><span class="pill">Inbox only (no Git)</span></td>
+                  </tr>
+                  <tr>
+                    <td><strong>harborline</strong></td>
+                    <td class="n num">48</td>
+                    <td class="n num">200</td>
+                    <td><span class="pill pos">PAT valid · 74 days left</span></td>
+                  </tr>
+                  <tr>
+                    <td><strong>ledgerkite-docs</strong></td>
+                    <td class="n">–</td>
+                    <td class="n">AI off</td>
+                    <td><span class="pill">Inbox only (no Git)</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <h2>Gateway bindings &amp; schema</h2>
+              <span>Release <code>v0.3.0</code> on <code>stable</code></span>
+            </div>
+            <dl class="kv-list">
+              <div class="kv-row"><dt>Database schema</dt><dd><code>v3</code> (triage + inbox status)</dd></div>
+              <div class="kv-row"><dt>D1 &amp; R2 bindings</dt><dd><span class="pill pos">DB + UPLOADS ready</span></dd></div>
+              <div class="kv-row"><dt>Cloudflare Access SSO</dt><dd><span class="pill pos">Active</span></dd></div>
+              <div class="kv-row"><dt>MCP server (<code>/mcp</code>)</dt><dd><code>feedback:read</code>, <code>feedback:write</code></dd></div>
+            </dl>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+  // Dataset for two projects: Pantry Planner (Inbox-only, non-Git) and Harborline (GitHub-coupled)
+  const PROJECTS = {
+    "pantry-planner": {
+      id: "pantry-planner",
+      title: "Pantry Planner",
+      publicKey: "fk_pub_b7e204f1",
+      fullKey: "fk_pub_b7e204f19c6a",
+      mode: "Inbox only · no Git",
+      trackerKind: "none",
+      configVersion: 4,
+      finding: "6 reports waiting for triage in the inbox · 3 reports on /shopping-list mention unit scaling after changing servings.",
+      items: [
+        {
+          id: "srv-4019",
+          status: "open",
+          unread: true,
+          type: "bug",
+          typeLabel: "Bug",
+          time: "18 min ago",
+          page: "/shopping-list",
+          title: "Scaling a recipe from 2 to 6 servings leaves garlic in fractional cloves (0.33 tbsp)",
+          msg: "When I scale the lentil soup from 2 to 6 servings, the shopping list converts 1 clove of garlic into \"0.33 tbsp garlic\" instead of \"3 cloves\".",
+          q: "Did this happen right on the recipe card or after merging the recipe into your weekly shopping list?",
+          a: "Only after merging into the weekly shopping list when another recipe already had minced garlic in tbsp.",
+          model: "gemma-4-26b-a4b-it",
+          hasShot: true,
+          note: "Unit normalizer merges cloves into volume when a second recipe uses tbsp. Keep count units separate from volume.",
+          browser: "Safari 18.4 · iOS",
+          vp: "390 × 844 px",
+          console: "0 errors",
+          fields: [
+            ["Steps to reproduce", "Scale lentil soup from 2 to 6 servings, then add to weekly shopping list alongside a recipe using tbsp garlic."],
+            ["Expected result", "3 cloves garlic listed under produce."],
+            ["Actual result", "Converted to 0.33 tbsp garlic."]
+          ]
+        },
+        {
+          id: "srv-4018",
+          status: "open",
+          unread: true,
+          type: "idea",
+          typeLabel: "Idea",
+          time: "2 h ago",
+          page: "/meal-plan",
+          title: "Pin staple items (milk, eggs, sourdough) so every new week includes them automatically",
+          msg: "Every Sunday I re-add oat milk, eggs, and sourdough to the list. I wish I could pin household staples so they start checked on every new week.",
+          q: "Should staples appear automatically on every new week or with a one-tap \"Add staples\" button?",
+          a: "A one-tap \"Add 6 staples\" button at the top of the shopping list would be best so I can skip items when we travel.",
+          model: "gemma-4-26b-a4b-it",
+          hasShot: false,
+          note: "",
+          browser: "Firefox 136 · macOS",
+          vp: "1440 × 900 px",
+          console: "0 errors",
+          fields: [
+            ["Problem it solves", "Avoid re-typing recurring weekly staples every Sunday."],
+            ["Preferred workflow", "One-tap \"Add staples\" button at the top of a new weekly list."]
+          ]
+        },
+        {
+          id: "srv-4015",
+          status: "open",
+          unread: true,
+          type: "improvement",
+          typeLabel: "Change",
+          time: "5 h ago",
+          page: "/shopping-list",
+          title: "Keep checked-off aisle items collapsed at the bottom while in the supermarket",
+          msg: "When I check off items in the produce aisle, the list jumps around because completed items stay mixed in until I reload.",
+          q: null,
+          a: null,
+          model: "gemma-4-26b-a4b-it",
+          hasShot: true,
+          note: "Move checked items to a collapsed footer section after 400ms.",
+          browser: "Chrome 134 · Android",
+          vp: "412 × 915 px",
+          console: "0 errors",
+          fields: [
+            ["What could be better", "Checked items stay inline until reload."],
+            ["Desired outcome", "Smoothly move checked items to a collapsed bottom group."]
+          ]
+        },
+        {
+          id: "srv-4012",
+          status: "open",
+          unread: false,
+          type: "bug",
+          typeLabel: "Bug",
+          time: "Yesterday",
+          page: "/import",
+          title: "Importing a recipe URL with fractions like ½ tsp drops the ½ character",
+          msg: "Imported a pasta recipe where ½ tsp chili flakes became \"tsp chili flakes\" with no number.",
+          q: "Which recipe site did you import from?",
+          a: "NYT Cooking and Serious Eats both did it when the page used Unicode vulgar fractions.",
+          model: "gemma-4-26b-a4b-it",
+          hasShot: false,
+          note: "Normalize Unicode vulgar fractions (NFKD) before quantity regex.",
+          browser: "Safari 18.4 · macOS",
+          vp: "1512 × 982 px",
+          console: "1 TypeError in parser.js:84",
+          fields: [
+            ["Steps to reproduce", "Paste a recipe URL containing Unicode fractions (½, ¼, ¾)."],
+            ["Actual result", "Fraction character stripped, leaving unit without amount."]
+          ]
+        },
+        {
+          id: "srv-4009",
+          status: "open",
+          unread: false,
+          type: "improvement",
+          typeLabel: "Change",
+          time: "2 days ago",
+          page: "/shopping-list",
+          title: "Show metric grams next to cups when printing the weekend prep sheet",
+          msg: "My partner bakes by weight in grams and I cook by cups. On the printed prep view, showing both (e.g. 1 cup / 120 g flour) would save us converting.",
+          q: null,
+          a: null,
+          model: "gemma-4-26b-a4b-it",
+          hasShot: false,
+          note: "",
+          browser: "Chrome 134 · macOS",
+          vp: "1440 × 900 px",
+          console: "0 errors",
+          fields: [
+            ["What could be better", "Print view shows only the recipe's original unit."],
+            ["Desired outcome", "Dual unit display (volume + grams) on print sheet."]
+          ]
+        },
+        {
+          id: "srv-4004",
+          status: "open",
+          unread: false,
+          type: "praise",
+          typeLabel: "Praise",
+          time: "3 days ago",
+          page: "/meal-plan",
+          title: "Dragging leftover nights to Thursday cut our food waste in half this month",
+          msg: "Just wanted to say the leftover slot feature is brilliant. Our household actually sticks to the plan now.",
+          q: null,
+          a: null,
+          model: "gemma-4-26b-a4b-it",
+          hasShot: false,
+          note: "",
+          browser: "Safari 18.4 · iOS",
+          vp: "390 × 844 px",
+          console: "0 errors",
+          fields: []
+        },
+        {
+          id: "srv-3998",
+          status: "in_progress",
+          unread: false,
+          type: "bug",
+          typeLabel: "Bug",
+          time: "4 days ago",
+          page: "/pantry",
+          title: "Barcode scanner stays on rear ultra-wide camera on iPhone 16 Pro",
+          msg: "The barcode camera cannot focus close-up because it picks the ultra-wide lens.",
+          q: null,
+          a: null,
+          model: "gemma-4-26b-a4b-it",
+          hasShot: false,
+          note: "Testing facingMode + zoom constraint on iOS 18.",
+          browser: "Safari 18.4 · iOS",
+          vp: "393 × 852 px",
+          console: "0 errors",
+          fields: [["Actual result", "Ultra-wide camera cannot focus on close barcodes."]]
+        },
+        {
+          id: "srv-3991",
+          status: "resolved",
+          unread: false,
+          type: "bug",
+          typeLabel: "Bug",
+          time: "6 days ago",
+          page: "/meal-plan",
+          title: "Week header shows Monday twice when clocks switch from DST",
+          msg: "On the last Sunday of October, Monday Oct 26 appeared twice in the week strip.",
+          q: null,
+          a: null,
+          model: "gemma-4-26b-a4b-it",
+          hasShot: false,
+          note: "Fixed by stepping calendar days in UTC Noon.",
+          browser: "Firefox 136 · Linux",
+          vp: "1920 × 1080 px",
+          console: "0 errors",
+          fields: [["Actual result", "24h * 86400000ms addition repeated Monday across DST boundary."]]
+        }
+      ]
+    },
+    "harborline": {
+      id: "harborline",
+      title: "Harborline Marina",
+      publicKey: "fk_pub_3a91c07e",
+      fullKey: "fk_pub_3a91c07e5d22",
+      mode: "GitHub · harborline/web",
+      trackerKind: "github",
+      configVersion: 12,
+      finding: "1 report failed to create a GitHub issue (502, draft saved for 1-click retry) · 1 open praise item in inbox.",
+      items: [
+        {
+          id: "srv-1",
+          status: "open",
+          unread: true,
+          type: "bug",
+          typeLabel: "Bug · Retryable",
+          time: "2 h ago",
+          page: "/bookings",
+          issueUrl: null,
+          issueFailed: true,
+          title: "Payment spinner never stops after 3D Secure card check on iPhone",
+          msg: "After approving the payment in my banking app and returning to Safari, the spinner on the berth booking page keeps turning forever.",
+          q: "Did you receive a booking confirmation email or did the charge stay pending?",
+          a: "No confirmation email arrived and no charge shows in the app.",
+          model: "openai/gpt-4o-mini",
+          hasShot: true,
+          note: "GitHub returned 502 during issue creation. Draft is stored in D1 — click Retry issue creation.",
+          browser: "Safari 18.4 · iOS",
+          vp: "390 × 844 px",
+          console: "1 unhandled rejection in checkout.js",
+          fields: [
+            ["Steps to reproduce", "Complete 3DS2 app redirect on iOS Safari and return to tab."],
+            ["Actual result", "Polling promise stops after visibilitychange."]
+          ]
+        },
+        {
+          id: "srv-2",
+          status: "open",
+          unread: false,
+          type: "praise",
+          typeLabel: "Praise · Inbox",
+          time: "5 h ago",
+          page: "/bookings",
+          issueUrl: null,
+          title: "Booking two adjacent berths for our sailing club worked on the first try",
+          msg: "Booking a berth for two boats at once works really well.",
+          q: null,
+          a: null,
+          model: "openai/gpt-4o-mini",
+          hasShot: false,
+          note: "Saved without a GitHub issue (noIssue: true).",
+          browser: "Chrome 134 · macOS",
+          vp: "1440 × 900 px",
+          console: "0 errors",
+          fields: []
+        },
+        {
+          id: "srv-3",
+          status: "resolved",
+          unread: false,
+          type: "bug",
+          typeLabel: "Issue #214",
+          time: "Yesterday",
+          page: "/calendar",
+          issueUrl: "https://github.com/harborline/web/issues/214",
+          title: "Calendar skips Sunday when a berth stay runs into the next month",
+          msg: "Selecting Oct 30 to Nov 2 drops Sunday Nov 1 from the price breakdown.",
+          q: null,
+          a: null,
+          model: "openai/gpt-4o-mini",
+          hasShot: true,
+          note: "Synced to harborline/web#214.",
+          browser: "Safari 18.4 · macOS",
+          vp: "1440 × 900 px",
+          console: "0 errors",
+          fields: [["Actual result", "Month boundary slice off-by-one."]]
+        }
+      ]
+    },
+    "ledgerkite-docs": {
+      id: "ledgerkite-docs",
+      title: "LedgerKite Docs",
+      publicKey: "fk_pub_51d8ee0a",
+      fullKey: "fk_pub_51d8ee0a73b4",
+      mode: "Inbox only · AI off",
+      trackerKind: "none",
+      configVersion: 2,
+      finding: "All 4 documentation reports from this week are resolved.",
+      items: [
+        {
+          id: "srv-901",
+          status: "resolved",
+          unread: false,
+          type: "bug",
+          typeLabel: "Docs fix",
+          time: "Yesterday",
+          page: "/docs/webhooks",
+          title: "Webhook signature example uses sha384 instead of sha256",
+          msg: "The Node.js snippet on /docs/webhooks passes sha384 to createHmac, but the header sends sha256.",
+          q: null,
+          a: null,
+          model: null,
+          hasShot: false,
+          note: "Updated docs/webhooks.md in commit 49c1a02.",
+          browser: "Firefox 136 · macOS",
+          vp: "1440 × 900 px",
+          console: "0 errors",
+          fields: [["Page section", "Verifying signatures in Node.js"]]
+        }
+      ]
+    }
+  };
+
+  let currentProject = "pantry-planner";
+  let currentStatusFilter = "open";
+  let currentTypeFilter = "all";
+  let currentQuery = "";
+  let selectedItemId = "srv-4019";
+
+  const $ = (id) => document.getElementById(id);
+
+  function statusPill(item) {
+    if (item.issueFailed) return { cls: "pill neg", text: "Issue failed" };
+    if (item.issueUrl) return { cls: "pill pos", text: "Issue #214" };
+    if (item.status === "open") return { cls: "pill warn", text: "Needs triage" };
+    if (item.status === "in_progress") return { cls: "pill", text: "In progress" };
+    if (item.status === "resolved") return { cls: "pill pos", text: "Resolved" };
+    return { cls: "pill", text: "Dismissed" };
+  }
+
+  function recomputeCounts() {
+    const p = PROJECTS[currentProject];
+    const counts = { open: 0, in_progress: 0, resolved: 0, dismissed: 0, all: p.items.length };
+    for (const it of p.items) counts[it.status] = (counts[it.status] || 0) + 1;
+    $("cnt-open").textContent = String(counts.open);
+    $("cnt-progress").textContent = String(counts.in_progress);
+    $("cnt-resolved").textContent = String(counts.resolved);
+    $("cnt-dismissed").textContent = String(counts.dismissed);
+    $("cnt-all").textContent = String(counts.all);
+    $("sidebar-open-count").textContent = String(counts.open);
+    $("header-finding-pill").textContent = `${counts.open} open report${counts.open === 1 ? "" : "s"}`;
+    if (currentProject === "pantry-planner") $("nav-open-pantry").textContent = String(counts.open);
+    if (currentProject === "harborline") $("nav-open-harbor").textContent = String(counts.open);
+  }
+
+  function renderQueue() {
+    recomputeCounts();
+    const p = PROJECTS[currentProject];
+    const listEl = $("item-list");
+    listEl.replaceChildren();
+
+    const filtered = p.items.filter((it) => {
+      if (currentStatusFilter !== "all" && it.status !== currentStatusFilter) return false;
+      if (currentTypeFilter !== "all" && it.type !== currentTypeFilter) return false;
+      if (currentQuery) {
+        const hay = `${it.title} ${it.msg} ${it.id} ${it.page}`.toLowerCase();
+        if (!hay.includes(currentQuery.toLowerCase())) return false;
+      }
+      return true;
+    });
+
+    if (!filtered.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty-box";
+      empty.style.margin = "12px";
+      empty.textContent = "No reports in this view.";
+      listEl.appendChild(empty);
+      return;
+    }
+
+    if (!filtered.some((i) => i.id === selectedItemId)) {
+      selectedItemId = filtered[0].id;
+    }
+
+    for (const it of filtered) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "item-row" + (it.unread ? " unread" : "");
+      btn.setAttribute("role", "option");
+      btn.setAttribute("aria-selected", it.id === selectedItemId ? "true" : "false");
+
+      const top = document.createElement("div");
+      top.className = "item-row-top";
+
+      const titleSpan = document.createElement("span");
+      titleSpan.className = "item-title";
+      if (it.unread) {
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        titleSpan.appendChild(dot);
+      }
+      titleSpan.append(it.title);
+
+      const timeSpan = document.createElement("span");
+      timeSpan.className = "item-time";
+      timeSpan.textContent = it.time;
+      top.append(titleSpan, timeSpan);
+
+      const sub = document.createElement("div");
+      sub.className = "item-row-sub";
+      const left = document.createElement("span");
+      left.className = "item-meta-left";
+      left.textContent = `${it.typeLabel} · ${it.page}`;
+
+      // One status mark per row, and none when the tab already says it
+      sub.append(left);
+      if (it.issueFailed || it.issueUrl || currentStatusFilter !== it.status) {
+        const sp = statusPill(it);
+        const pill = document.createElement("span");
+        pill.className = sp.cls;
+        pill.textContent = sp.text;
+        sub.append(pill);
+      }
+      btn.append(top, sub);
+
+      btn.addEventListener("click", () => {
+        selectedItemId = it.id;
+        it.unread = false;
+        renderQueue();
+        renderDetail();
+        $("inbox-split").classList.add("mobile-detail-open");
+      });
+      listEl.appendChild(btn);
+    }
+    renderDetail();
+  }
+
+  function renderDetail() {
+    const p = PROJECTS[currentProject];
+    const it = p.items.find((x) => x.id === selectedItemId) || p.items[0];
+    if (!it) return;
+
+    $("det-type").textContent = it.typeLabel;
+    $("det-id").textContent = it.id;
+    $("det-time").textContent = it.time;
+    $("det-page").textContent = it.page;
+    $("det-title").textContent = it.title;
+    $("det-msg").textContent = it.msg;
+    $("det-note").value = it.note || "";
+    $("meta-url").textContent = it.page;
+    $("meta-browser").textContent = it.browser;
+    $("meta-vp").textContent = it.vp;
+    $("meta-console").textContent = it.console;
+
+    // Status buttons
+    for (const b of document.querySelectorAll("#det-status-group [data-set-status]")) {
+      b.setAttribute("aria-pressed", b.dataset.setStatus === it.status ? "true" : "false");
+    }
+
+    // Tracker line & action button
+    const ghBtn = $("btn-create-gh-issue");
+    if (it.issueFailed) {
+      $("det-tracker-line").textContent = "GitHub issue creation failed (HTTP 502) · Rendered draft stored in D1";
+      ghBtn.textContent = "Retry issue creation";
+      ghBtn.hidden = false;
+    } else if (it.issueUrl) {
+      $("det-tracker-line").textContent = "Synced to GitHub issue harborline/web#214";
+      ghBtn.textContent = "Open #214 on GitHub";
+      ghBtn.hidden = false;
+    } else {
+      $("det-tracker-line").textContent = "Stored in FeedbackKit inbox · No GitHub issue linked";
+      ghBtn.textContent = "Promote to GitHub issue";
+      ghBtn.hidden = false;
+    }
+
+    // Primary header button reflects current item
+    $("btn-primary-job").textContent = it.status === "resolved" ? "Reopen report" : "Resolve selected report";
+
+    // Extracted fields
+    const fieldsEl = $("det-fields");
+    fieldsEl.replaceChildren();
+    if (!it.fields || !it.fields.length) {
+      const empty = document.createElement("div");
+      empty.style.color = "var(--muted)";
+      empty.style.fontSize = "13px";
+      empty.textContent = "No structured fields required for this feedback type.";
+      fieldsEl.appendChild(empty);
+    } else {
+      for (const [k, v] of it.fields) {
+        const row = document.createElement("div");
+        row.className = "extracted-row";
+        const keyEl = document.createElement("div");
+        keyEl.className = "extracted-key";
+        keyEl.textContent = k;
+        const valEl = document.createElement("div");
+        valEl.className = "extracted-val";
+        valEl.textContent = v;
+        row.append(keyEl, valEl);
+        fieldsEl.appendChild(row);
+      }
+    }
+
+    // Follow-up conversation visibility
+    $("det-followup-q-box").hidden = !it.q;
+    $("det-followup-a-box").hidden = !it.a;
+    if (it.q) $("det-q").textContent = it.q;
+    if (it.a) $("det-a").textContent = it.a;
+    $("det-shot-row").hidden = !it.hasShot;
+  }
+
+  function syncConfigJson() {
+    const p = PROJECTS[currentProject];
+    const sampleCfg = {
+      publicKey: p.fullKey,
+      configVersion: p.configVersion,
+      projectId: p.id,
+      locale: "en",
+      enabled: $("cfg-enabled").checked,
+      askType: false,
+      tracker: p.trackerKind === "none"
+        ? { kind: "none" }
+        : { kind: "github", defaultRepo: $("cfg-repo").value, patSecret: $("cfg-pat").value },
+      llm: {
+        provider: $("cfg-llm-provider").value,
+        model: $("cfg-llm-model").value,
+        dailyBudget: Number($("cfg-llm-budget").value)
+      },
+      capture: {
+        screenshot: $("cfg-screenshot").checked ? "optional" : "off",
+        console: $("cfg-console").checked
+      },
+      rateLimit: { perHour: Number($("cfg-rate-limit").value) },
+      auth: {
+        origins: [...document.querySelectorAll("#cfg-origin-chips code")].map((c) => c.textContent)
+      },
+      templates: [
+        { type: "bug", label: "Bug", noIssue: p.trackerKind === "none", fields: [{ key: "repro", label: "Steps to reproduce", kind: "longtext", required: true }] },
+        { type: "idea", label: "Idea", noIssue: p.trackerKind === "none", fields: [{ key: "problem", label: "Problem it solves", kind: "longtext", required: true }] }
+      ]
+    };
+    $("cfg-json-textarea").value = JSON.stringify(sampleCfg, null, 2);
+  }
+
+  function switchProject(pid) {
+    currentProject = pid;
+    const p = PROJECTS[pid];
+    selectedItemId = p.items[0]?.id || "";
+    currentStatusFilter = p.items.some((i) => i.status === "open") ? "open" : "all";
+    for (const t of document.querySelectorAll("#status-tabs .status-tab")) {
+      t.setAttribute("aria-pressed", t.dataset.status === currentStatusFilter ? "true" : "false");
+    }
+    for (const b of document.querySelectorAll("#project-switcher .nav-item")) {
+      b.setAttribute("aria-selected", b.dataset.project === pid ? "true" : "false");
+    }
+    $("crumb-project").textContent = p.id;
+    $("crumb-key").textContent = p.publicKey;
+    $("project-mode-pill").textContent = p.mode;
+    $("page-h1").textContent = p.title;
+    $("page-sub").textContent = p.finding;
+    $("top-edit-config").innerHTML = `Edit config <code>v${p.configVersion}</code>`;
+    $("cfg-ver-label").textContent = `v${p.configVersion} → v${p.configVersion + 1}`;
+    $("btn-publish-config").textContent = `Publish config v${p.configVersion + 1}`;
+    $("setup-snippet").textContent = `<script src="https://feedback.harborline.example/widget.js" data-project="${p.fullKey}"><\/script>`;
+
+    const isGithub = p.trackerKind === "github";
+    $("cfg-github-fields").hidden = !isGithub;
+    $("cfg-inbox-hint").hidden = isGithub;
+    for (const b of document.querySelectorAll("#cfg-tracker-mode [data-tracker]")) {
+      b.setAttribute("aria-pressed", b.dataset.tracker === p.trackerKind ? "true" : "false");
+    }
+    syncConfigJson();
+    renderQueue();
+  }
+
+  function showScreen(name) {
+    const screens = ["inbox", "config", "funnel", "setup", "projects", "system"];
+    for (const s of screens) {
+      $("screen-" + s).hidden = s !== name;
+    }
+    const isProjectView = ["inbox", "config", "funnel", "setup"].includes(name);
+    $("project-tabs").hidden = !isProjectView;
+    for (const t of document.querySelectorAll("#project-tabs .view-tab")) {
+      t.setAttribute("aria-selected", t.dataset.tab === name ? "true" : "false");
+    }
+    for (const n of document.querySelectorAll("#project-nav .nav-item, #gateway-nav .nav-item")) {
+      if (n.dataset.screen === name) n.setAttribute("aria-current", "page");
+      else n.removeAttribute("aria-current");
+    }
+    if (name === "funnel") drawVolumeChart();
+    $("sidebar").classList.remove("open");
+  }
+
+  function drawVolumeChart() {
+    const el = $("volume-chart");
+    if (!el) return;
+    el.innerHTML = "";
+    const w = Math.max(300, el.clientWidth || 560);
+    const h = 200;
+    const padL = 32, padR = 8, padT = 12, padB = 26;
+    const plotW = w - padL - padR;
+    const plotH = h - padT - padB;
+    const values = [4, 6, 5, 8, 7, 11, 9, 6, 8, 12, 10, 9, 15, 11];
+    const labels = ["11 Oct", "12 Oct", "13 Oct", "14 Oct", "15 Oct", "16 Oct", "17 Oct", "18 Oct", "19 Oct", "20 Oct", "21 Oct", "22 Oct", "23 Oct", "24 Oct"];
+    const maxY = 16;
+    const ticks = [0, 4, 8, 12, 16];
+
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    svg.setAttribute("width", "100%");
+    svg.setAttribute("height", String(h));
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "Daily reports received over the last 14 days");
+
+    for (const t of ticks) {
+      const y = Math.round(padT + plotH * (1 - t / maxY));
+      const line = document.createElementNS(ns, "line");
+      line.setAttribute("x1", String(padL));
+      line.setAttribute("x2", String(w - padR));
+      line.setAttribute("y1", String(y));
+      line.setAttribute("y2", String(y));
+      line.setAttribute("stroke", "var(--grid)");
+      line.setAttribute("stroke-width", "1");
+      svg.appendChild(line);
+
+      const txt = document.createElementNS(ns, "text");
+      txt.setAttribute("x", String(padL - 8));
+      txt.setAttribute("y", String(y + 4));
+      txt.setAttribute("text-anchor", "end");
+      txt.setAttribute("font-size", "12");
+      txt.setAttribute("fill", "var(--muted)");
+      txt.textContent = String(t);
+      svg.appendChild(txt);
+    }
+
+    const step = plotW / values.length;
+    const barW = Math.max(10, Math.floor(step * 0.62));
+    values.forEach((v, i) => {
+      const bh = Math.round((v / maxY) * plotH);
+      const x = Math.round(padL + i * step + (step - barW) / 2);
+      const y = padT + plotH - bh;
+      const rect = document.createElementNS(ns, "rect");
+      rect.setAttribute("x", String(x));
+      rect.setAttribute("y", String(y));
+      rect.setAttribute("width", String(barW));
+      rect.setAttribute("height", String(bh));
+      rect.setAttribute("fill", i >= 12 ? "var(--chart-1)" : "var(--chart-muted)");
+      svg.appendChild(rect);
+
+      if (i % 3 === 0 || i === values.length - 1) {
+        const xl = document.createElementNS(ns, "text");
+        xl.setAttribute("x", String(Math.round(x + barW / 2)));
+        xl.setAttribute("y", String(h - 6));
+        xl.setAttribute("text-anchor", "middle");
+        xl.setAttribute("font-size", "12");
+        xl.setAttribute("fill", "var(--muted)");
+        xl.textContent = labels[i];
+        svg.appendChild(xl);
+      }
+    });
+    el.appendChild(svg);
+  }
+
+  // Event wiring
+  for (const b of document.querySelectorAll("#project-switcher .nav-item")) {
+    b.addEventListener("click", () => {
+      switchProject(b.dataset.project);
+      showScreen("inbox");
+    });
+  }
+  for (const t of document.querySelectorAll("#project-tabs .view-tab")) {
+    t.addEventListener("click", () => showScreen(t.dataset.tab));
+  }
+  for (const n of document.querySelectorAll("#project-nav .nav-item, #gateway-nav .nav-item")) {
+    n.addEventListener("click", () => showScreen(n.dataset.screen));
+  }
+  for (const st of document.querySelectorAll("#status-tabs .status-tab")) {
+    st.addEventListener("click", () => {
+      currentStatusFilter = st.dataset.status;
+      for (const c of document.querySelectorAll("#status-tabs .status-tab")) {
+        c.setAttribute("aria-pressed", c === st ? "true" : "false");
+      }
+      renderQueue();
+    });
+  }
+  $("inbox-filter-q").addEventListener("input", (e) => {
+    currentQuery = e.target.value.trim();
+    renderQueue();
+  });
+  $("global-search-input").addEventListener("input", (e) => {
+    currentQuery = e.target.value.trim();
+    $("inbox-filter-q").value = currentQuery;
+    showScreen("inbox");
+    renderQueue();
+  });
+  $("inbox-filter-type").addEventListener("change", (e) => {
+    currentTypeFilter = e.target.value;
+    renderQueue();
+  });
+
+  for (const b of document.querySelectorAll("#det-status-group [data-set-status]")) {
+    b.addEventListener("click", () => {
+      const p = PROJECTS[currentProject];
+      const it = p.items.find((x) => x.id === selectedItemId);
+      if (!it) return;
+      it.status = b.dataset.setStatus;
+      renderQueue();
+    });
+  }
+
+  $("btn-primary-job").addEventListener("click", () => {
+    const p = PROJECTS[currentProject];
+    const it = p.items.find((x) => x.id === selectedItemId);
+    if (!it) return;
+    it.status = it.status === "resolved" ? "open" : "resolved";
+    renderQueue();
+  });
+
+  $("btn-save-note").addEventListener("click", () => {
+    const p = PROJECTS[currentProject];
+    const it = p.items.find((x) => x.id === selectedItemId);
+    if (!it) return;
+    it.note = $("det-note").value;
+    $("note-stamp").textContent = "Saved just now";
+  });
+
+  $("top-edit-config").addEventListener("click", () => showScreen("config"));
+  $("mode-visual-btn").addEventListener("click", () => {
+    $("mode-visual-btn").setAttribute("aria-pressed", "true");
+    $("mode-json-btn").setAttribute("aria-pressed", "false");
+    $("config-visual-view").hidden = false;
+    $("config-json-view").hidden = true;
+  });
+  $("mode-json-btn").addEventListener("click", () => {
+    syncConfigJson();
+    $("mode-visual-btn").setAttribute("aria-pressed", "false");
+    $("mode-json-btn").setAttribute("aria-pressed", "true");
+    $("config-visual-view").hidden = true;
+    $("config-json-view").hidden = false;
+  });
+
+  for (const b of document.querySelectorAll("#cfg-tracker-mode [data-tracker]")) {
+    b.addEventListener("click", () => {
+      const p = PROJECTS[currentProject];
+      p.trackerKind = b.dataset.tracker;
+      p.mode = p.trackerKind === "none" ? "Inbox only · no Git" : `GitHub · ${$("cfg-repo").value}`;
+      $("project-mode-pill").textContent = p.mode;
+      for (const x of document.querySelectorAll("#cfg-tracker-mode [data-tracker]")) {
+        x.setAttribute("aria-pressed", x === b ? "true" : "false");
+      }
+      $("cfg-github-fields").hidden = p.trackerKind !== "github";
+      $("cfg-inbox-hint").hidden = p.trackerKind === "github";
+      syncConfigJson();
+    });
+  }
+
+  $("btn-add-origin").addEventListener("click", () => {
+    const val = $("new-origin-input").value.trim();
+    if (!val) return;
+    const chip = document.createElement("span");
+    chip.className = "origin-chip";
+    const code = document.createElement("code");
+    code.textContent = val;
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.textContent = "×";
+    rm.setAttribute("aria-label", "Remove " + val);
+    rm.addEventListener("click", () => chip.remove());
+    chip.append(code, rm);
+    $("cfg-origin-chips").appendChild(chip);
+    $("new-origin-input").value = "";
+    syncConfigJson();
+  });
+  for (const rm of document.querySelectorAll("#cfg-origin-chips button")) {
+    rm.addEventListener("click", () => rm.parentElement.remove());
+  }
+
+  $("btn-publish-config").addEventListener("click", () => {
+    const p = PROJECTS[currentProject];
+    p.configVersion += 1;
+    $("top-edit-config").innerHTML = `Edit config <code>v${p.configVersion}</code>`;
+    $("cfg-ver-label").textContent = `v${p.configVersion} → v${p.configVersion + 1}`;
+    $("btn-publish-config").textContent = `Saved config v${p.configVersion}`;
+    syncConfigJson();
+  });
+
+  $("theme-toggle").addEventListener("click", () => {
+    const root = document.documentElement;
+    const dark = root.dataset.theme === "dark";
+    if (dark) {
+      delete root.dataset.theme;
+      $("theme-toggle").textContent = "Dark";
+    } else {
+      root.dataset.theme = "dark";
+      $("theme-toggle").textContent = "Light";
+    }
+  });
+
+  $("menu-btn").addEventListener("click", () => {
+    $("sidebar").classList.toggle("open");
+  });
+  $("mobile-back-btn").addEventListener("click", () => {
+    $("inbox-split").classList.remove("mobile-detail-open");
+  });
+
+  // Boot
+  switchProject("pantry-planner");
+</script>
+</body>
+</html>
