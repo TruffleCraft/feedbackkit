@@ -63,6 +63,12 @@ describe("undelivered reports are stored before they are acknowledged", () => {
     expect(results[0]).toMatchObject({ outcome: "created", issue_url: "https://github.com/acme/site/issues/7" });
   });
 
+  it("schema v4: rows carry their delivery, an open disposition and is_test 0 (#109)", async () => {
+    await orchestrateFeedback(gwEnv(), { config: config(), version: 1 }, payload({ type: "praise" }), deps(201));
+    const row = await env.DB.prepare("SELECT delivery, delivery_state, disposition, is_test FROM feedback WHERE client_feedback_id = ?1").bind(FID).first();
+    expect(row).toEqual({ delivery: "local", delivery_state: null, disposition: "open", is_test: 0 });
+  });
+
   it("dedup is scoped per project: the same feedbackId in two projects is two rows", async () => {
     await orchestrateFeedback(gwEnv(), { config: config("one"), version: 1 }, payload({ type: "praise" }), deps(201));
     // The dedup table is global; clear it so the second project reaches persist.

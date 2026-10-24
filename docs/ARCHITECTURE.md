@@ -31,6 +31,8 @@ Any backend failure degrades instead of dropping feedback: LLM error/timeout →
 
 A report that did not reach the tracker (a `noIssue` type, a missing PAT, a tracker error, or a crash in the gateway) is only acknowledged after D1 confirmed its row. If that write fails too, the gateway answers `503` with `code: "FK_PERSIST_FAILED"`, `retryable: true` and `Retry-After: 5` ([ERRORS.md](ERRORS.md)); the widget keeps the report and its retry resends the same submission (same `feedbackId`, same uploaded attachments, no second upload). Each row carries the widget's `feedbackId` in `client_feedback_id` (schema v3), unique per project: a resent submission lands on the row that already exists, and retention uses the column to delete a row together with its attachments.
 
+Schema v4 adds the delivery model: each row records its resolved `delivery` (`issue`, `project`, `local`; `NULL` for older rows whose destination is not proven) and, for issue and project delivery, a `delivery_state` (`pending`, `delivered`, `failed`, `unknown`). The columns for the local inbox (disposition, note), delivery claims, attempt markers, warnings and test reports exist from v4 on and are filled by later releases.
+
 Each `feedback` row also records the type, the rendered title, the LLM provider and model and the config version in effect when it was processed (schema v2). An `issue_failed` row keeps the rendered issue (`issue_draft`: title, body, labels, repo, and the issue type and issue fields if the template sets them), so the admin retry creates it without a second LLM call. The read-only admin API is described in [SECURITY.md](SECURITY.md#admin-endpoints).
 
 ## P1 vs P2

@@ -331,7 +331,7 @@ async function finalizeCreate(
   // then the report is stored as pending and never falls back to a public issue.
   if (delivery === "project") {
     const reason = "project delivery not available in this release";
-    const stored = await persistFeedback(env, { ...row, outcome: "issue_failed", issueUrl: null, lastError: reason, deliveryState: "pending" });
+    const stored = await persistFeedback(env, { ...row, outcome: "issue_failed", issueUrl: null, lastError: reason, issueDraft: draft, deliveryState: "pending" });
     if (!stored.ok) return persistFailed();
     return { http: 200, body: { v: WIRE_VERSION, status: "issue_failed", id: stored.id, reason } };
   }

@@ -140,6 +140,49 @@ describe("POST /api/admin/config/import", () => {
   });
 });
 
+// #109: dev and stable share one D1, so new delivery shapes wait for a stable
+// release that handles them (meta.delivery_capability, written by promote).
+describe("POST /api/admin/config/import — delivery shape gate", () => {
+  beforeEach(() => __clearConfigCache());
+  const local = { ...validConfig, tracker: undefined, delivery: "local" };
+  const project = { ...validConfig, delivery: "project", tracker: { ...validConfig.tracker, project: { org: "acme", number: 3 } } };
+  const gate = (capability: string | null) => {
+    const inserts: unknown[] = [];
+    const handler = (sql: string, params: unknown[]) => {
+      if (sql.includes("delivery_capability")) return capability === null ? null : { value: capability };
+      if (sql.startsWith("INSERT INTO projects")) inserts.push(params);
+      if (sql.includes("SELECT public_key")) return { public_key: "fk_pub_x", config_version: 1 };
+      return null;
+    };
+    return { e: env(handler), inserts };
+  };
+
+  it("422 FK_CONFIG_SHAPE_UNSUPPORTED while no stable release handles the shape; nothing stored", async () => {
+    const g = gate(null);
+    const res = await app.request("/api/admin/config/import", importReq(local), g.e);
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ status: "error", code: "FK_CONFIG_SHAPE_UNSUPPORTED", required: 1, available: 0 });
+    expect(g.inserts).toHaveLength(0);
+  });
+
+  it("accepts local delivery once stable records capability 1, still refuses a GitHub Project", async () => {
+    expect((await app.request("/api/admin/config/import", importReq(local), gate("1").e)).status).toBe(200);
+    const res = await app.request("/api/admin/config/import", importReq(project), gate("1").e);
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ required: 2, available: 1 });
+  });
+
+  it("never trusts a stored capability above what this build handles", async () => {
+    const res = await app.request("/api/admin/config/import", importReq(project), gate("9").e);
+    expect(res.status).toBe(422);
+    expect(await res.json()).toMatchObject({ available: 1 });
+  });
+
+  it("does not gate today's shapes", async () => {
+    expect((await app.request("/api/admin/config/import", importReq(validConfig), gate(null).e)).status).toBe(200);
+  });
+});
+
 describe("GET /diag first-run visibility", () => {
   const migrated = (sql: string) => {
     if (sql.includes("meta")) return { value: "4" };
@@ -181,6 +224,21 @@ describe("GET /diag first-run visibility", () => {
     expect(body.firstRun).toBe(false);
     expect(body.secrets.githubPat).toBe(true);
     expect(body.nextSteps).toEqual([]);
+  });
+
+  it("asks for a GitHub PAT only when a project has a tracker (#109)", async () => {
+    const steps = async (configs: object[]) => {
+      const handler = (sql: string) => {
+        if (sql.includes("meta")) return { value: "4" };
+        if (sql.includes("COUNT(*)")) return { n: configs.length };
+        if (sql.includes("SELECT config FROM projects")) return configs.map((c) => ({ config: JSON.stringify(c) }));
+        return null;
+      };
+      const res = await app.request("/diag", {}, env(handler, { LLM_API_KEY: "y" }));
+      return ((await res.json()) as { nextSteps: string[] }).nextSteps.join("\n");
+    };
+    expect(await steps([{ ...validConfig, tracker: undefined, delivery: "local" }])).not.toContain("GITHUB_PAT");
+    expect(await steps([{ ...validConfig, tracker: undefined }, validConfig])).toContain("GITHUB_PAT");
   });
 
   it("reports Access sign-in config as presence booleans and flags a half-done setup", async () => {

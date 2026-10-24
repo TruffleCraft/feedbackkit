@@ -455,6 +455,14 @@ describe("GET /api/admin/system", () => {
     for (const needle of [TOKEN, PAT, "sk-llm-SECRET", CLIENT_IP]) expect(text).not.toContain(needle);
   });
 
+  it("reports tracker null for a project that stores every report locally (#109)", async () => {
+    const s = store();
+    const { tracker: _t, ...rest } = demoConfig as typeof demoConfig & { tracker?: unknown };
+    s.projects.set("inbox", { id: "inbox", public_key: "fk_pub_inbox001", config: JSON.stringify({ ...rest, projectId: "inbox", delivery: "local" }), config_version: 1, updated_at: 0 });
+    const { body } = await getJson<{ projects: Array<Record<string, unknown>> }>(env(s), "/api/admin/system");
+    expect(body.projects.find((p) => p["id"] === "inbox")).toMatchObject({ configValid: true, tracker: null });
+  });
+
   it("tolerates a failing PAT check per project", async () => {
     vi.stubGlobal("fetch", async () => {
       throw new Error("connect ECONNREFUSED");
