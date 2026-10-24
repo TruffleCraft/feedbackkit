@@ -180,8 +180,8 @@ such as Priority. A template sets both next to its labels:
 
 ### Where reports go (`delivery`)
 
-Each type has a destination. Most of this waits for a later release, so check the
-gate below before you use it.
+Each type has a destination. New settings are only accepted once stable handles
+them; see the gate below.
 
 | `delivery` | What happens |
 |---|---|
