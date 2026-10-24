@@ -567,7 +567,7 @@ describe("orchestrateFeedback — journey row (admin history, #70)", () => {
     expect(row).toMatchObject({ outcome: "issue_failed", last_error: "tracker error 502" });
     const draft = JSON.parse(row["issue_draft"] as string) as { title: string; body: string; labels: string[]; repo: string };
     // Exactly what the failed createIssue call sent.
-    expect(draft).toEqual({ title: gh.calls[0]!.body.title, body: gh.calls[0]!.body.body, labels: gh.calls[0]!.body.labels, repo: "acme/site" });
+    expect(draft).toEqual({ title: gh.calls[0]!.body.title, body: gh.calls[0]!.body.body, labels: gh.calls[0]!.body.labels, repo: "acme/site", patSecret: "GITHUB_PAT_default", outcome: "created" });
     expect(gh.calls[0]!.url).toContain("/repos/acme/site/issues");
   });
 

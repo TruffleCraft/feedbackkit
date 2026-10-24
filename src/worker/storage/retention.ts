@@ -36,7 +36,9 @@ export async function pruneExpiredRecords(env: Env, now = Date.now()): Promise<{
         // Assets first: a row whose assets could not all be deleted stays, so the
         // next run still knows which objects belong to it.
         if (row.client_feedback_id) {
-          const a = await deleteAssets(env, row.client_feedback_id, p.id);
+          // Screenshots of a late delivery may outlive the row by up to 7 days
+          // (expires_at); the asset sweep takes them then.
+          const a = await deleteAssets(env, row.client_feedback_id, p.id, now);
           assets += a.deleted;
           if (a.failed.length) continue;
         }
@@ -69,8 +71,8 @@ export async function retentionNotice(env: Env, projectId: string, days: number 
   if (!days) return null;
   const threshold = now - Math.max(0, days - NOTICE_DAYS) * DAY_MS;
   const [count, rows] = await Promise.all([
-    env.DB.prepare("SELECT COUNT(*) AS n FROM feedback WHERE project_id = ?1 AND issue_url IS NULL AND created_at < ?2").bind(projectId, threshold).first<{ n: number }>(),
-    env.DB.prepare("SELECT id, type, outcome, created_at FROM feedback WHERE project_id = ?1 AND issue_url IS NULL AND created_at < ?2 ORDER BY created_at LIMIT ?3")
+    env.DB.prepare("SELECT COUNT(*) AS n FROM feedback WHERE project_id = ?1 AND issue_url IS NULL AND project_item_id IS NULL AND created_at < ?2").bind(projectId, threshold).first<{ n: number }>(),
+    env.DB.prepare("SELECT id, type, outcome, created_at FROM feedback WHERE project_id = ?1 AND issue_url IS NULL AND project_item_id IS NULL AND created_at < ?2 ORDER BY created_at LIMIT ?3")
       .bind(projectId, threshold, NOTICE_LIMIT)
       .all<{ id: string; type: string | null; outcome: string; created_at: number }>(),
   ]);

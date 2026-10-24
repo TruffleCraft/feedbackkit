@@ -172,10 +172,8 @@ describe("POST /api/admin/config/import — delivery shape gate", () => {
     expect(await res.json()).toMatchObject({ required: 2, available: 1 });
   });
 
-  it("never trusts a stored capability above what this build handles", async () => {
-    const res = await app.request("/api/admin/config/import", importReq(project), gate("9").e);
-    expect(res.status).toBe(422);
-    expect(await res.json()).toMatchObject({ available: 1 });
+  it("accepts a GitHub Project once stable records capability 2 (#110)", async () => {
+    expect((await app.request("/api/admin/config/import", importReq(project), gate("2").e)).status).toBe(200);
   });
 
   it("does not gate today's shapes", async () => {

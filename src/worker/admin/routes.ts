@@ -1,7 +1,10 @@
 import type { Context, Hono } from "hono";
-import { WIRE_VERSION, SCHEMA_VERSION } from "../../shared/contract.js";
+import { WIRE_VERSION, SCHEMA_VERSION, FeedbackConfig, resolveDelivery } from "../../shared/contract.js";
 import { checkSchema } from "../db.js";
-import { dayWindow } from "../security/ratelimit.js";
+import { dayWindow, hitRateLimit, hourWindow } from "../security/ratelimit.js";
+import { deliverRow } from "../delivery.js";
+import { createTestReport } from "../orchestrate.js";
+import { checkProject } from "../project-check.js";
 import { checkRepoAccess } from "../providers/github.js";
 import { retentionNotice } from "../storage/retention.js";
 import { releaseOf, bindingsPresence, secretsPresence } from "../status.js";
@@ -91,6 +94,112 @@ export function registerAdminRoutes(app: AppT): void {
     return answer(c, async () => ({ v: WIRE_VERSION, ...(await getFunnel(c.env, c.req.param("id"), daysRaw === undefined ? undefined : Number(daysRaw))) }));
   });
 
+  // ── Delivery retry (#110): failed and unknown rows, issue or GitHub Project ──
+  // An unknown row is reconciled by its marker first; if nothing is found the
+  // operator must confirm with {"createAnyway": true}. Uses the destination
+  // stored on the row, not today's config.
+  app.post("/api/admin/feedback/:id/retry", async (c) => {
+    const denied = await adminGate(c);
+    if (denied) return denied;
+    const id = c.req.param("id");
+    const body = (await c.req.json().catch(() => ({}))) as { createAnyway?: unknown };
+    const r = await deliverRow(c.env, id, { retry: true, createAnyway: body?.createAnyway === true });
+    // Audit: identifiers and result only, never report content.
+    console.log("feedbackkit admin retry", { feedbackId: id, result: r.status });
+    const fail = (status: 404 | 409 | 502, code: string, error: string, extra: Record<string, unknown> = {}) =>
+      c.json({ v: WIRE_VERSION, status: "error", code, error, feedbackId: id, ...extra }, status);
+    switch (r.status) {
+      case "delivered":
+        return c.json({ v: WIRE_VERSION, feedbackId: id, ...r });
+      case "missing":
+        return fail(404, "FK_NOT_FOUND", "no such report");
+      case "not_retryable":
+        return fail(409, "FK_NOT_RETRYABLE", r.reason);
+      case "busy":
+        c.header("Retry-After", String(Math.max(1, Math.ceil((r.claimUntil - Date.now()) / 1000))));
+        return fail(409, "FK_RETRY_IN_PROGRESS", "another delivery of this report is running", { claimUntil: r.claimUntil });
+      case "unknown_needs_decision":
+        return fail(409, "FK_DELIVERY_UNKNOWN", "an earlier attempt may have created the draft, and none with this report's marker was found; check the project, then retry with createAnyway", {
+          needsCreateAnyway: true,
+        });
+      case "unknown":
+        return fail(502, "FK_DELIVERY_UNKNOWN", `GitHub may or may not have created it (${r.reason}); retry to reconcile`);
+      case "failed":
+        return fail(502, "FK_DELIVERY_FAILED", r.reason, { githubStatus: r.httpStatus });
+    }
+  });
+
+  // ── Test report (#110): one real delivery, LLM off, is_test = 1 ─────────────
+  app.post("/api/admin/projects/:id/test-report", async (c) => {
+    const denied = await adminGate(c);
+    if (denied) return denied;
+    const projectId = c.req.param("id");
+    const rl = await hitRateLimit(c.env, `testrep:${projectId}`, hourWindow(), 10);
+    if (!rl.allowed) return c.json({ v: WIRE_VERSION, status: "error", error: "rate limited" }, 429);
+    const row = await c.env.DB.prepare("SELECT config, config_version FROM projects WHERE id = ?1").bind(projectId).first<{ config: string; config_version: number }>();
+    if (!row) return err(c, 404, "unknown project");
+    let raw: unknown;
+    try {
+      raw = JSON.parse(row.config);
+    } catch {
+      return err(c, 400, "stored config is not valid JSON");
+    }
+    const parsed = FeedbackConfig.safeParse(raw);
+    if (!parsed.success) return err(c, 400, "stored config does not validate");
+    const config = parsed.data;
+    const body = (await c.req.json().catch(() => ({}))) as { type?: unknown };
+    // Default: the first type delivered to a Project, else the first type.
+    const template =
+      typeof body?.type === "string"
+        ? config.templates.find((t) => t.type === body.type)
+        : (config.templates.find((t) => resolveDelivery(config, t) === "project") ?? config.templates[0]);
+    if (!template) return err(c, 400, "unknown type");
+    const result = await createTestReport(c.env, { config, version: Number(row.config_version) }, template, { origin: new URL(c.req.url).origin });
+    const id = "id" in result.body ? result.body.id : null;
+    const stored = id
+      ? await c.env.DB.prepare("SELECT delivery, delivery_state, issue_url, project_url, project_item_id, delivery_warnings, last_error FROM feedback WHERE id = ?1")
+          .bind(id)
+          .first<Record<string, string | null>>()
+      : null;
+    return c.json(
+      {
+        v: WIRE_VERSION,
+        status: result.http === 200 ? "sent" : "error",
+        feedbackId: id,
+        type: template.type,
+        delivery: stored?.["delivery"] ?? resolveDelivery(config, template),
+        deliveryState: stored?.["delivery_state"] ?? null,
+        issueUrl: stored?.["issue_url"] ?? null,
+        projectUrl: stored?.["project_url"] ?? null,
+        itemId: stored?.["project_item_id"] ? Number(stored["project_item_id"]) : null,
+        warnings: stored?.["delivery_warnings"] ? (JSON.parse(stored["delivery_warnings"]) as string[]) : [],
+        lastError: stored?.["last_error"] ?? null,
+      },
+      result.http === 200 ? 200 : 503,
+    );
+  });
+
+  // ── Screenshots of private deliveries (#110): signed-in operators only ──────
+  // Drafts in a GitHub Project and local reports link here instead of the public
+  // R2 URL, so a forwarded link does not open for anyone without a sign-in.
+  app.get("/admin/assets/*", async (c) => {
+    const denied = await adminGate(c);
+    if (denied) return denied;
+    const key = decodeURIComponent(new URL(c.req.url).pathname.slice("/admin/assets/".length));
+    const known = await c.env.DB.prepare("SELECT key FROM assets WHERE key = ?1 AND deleted = 0").bind(key).first<{ key: string }>();
+    if (!known) return err(c, 404, "no such attachment");
+    const obj = await c.env.UPLOADS.get(key);
+    if (!obj) return err(c, 404, "no such attachment");
+    return new Response(obj.body, {
+      headers: {
+        "Content-Type": obj.httpMetadata?.contentType ?? "application/octet-stream",
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+      },
+    });
+  });
+
   // ── System: release, schema, bindings, secret presence, per-project budget + PAT ──
   app.get("/api/admin/system", async (c) => {
     const denied = await adminGate(c);
@@ -122,6 +231,10 @@ export function registerAdminRoutes(app: AppT): void {
             access = { ok: false, status: 0, reason: `check failed: ${(e as Error).message}` };
           }
         }
+        const project = await checkProject(c.env, cfg).catch((e) => {
+          console.warn(`[feedbackkit] project check failed for ${p.id}: ${(e as Error).message}`);
+          return null;
+        });
         const retention = await retentionNotice(c.env, cfg.projectId, cfg.storage.retentionDays).catch((e) => {
           console.warn(`[feedbackkit] retention notice failed for ${p.id}: ${(e as Error).message}`);
           return null;
@@ -131,6 +244,7 @@ export function registerAdminRoutes(app: AppT): void {
           configVersion: Number(p.config_version),
           configValid: true as const,
           retention,
+          project,
           enabled: cfg.enabled,
           llm: {
             provider: cfg.llm.provider,

@@ -1,4 +1,4 @@
-import { WIRE_VERSION, resolveDelivery, type Delivery, type FeedbackConfig, type FeedbackPayload, type FeedbackResponse, type TemplateDefinition } from "../shared/contract.js";
+import { WIRE_VERSION, FeedbackPayload, resolveDelivery, type Delivery, type FeedbackConfig, type FeedbackResponse, type TemplateDefinition } from "../shared/contract.js";
 import { classifyAndExtract, type ChatFn, type ExtractionResult } from "./llm/client.js";
 import { createIssue, TrackerError, type FetchFn, type IssueFieldValue } from "./providers/github.js";
 import { deriveTitle, renderIssueBody, type RenderContext } from "../shared/render.js";
@@ -7,6 +7,7 @@ import { redactPageUrl } from "../shared/page-url.js";
 import { autoTypeEnabled } from "../shared/projection.js";
 import { hitRateLimit, dayWindow } from "./security/ratelimit.js";
 import type { LoadedProject } from "./config.js";
+import { deliverRow, type ProjectDestination } from "./delivery.js";
 import type { Env } from "./env.js";
 
 // The core loop (P1.9): unstructured feedback → structured issue via the
@@ -49,6 +50,10 @@ export interface OrchestrateDeps {
   fetchImpl?: FetchFn;
   now?: number;
   newId?: () => string;
+  /** Gateway origin, for the signed-in screenshot links of private deliveries. */
+  origin?: string;
+  /** Admin test report: stored with is_test = 1. */
+  isTest?: boolean;
 }
 
 function requiredAskable(t: TemplateDefinition) {
@@ -83,8 +88,11 @@ function resolveTemplate(config: FeedbackConfig, type?: string): TemplateDefinit
   return config.templates[0] ?? null;
 }
 
-/** Public URLs for uploaded attachment keys (empty if no public base is set). */
-function buildAttachments(config: FeedbackConfig, payload: FeedbackPayload): RenderContext["attachments"] {
+/** Links for uploaded attachment keys. Public issues use the public R2 URL (none
+ * without a public base). Private deliveries (project, local) link to the
+ * gateway's signed-in route instead, so a draft never carries a bearer link. */
+function buildAttachments(config: FeedbackConfig, payload: FeedbackPayload, delivery: Delivery, origin?: string): RenderContext["attachments"] {
+  if (delivery !== "issue" && origin) return payload.attachmentKeys.map((k) => ({ url: `${origin}/admin/assets/${k.split("/").map(encodeURIComponent).join("/")}`, kind: "upload" }));
   const base = config.storage.publicBaseUrl;
   if (!base) return [];
   return payload.attachmentKeys.map((k) => ({ url: publicUrl(base, k)!, kind: "upload" }));
@@ -187,7 +195,7 @@ export async function orchestrateFeedback(
     const unknownType = autoType && (!result || result.degraded);
     const missing = result && !result.degraded ? result.missing : unknownType ? [] : requiredAskable(template).map((f) => f.key);
     const create = (o: Partial<CreateOpts>) =>
-      finalizeCreate(env, loaded, payload, tpl, { fields: extracted, summary: result?.summary, degraded: false, plain: !result, incomplete: false, d1Degraded, now, newId, fetchImpl: deps.fetchImpl, ...o });
+      finalizeCreate(env, loaded, payload, tpl, { fields: extracted, summary: result?.summary, degraded: false, plain: !result, incomplete: false, d1Degraded, now, newId, fetchImpl: deps.fetchImpl, origin: deps.origin, isTest: deps.isTest, ...o });
 
     if (result?.degraded) {
       console.warn("feedbackkit llm degraded", {
@@ -242,7 +250,7 @@ export async function orchestrateFeedback(
   // into the issue via `combined` so it's never lost even if re-extraction fails.
   // Nothing from a model on either POST (no echoed summary or fields, no re-extraction) → plain issue.
   const plain = !reExtract && !payload.summary && Object.keys(payload.extracted ?? {}).length === 0;
-  return finalizeCreate(env, loaded, payload, template, { fields: cleaned, message: combined, summary: reExtract?.summary ?? payload.summary, degraded: false, plain, incomplete: stillMissing.length > 0, d1Degraded, now, newId, fetchImpl: deps.fetchImpl });
+  return finalizeCreate(env, loaded, payload, template, { fields: cleaned, message: combined, summary: reExtract?.summary ?? payload.summary, degraded: false, plain, incomplete: stillMissing.length > 0, d1Degraded, now, newId, fetchImpl: deps.fetchImpl, origin: deps.origin, isTest: deps.isTest });
 }
 
 interface CreateOpts {
@@ -256,6 +264,8 @@ interface CreateOpts {
   now: number;
   newId: () => string;
   fetchImpl?: FetchFn;
+  origin?: string;
+  isTest?: boolean;
 }
 
 /** How the gateway understood the feedback, echoed for the widget's done card.
@@ -274,6 +284,7 @@ async function finalizeCreate(
 ): Promise<OrchestrateResult> {
   const config = loaded.config;
   const id = opts.newId();
+  const delivery = resolveDelivery(config, template);
 
   const ctx: RenderContext = {
     message: opts.message ?? payload.message ?? "",
@@ -283,14 +294,13 @@ async function finalizeCreate(
     deviceInfo: payload.deviceInfo,
     consoleErrors: payload.consoleErrors,
     hostContext: payload.context,
-    attachments: buildAttachments(config, payload),
+    attachments: buildAttachments(config, payload, delivery, opts.origin),
     degraded: opts.degraded,
     plain: opts.plain,
   };
   const title = deriveTitle(template, ctx);
   const issueBody = renderIssueBody(template, ctx, config.locale);
 
-  const delivery = resolveDelivery(config, template);
   const repo = template.tracker.repo ?? config.tracker?.defaultRepo ?? "";
   const labels = [...template.tracker.labels];
   if (opts.degraded) labels.push("ai-failed", "needs-triage");
@@ -311,11 +321,30 @@ async function finalizeCreate(
     llmModel: config.llm.model || null,
     configVersion: loaded.version,
     delivery,
+    isTest: opts.isTest,
     now: opts.now,
   };
   // Everything a later admin retry needs to create the issue without the LLM.
   const { type: issueType, issueFields } = template.tracker;
-  const draft: IssueDraft = { title, body: issueBody, labels, repo, ...(issueType ? { type: issueType } : {}), ...(issueFields.length ? { issueFields } : {}) };
+  const deliveredOutcome = opts.degraded ? "ai-failed" : opts.incomplete ? "accepted_incomplete" : "created";
+  const draft: IssueDraft = {
+    title,
+    body: issueBody,
+    labels,
+    repo,
+    ...(issueType ? { type: issueType } : {}),
+    ...(issueFields.length ? { issueFields } : {}),
+    ...(config.tracker ? { patSecret: config.tracker.patSecret } : {}),
+    outcome: deliveredOutcome,
+  };
+
+  // Not delivered: persist for the admin retry and answer the terminal-but-retryable
+  // issue_failed (not dedup-stored), or 503 when the row could not be stored either.
+  const undelivered = async (reason: string): Promise<OrchestrateResult> => {
+    const stored = await persistFeedback(env, { ...row, outcome: "issue_failed", issueUrl: null, lastError: reason, issueDraft: draft, deliveryState: "failed" });
+    if (!stored.ok) return persistFailed();
+    return { http: 200, body: { v: WIRE_VERSION, status: "issue_failed", id: stored.id, reason } };
+  };
 
   // Local delivery (noIssue, e.g. praise): persist only, no tracker call. D1 is the
   // only copy, so the report is acknowledged only after the row is confirmed.
@@ -327,22 +356,38 @@ async function finalizeCreate(
     return { http: 200, body: resp };
   }
 
-  // GitHub Project delivery lands in a later release (DELIVERY_CAPABILITY 2). Until
-  // then the report is stored as pending and never falls back to a public issue.
+  // GitHub Project: store the report with its destination first (pending), then
+  // deliver. Anything short of a created draft is a saved report with a pending
+  // delivery, which the public response calls issue_failed (widget vocabulary).
   if (delivery === "project") {
-    const reason = "project delivery not available in this release";
-    const stored = await persistFeedback(env, { ...row, outcome: "issue_failed", issueUrl: null, lastError: reason, issueDraft: draft, deliveryState: "pending" });
+    const p = config.tracker?.project;
+    if (!p || !config.tracker) return undelivered("project not configured");
+    const project: ProjectDestination = {
+      org: p.org,
+      number: p.number,
+      patSecret: p.patSecret ?? config.tracker.patSecret,
+      typeOption: p.typeOptions[template.type] ?? template.type,
+      fieldNames: p.fields,
+    };
+    const stored = await persistFeedback(env, { ...row, outcome: "issue_failed", issueUrl: null, lastError: "delivery pending", issueDraft: { ...draft, project }, deliveryState: "pending" });
     if (!stored.ok) return persistFailed();
-    return { http: 200, body: { v: WIRE_VERSION, status: "issue_failed", id: stored.id, reason } };
+    let result;
+    try {
+      result = await deliverRow(env, stored.id, { now: opts.now, fetchImpl: opts.fetchImpl });
+    } catch (e) {
+      console.error(`[feedbackkit] project delivery crashed: ${(e as Error).message}`);
+      result = { status: "unknown" as const, reason: "internal error" };
+    }
+    if (result.status === "delivered") {
+      const resp: FeedbackResponse = { v: WIRE_VERSION, status: opts.degraded || opts.incomplete ? "accepted_incomplete" : "created", id: stored.id, ...understood(template, opts) };
+      await dedupPut(env, payload.feedbackId, resp, opts.now);
+      return { http: 200, body: resp };
+    }
+    const reason = result.status === "failed" || result.status === "unknown" ? `project ${result.reason}` : "project delivery pending";
+    console.error("feedbackkit project delivery not completed", { projectId: config.projectId, status: result.status, reason });
+    return { http: 200, body: { v: WIRE_VERSION, status: "issue_failed", id: stored.id, reason: "delivery pending" } };
   }
 
-  // Not delivered: persist for the admin retry and answer the terminal-but-retryable
-  // issue_failed (not dedup-stored), or 503 when the row could not be stored either.
-  const undelivered = async (reason: string): Promise<OrchestrateResult> => {
-    const stored = await persistFeedback(env, { ...row, outcome: "issue_failed", issueUrl: null, lastError: reason, issueDraft: draft, deliveryState: "failed" });
-    if (!stored.ok) return persistFailed();
-    return { http: 200, body: { v: WIRE_VERSION, status: "issue_failed", id: stored.id, reason } };
-  };
 
   // The contract guarantees a tracker and a repo for issue delivery; a stored
   // config from before that check still must not lose the report.
@@ -365,12 +410,42 @@ async function finalizeCreate(
   }
   // Delivered: the issue holds the report, so a failed journey write only
   // degrades the history (the response is still a success).
-  const outcome = opts.degraded ? "ai-failed" : opts.incomplete ? "accepted_incomplete" : "created";
-  const stored = await persistFeedback(env, { ...row, outcome, issueUrl: issue.url, deliveryState: "delivered" });
+  const stored = await persistFeedback(env, { ...row, outcome: deliveredOutcome, issueUrl: issue.url, deliveryState: "delivered" });
   const status: "created" | "accepted_incomplete" = opts.degraded || opts.incomplete ? "accepted_incomplete" : "created";
   const resp: FeedbackResponse = { v: WIRE_VERSION, status, id: stored.ok ? stored.id : id, ...(config.issueLink ? { issueUrl: issue.url } : {}), ...understood(template, opts) };
   await dedupPut(env, payload.feedbackId, resp, opts.now);
   return { http: 200, body: resp };
+}
+
+/** Admin test report (#110): one real delivery through the type's destination,
+ * LLM off, stored with is_test = 1 (left out of the funnel and the 7-day counts).
+ * A delivered one is the evidence for the System check draftWriteVerified. */
+export async function createTestReport(
+  env: Env,
+  loaded: LoadedProject,
+  template: TemplateDefinition,
+  deps: { now?: number; newId?: () => string; fetchImpl?: FetchFn; origin?: string },
+): Promise<OrchestrateResult> {
+  const now = deps.now ?? Date.now();
+  const payload = FeedbackPayload.parse({
+    v: WIRE_VERSION,
+    feedbackId: crypto.randomUUID(),
+    type: template.type,
+    message: "Test report from the FeedbackKit admin. It checks that reports reach their destination; you can delete it.",
+    pageUrl: `${deps.origin ?? "https://feedbackkit.invalid"}/admin`,
+  });
+  return finalizeCreate(env, loaded, payload, template, {
+    fields: {},
+    degraded: false,
+    plain: true,
+    incomplete: false,
+    d1Degraded: false,
+    now,
+    newId: deps.newId ?? (() => crypto.randomUUID()),
+    fetchImpl: deps.fetchImpl,
+    origin: deps.origin,
+    isTest: true,
+  });
 }
 
 const MAX_LLM_IMAGE_BYTES = 1_500_000; // guard the vision payload (upload path caps at 2 MB)
@@ -433,6 +508,12 @@ export interface IssueDraft {
   repo: string;
   type?: string;
   issueFields?: IssueFieldValue[];
+  /** Secret name of the token, pinned so a retry does not depend on today's config. */
+  patSecret?: string;
+  /** Outcome to record once delivered (created | accepted_incomplete | ai-failed). */
+  outcome?: string;
+  /** Set for delivery "project": the draft goes to this GitHub Project. */
+  project?: ProjectDestination;
 }
 
 export interface FeedbackRow {
@@ -452,6 +533,7 @@ export interface FeedbackRow {
   delivery?: Delivery;
   /** pending | delivered | failed | unknown; not used for local delivery. */
   deliveryState?: "pending" | "delivered" | "failed" | "unknown";
+  isTest?: boolean;
   now: number;
 }
 export type PersistResult = { ok: true; id: string } | { ok: false };
@@ -466,8 +548,8 @@ export async function persistFeedback(env: Env, o: FeedbackRow): Promise<Persist
     await env.DB.prepare(
       `INSERT INTO feedback (id, project_id, outcome, payload, issue_url, created_at,
          type, title, llm_provider, llm_model, config_version, updated_at, last_error, issue_draft, client_feedback_id,
-         delivery, delivery_state)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17) ON CONFLICT DO NOTHING`,
+         delivery, delivery_state, is_test)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18) ON CONFLICT DO NOTHING`,
     )
       .bind(
         o.id,
@@ -487,6 +569,7 @@ export async function persistFeedback(env: Env, o: FeedbackRow): Promise<Persist
         clientId,
         o.delivery ?? null,
         o.deliveryState ?? null,
+        o.isTest ? 1 : 0,
       )
       .run();
     const row = await env.DB.prepare("SELECT id, outcome FROM feedback WHERE project_id = ?1 AND client_feedback_id = ?2")

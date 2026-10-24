@@ -110,9 +110,10 @@ export async function deleteAssetsForFeedback(env: Env, feedbackId: string, proj
 }
 
 /** Like deleteAssetsForFeedback, and also reports the keys that could not be deleted. */
-export async function deleteAssets(env: Env, feedbackId: string, projectId?: string): Promise<{ deleted: number; failed: string[] }> {
+/** With `expiredAt`, assets whose expires_at lies after it are left for the sweep. */
+export async function deleteAssets(env: Env, feedbackId: string, projectId?: string, expiredAt?: number): Promise<{ deleted: number; failed: string[] }> {
   const rows = await (projectId
-    ? env.DB.prepare(`SELECT key FROM assets WHERE feedback_id = ?1 AND project_id = ?2 AND deleted = 0`).bind(feedbackId, projectId)
+    ? env.DB.prepare(`SELECT key FROM assets WHERE feedback_id = ?1 AND project_id = ?2 AND deleted = 0 AND (?3 IS NULL OR expires_at IS NULL OR expires_at <= ?3)`).bind(feedbackId, projectId, expiredAt ?? null)
     : env.DB.prepare(`SELECT key FROM assets WHERE feedback_id = ?1 AND deleted = 0`).bind(feedbackId)
   ).all<{ key: string }>();
   let deleted = 0;

@@ -131,7 +131,7 @@ export async function listProjects(env: Env, now = Date.now()): Promise<ProjectS
   const since = now - 7 * DAY_MS;
   const [projects, counts] = await Promise.all([
     env.DB.prepare("SELECT id, public_key, config_version, updated_at FROM projects ORDER BY id").all<Omit<ProjectRow, "config">>(),
-    env.DB.prepare("SELECT project_id, outcome, COUNT(*) AS n FROM feedback WHERE created_at >= ?1 GROUP BY project_id, outcome")
+    env.DB.prepare("SELECT project_id, outcome, COUNT(*) AS n FROM feedback WHERE created_at >= ?1 AND is_test = 0 GROUP BY project_id, outcome")
       .bind(since)
       .all<{ project_id: string; outcome: string; n: number }>(),
   ]);
@@ -448,7 +448,7 @@ export async function getFunnel(env: Env, projectId: string, days = 30, now = Da
     env.DB.prepare("SELECT name AS k, COUNT(*) AS n FROM events WHERE project_id = ?1 AND ts >= ?2 GROUP BY name")
       .bind(p.id, since)
       .all<{ k: string; n: number }>(),
-    env.DB.prepare("SELECT outcome AS k, COUNT(*) AS n FROM feedback WHERE project_id = ?1 AND created_at >= ?2 GROUP BY outcome")
+    env.DB.prepare("SELECT outcome AS k, COUNT(*) AS n FROM feedback WHERE project_id = ?1 AND created_at >= ?2 AND is_test = 0 GROUP BY outcome")
       .bind(p.id, since)
       .all<{ k: string; n: number }>(),
   ]);
