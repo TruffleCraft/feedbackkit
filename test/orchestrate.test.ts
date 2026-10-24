@@ -593,6 +593,40 @@ describe("dryRunPreview (test page)", () => {
   });
 });
 
+describe("orchestrateFeedback — delivery (#109)", () => {
+  const cfg = (over: Record<string, unknown>) => baseConfig({ templates: [{ type: "bug", label: "Bug", fields: [] }], llm: { provider: "off" }, ...over });
+
+  it("delivery local without a tracker: stored only, no tracker call, row records the delivery", async () => {
+    const db = fakeDb();
+    const gh = ghCapture();
+    const r = await orchestrateFeedback(env(db.db), loaded(cfg({ tracker: undefined, delivery: "local" })), payload(), { chat: chatMustNotRun, fetchImpl: gh.fetchImpl, newId: () => "fid-l" });
+    expect(r.body).toMatchObject({ status: "created", id: "fid-l" });
+    expect(gh.calls).toHaveLength(0);
+    expect(db.feedback[0]!.row).toMatchObject({ delivery: "local", delivery_state: null });
+  });
+
+  it("delivery project is stored as pending and never falls back to a public issue", async () => {
+    const db = fakeDb();
+    const gh = ghCapture();
+    const tracker = { kind: "github", defaultRepo: "acme/site", patSecret: "GITHUB_PAT_default", project: { org: "acme", number: 3 } };
+    const r = await orchestrateFeedback(env(db.db), loaded(cfg({ tracker, delivery: "project" })), payload(), { chat: chatMustNotRun, fetchImpl: gh.fetchImpl });
+    expect(r.body).toMatchObject({ status: "issue_failed" });
+    expect(gh.calls).toHaveLength(0);
+    expect(db.feedback[0]!.row).toMatchObject({ delivery: "project", delivery_state: "pending" });
+    expect(JSON.parse(db.feedback[0]!.row["issue_draft"] as string)).toMatchObject({ title: expect.any(String), body: expect.any(String) }); // kept for the later delivery
+    expect(db.dedup.size).toBe(0);
+  });
+
+  it("issue delivery records delivered, or failed when GitHub answers an error", async () => {
+    const ok = fakeDb();
+    await orchestrateFeedback(env(ok.db), loaded(cfg({})), payload(), { chat: chatMustNotRun, fetchImpl: ghCapture().fetchImpl });
+    expect(ok.feedback[0]!.row).toMatchObject({ delivery: "issue", delivery_state: "delivered" });
+    const bad = fakeDb();
+    await orchestrateFeedback(env(bad.db), loaded(cfg({})), payload(), { chat: chatMustNotRun, fetchImpl: ghCapture(500).fetchImpl });
+    expect(bad.feedback[0]!.row).toMatchObject({ delivery: "issue", delivery_state: "failed" });
+  });
+});
+
 describe("orchestrateFeedback — idempotency & noIssue", () => {
   it("replays the stored response for a repeated feedbackId (no second issue)", async () => {
     const db = fakeDb();

@@ -49,6 +49,13 @@ account settings read, user details and memberships read); variables `CLOUDFLARE
 `FK_CUSTOM_DOMAIN`. Environments `dev` and `production`; add required reviewers to
 `production` to gate promotion.
 
+**Delivery capability** (#109): after the smoke check, the promote workflow writes the
+release's `DELIVERY_CAPABILITY` (`src/shared/contract.ts`) to `meta.delivery_capability`.
+Config writers accept new delivery shapes only up to that level, because stable reads the
+same configs. A rollback with `wrangler rollback` does not lower the value: before rolling
+back past a release that raised it, check that no stored config needs the higher level
+(`noIssue: true` next to `delivery` keeps older releases from opening issues).
+
 **Migrations** run before the dev upload and touch the database production also uses. They
 must stay expand/contract: a migration may only add, and stable must keep working on the new
 schema for one release.

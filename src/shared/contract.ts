@@ -5,7 +5,16 @@ import { z } from "zod";
 import { CONTEXT_KEY_RE, MAX_CONTEXT_KEYS, MAX_CONTEXT_VALUE } from "./limits.js";
 
 export const WIRE_VERSION = 1 as const;
-export const SCHEMA_VERSION = 3 as const;
+export const SCHEMA_VERSION = 4 as const;
+
+// What this release does with the delivery model (#109). The promote workflow
+// writes it to meta.delivery_capability once a release is live on stable; config
+// writers refuse shapes the stored value does not cover (FK_CONFIG_SHAPE_UNSUPPORTED),
+// because dev and stable share one D1 and stable must understand every stored config.
+//   0  issue delivery and noIssue only (≤ 0.1.13)
+//   1  reads delivery / tracker.project / absent tracker; delivers issue and local
+//   2  also delivers to a GitHub Project
+export const DELIVERY_CAPABILITY = 1 as const;
 
 // ── Template schema (per ADR-002/005) ────────────────────────────────────────
 export const FieldKind = z.enum(["text", "longtext", "select", "url"]);
@@ -61,9 +70,14 @@ export const TemplateDefinition = z.object({
         .default([]),
     })
     .default({ labels: [] }),
-  noIssue: z.boolean().default(false), // praise → persist only
+  noIssue: z.boolean().default(false), // praise → persist only (read as delivery "local")
+  // Where reports of this type go; see resolveDelivery for the order.
+  delivery: z.enum(["issue", "project", "local"]).optional(),
 });
 export type TemplateDefinition = z.infer<typeof TemplateDefinition>;
+
+export const Delivery = z.enum(["issue", "project", "local"]);
+export type Delivery = z.infer<typeof Delivery>;
 
 export const FeedbackConfig = z.object({
   projectId: z.string().min(1),
@@ -85,11 +99,18 @@ export const FeedbackConfig = z.object({
     // fence-tolerant parse instead (ADR-007/008).
     structuredOutput: z.boolean().default(true),
   }),
-  tracker: z.object({
-    kind: z.literal("github"),
-    defaultRepo: z.string().min(1),
-    patSecret: z.string().min(1), // name of the GITHUB_PAT_<name> worker secret
-  }),
+  // Project-wide default for templates without their own delivery.
+  delivery: z.enum(["issue", "project", "local"]).optional(),
+  // Optional when every type is delivered locally.
+  tracker: z
+    .object({
+      kind: z.literal("github"),
+      defaultRepo: z.string().min(1).optional(), // required when a type opens issues
+      patSecret: z.string().min(1), // name of the GITHUB_PAT_<name> worker secret
+      // Private organisation GitHub Project for delivery "project" (number from its URL).
+      project: z.object({ org: z.string().min(1), number: z.number().int().positive() }).optional(),
+    })
+    .optional(),
   storage: z
     .object({
       kind: z.enum(["r2", "none"]).default("r2"),
@@ -118,8 +139,52 @@ export const FeedbackConfig = z.object({
   // Optional Cloudflare Turnstile gate on POST /api/feedback. `secret` names the
   // TURNSTILE_SECRET_<name> worker secret (like tracker.patSecret).
   turnstile: z.object({ siteKey: z.string().min(1), secret: z.string().regex(/^TURNSTILE_SECRET_[A-Za-z0-9_]+$/) }).optional(),
+}).superRefine((cfg, ctx) => {
+  const explicit = cfg.delivery !== undefined || cfg.templates.every((t) => t.delivery !== undefined);
+  if (cfg.tracker?.project && !explicit) {
+    // A Project next to a repo must never fall back to public issues by accident.
+    ctx.addIssue({ code: "custom", path: ["delivery"], message: 'tracker.project is set: set delivery explicitly ("issue", "project" or "local")' });
+  }
+  cfg.templates.forEach((t, i) => {
+    if (t.noIssue && t.delivery === "issue") {
+      ctx.addIssue({ code: "custom", path: ["templates", i, "delivery"], message: 'noIssue: true contradicts delivery "issue"; remove one of them' });
+      return;
+    }
+    const d = resolveDelivery(cfg, t);
+    if (d === "issue" && !cfg.tracker) ctx.addIssue({ code: "custom", path: ["tracker"], message: `type "${t.type}" opens issues: tracker is required` });
+    else if (d === "issue" && !t.tracker.repo && !cfg.tracker?.defaultRepo) {
+      ctx.addIssue({ code: "custom", path: ["tracker", "defaultRepo"], message: `type "${t.type}" opens issues: set tracker.defaultRepo or templates[${i}].tracker.repo` });
+    }
+    if (d === "project" && !cfg.tracker?.project) ctx.addIssue({ code: "custom", path: ["tracker", "project"], message: `type "${t.type}" is delivered to a GitHub Project: tracker.project is required` });
+  });
 });
 export type FeedbackConfig = z.infer<typeof FeedbackConfig>;
+
+/** Where a template's reports go. Order: the template's delivery, then its
+ * noIssue (local; a project default never overrides it), then the project's
+ * delivery, then issue with a tracker and local without. */
+export function resolveDelivery(
+  config: { delivery?: Delivery; tracker?: unknown },
+  template: { delivery?: Delivery; noIssue?: boolean },
+): Delivery {
+  if (template.delivery) return template.delivery;
+  if (template.noIssue) return "local";
+  if (config.delivery) return config.delivery;
+  return config.tracker ? "issue" : "local";
+}
+
+/** Capability a stored config needs (see DELIVERY_CAPABILITY). Works on the raw
+ * JSON, so writers can check before or without parsing. Mirrored in
+ * scripts/seed-config.mjs (a test keeps both in step). */
+export function requiredDeliveryCapability(raw: unknown): number {
+  if (!raw || typeof raw !== "object") return 0;
+  const cfg = raw as { delivery?: unknown; tracker?: { project?: unknown } | null; templates?: unknown };
+  const templates = Array.isArray(cfg.templates) ? (cfg.templates as Array<{ delivery?: unknown } | null>) : [];
+  const deliveries = [cfg.delivery, ...templates.map((t) => t?.delivery)].filter((d) => d !== undefined);
+  if (deliveries.includes("project") || cfg.tracker?.project !== undefined) return 2;
+  if (deliveries.length > 0 || !cfg.tracker) return 1;
+  return 0;
+}
 
 // ── Public projection (what /api/config returns — never internals) ────────────
 export const PublicConfig = z.object({
@@ -209,7 +274,7 @@ export type FeedbackResponse =
   // the client that resending the same submission may succeed.
   | { v: 1; status: "error"; error: string; degraded?: boolean; code?: ErrorCode; retryable?: boolean };
 
-export type ErrorCode = "FK_PERSIST_FAILED";
+export type ErrorCode = "FK_PERSIST_FAILED" | "FK_CONFIG_SHAPE_UNSUPPORTED";
 
 // ── Funnel events (enum-only, never content) ──────────────────────────────────
 export const EventName = z.enum([

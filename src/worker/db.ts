@@ -44,3 +44,11 @@ export async function checkSchema(env: Env): Promise<SchemaState> {
     return { ok: false, version: null, expected: SCHEMA_VERSION, reason: `D1 read failed: ${(e as Error).message}` };
   }
 }
+
+/** meta.delivery_capability: what the live stable release handles (written by the
+ * promote workflow, see DELIVERY_CAPABILITY). Absent = 0, the pre-delivery model. */
+export async function storedDeliveryCapability(env: Env): Promise<number> {
+  const row = await env.DB.prepare("SELECT value FROM meta WHERE key = 'delivery_capability'").first<{ value: string }>();
+  const n = Number(row?.value ?? 0);
+  return Number.isInteger(n) && n > 0 ? n : 0;
+}

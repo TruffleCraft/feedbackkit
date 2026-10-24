@@ -1,4 +1,4 @@
-import { WIRE_VERSION, type FeedbackConfig, type FeedbackPayload, type FeedbackResponse, type TemplateDefinition } from "../shared/contract.js";
+import { WIRE_VERSION, resolveDelivery, type Delivery, type FeedbackConfig, type FeedbackPayload, type FeedbackResponse, type TemplateDefinition } from "../shared/contract.js";
 import { classifyAndExtract, type ChatFn, type ExtractionResult } from "./llm/client.js";
 import { createIssue, TrackerError, type FetchFn, type IssueFieldValue } from "./providers/github.js";
 import { deriveTitle, renderIssueBody, type RenderContext } from "../shared/render.js";
@@ -290,7 +290,8 @@ async function finalizeCreate(
   const title = deriveTitle(template, ctx);
   const issueBody = renderIssueBody(template, ctx, config.locale);
 
-  const repo = template.tracker.repo ?? config.tracker.defaultRepo;
+  const delivery = resolveDelivery(config, template);
+  const repo = template.tracker.repo ?? config.tracker?.defaultRepo ?? "";
   const labels = [...template.tracker.labels];
   if (opts.degraded) labels.push("ai-failed", "needs-triage");
   else if (opts.incomplete) labels.push("needs-triage");
@@ -309,15 +310,16 @@ async function finalizeCreate(
     llmProvider: config.llm.provider,
     llmModel: config.llm.model || null,
     configVersion: loaded.version,
+    delivery,
     now: opts.now,
   };
   // Everything a later admin retry needs to create the issue without the LLM.
   const { type: issueType, issueFields } = template.tracker;
   const draft: IssueDraft = { title, body: issueBody, labels, repo, ...(issueType ? { type: issueType } : {}), ...(issueFields.length ? { issueFields } : {}) };
 
-  // noIssue template (e.g. praise): persist only, no tracker call. D1 is the only
-  // copy, so the report is acknowledged only after the row is confirmed.
-  if (template.noIssue) {
+  // Local delivery (noIssue, e.g. praise): persist only, no tracker call. D1 is the
+  // only copy, so the report is acknowledged only after the row is confirmed.
+  if (delivery === "local") {
     const stored = await persistFeedback(env, { ...row, outcome: "created", issueUrl: null });
     if (!stored.ok) return persistFailed();
     const resp: FeedbackResponse = { v: WIRE_VERSION, status: "created", id: stored.id, ...understood(template, opts) };
@@ -325,14 +327,26 @@ async function finalizeCreate(
     return { http: 200, body: resp };
   }
 
+  // GitHub Project delivery lands in a later release (DELIVERY_CAPABILITY 2). Until
+  // then the report is stored as pending and never falls back to a public issue.
+  if (delivery === "project") {
+    const reason = "project delivery not available in this release";
+    const stored = await persistFeedback(env, { ...row, outcome: "issue_failed", issueUrl: null, lastError: reason, issueDraft: draft, deliveryState: "pending" });
+    if (!stored.ok) return persistFailed();
+    return { http: 200, body: { v: WIRE_VERSION, status: "issue_failed", id: stored.id, reason } };
+  }
+
   // Not delivered: persist for the admin retry and answer the terminal-but-retryable
   // issue_failed (not dedup-stored), or 503 when the row could not be stored either.
   const undelivered = async (reason: string): Promise<OrchestrateResult> => {
-    const stored = await persistFeedback(env, { ...row, outcome: "issue_failed", issueUrl: null, lastError: reason, issueDraft: draft });
+    const stored = await persistFeedback(env, { ...row, outcome: "issue_failed", issueUrl: null, lastError: reason, issueDraft: draft, deliveryState: "failed" });
     if (!stored.ok) return persistFailed();
     return { http: 200, body: { v: WIRE_VERSION, status: "issue_failed", id: stored.id, reason } };
   };
 
+  // The contract guarantees a tracker and a repo for issue delivery; a stored
+  // config from before that check still must not lose the report.
+  if (!config.tracker || !repo) return undelivered("tracker not configured");
   const pat = env[config.tracker.patSecret] as string | undefined;
   if (!pat) return undelivered("tracker credential not configured");
 
@@ -352,7 +366,7 @@ async function finalizeCreate(
   // Delivered: the issue holds the report, so a failed journey write only
   // degrades the history (the response is still a success).
   const outcome = opts.degraded ? "ai-failed" : opts.incomplete ? "accepted_incomplete" : "created";
-  const stored = await persistFeedback(env, { ...row, outcome, issueUrl: issue.url });
+  const stored = await persistFeedback(env, { ...row, outcome, issueUrl: issue.url, deliveryState: "delivered" });
   const status: "created" | "accepted_incomplete" = opts.degraded || opts.incomplete ? "accepted_incomplete" : "created";
   const resp: FeedbackResponse = { v: WIRE_VERSION, status, id: stored.ok ? stored.id : id, ...(config.issueLink ? { issueUrl: issue.url } : {}), ...understood(template, opts) };
   await dedupPut(env, payload.feedbackId, resp, opts.now);
@@ -434,6 +448,10 @@ export interface FeedbackRow {
   configVersion: number;
   lastError?: string;
   issueDraft?: IssueDraft;
+  /** Resolved destination (schema v4); absent on rows from callers that predate it. */
+  delivery?: Delivery;
+  /** pending | delivered | failed | unknown; not used for local delivery. */
+  deliveryState?: "pending" | "delivered" | "failed" | "unknown";
   now: number;
 }
 export type PersistResult = { ok: true; id: string } | { ok: false };
@@ -447,8 +465,9 @@ export async function persistFeedback(env: Env, o: FeedbackRow): Promise<Persist
   try {
     await env.DB.prepare(
       `INSERT INTO feedback (id, project_id, outcome, payload, issue_url, created_at,
-         type, title, llm_provider, llm_model, config_version, updated_at, last_error, issue_draft, client_feedback_id)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) ON CONFLICT DO NOTHING`,
+         type, title, llm_provider, llm_model, config_version, updated_at, last_error, issue_draft, client_feedback_id,
+         delivery, delivery_state)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17) ON CONFLICT DO NOTHING`,
     )
       .bind(
         o.id,
@@ -466,6 +485,8 @@ export async function persistFeedback(env: Env, o: FeedbackRow): Promise<Persist
         o.lastError ?? null,
         o.issueDraft ? JSON.stringify(o.issueDraft) : null,
         clientId,
+        o.delivery ?? null,
+        o.deliveryState ?? null,
       )
       .run();
     const row = await env.DB.prepare("SELECT id, outcome FROM feedback WHERE project_id = ?1 AND client_feedback_id = ?2")
@@ -476,7 +497,7 @@ export async function persistFeedback(env: Env, o: FeedbackRow): Promise<Persist
       return { ok: false };
     }
     if (row.id !== o.id && row.outcome === "issue_failed" && o.issueUrl) {
-      await env.DB.prepare("UPDATE feedback SET outcome = ?1, issue_url = ?2, last_error = NULL, updated_at = ?3 WHERE id = ?4 AND outcome = 'issue_failed'")
+      await env.DB.prepare("UPDATE feedback SET outcome = ?1, issue_url = ?2, last_error = NULL, delivery_state = 'delivered', updated_at = ?3 WHERE id = ?4 AND outcome = 'issue_failed'")
         .bind(o.outcome, o.issueUrl, o.now, row.id)
         .run();
     }

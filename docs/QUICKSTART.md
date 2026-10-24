@@ -178,6 +178,30 @@ such as Priority. A template sets both next to its labels:
 - GitHub sets the type only for tokens with push access, the same as labels.
   After setup, send one test report and check type and fields on the issue.
 
+### Where reports go (`delivery`)
+
+Each type has a destination. New settings are only accepted once stable handles
+them; see the gate below.
+
+| `delivery` | What happens |
+|---|---|
+| `"issue"` | A GitHub issue in `tracker.defaultRepo` (or the type's `tracker.repo`). The default when `tracker` is set. |
+| `"local"` | Stored in FeedbackKit only, never an issue. The default without `tracker`. `noIssue: true` means the same. |
+| `"project"` | A draft issue in a private organisation GitHub Project (`tracker.project: { "org": "acme", "number": 3 }`). Coming in a later release; until then such reports are stored and never become public issues. |
+
+The order: the type's `delivery`, then the type's `noIssue`, then the project's
+`delivery`, then the default. `tracker` is optional when every type is local.
+`tracker.project` needs an explicit `delivery`, so private feedback never lands
+in a public repo by accident. `noIssue: true` next to `delivery: "issue"` is
+rejected; next to `"project"` or `"local"` it is allowed and keeps older
+gateways from opening issues.
+
+**Gate:** dev and stable read the same database, so the import route and
+`pnpm seed --remote` refuse `delivery`, `tracker.project` and configs without
+`tracker` (422 `FK_CONFIG_SHAPE_UNSUPPORTED`, see [ERRORS.md](ERRORS.md)) until
+a stable release that handles them is live. Configs without these keys are not
+affected.
+
 ### Privacy and capture settings (project config)
 
 ```jsonc
