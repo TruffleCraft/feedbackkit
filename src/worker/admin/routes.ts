@@ -107,13 +107,15 @@ export function registerAdminRoutes(app: AppT): void {
       (projects.results ?? []).map(async (p) => {
         const cfg = parseConfig(p.config);
         if (!cfg) return { id: p.id, configVersion: Number(p.config_version), configValid: false as const };
-        const patSecret = cfg.tracker.patSecret;
-        const pat = c.env[patSecret] as string | undefined;
+        // No tracker: every type is stored locally, nothing to check on GitHub.
+        const patSecret = cfg.tracker?.patSecret;
+        const repo = cfg.tracker?.defaultRepo ?? null;
+        const pat = patSecret ? (c.env[patSecret] as string | undefined) : undefined;
         let access: { ok: boolean; status: number; reason: string | null } | null = null;
         let patExpiry: ReturnType<typeof parsePatExpiry> = null;
-        if (pat) {
+        if (pat && repo) {
           try {
-            const a = await checkRepoAccess(cfg.tracker.defaultRepo, pat);
+            const a = await checkRepoAccess(repo, pat);
             access = { ok: a.ok, status: a.status, reason: a.reason ?? null };
             patExpiry = parsePatExpiry(a.patExpiry);
           } catch (e) {
@@ -136,13 +138,15 @@ export function registerAdminRoutes(app: AppT): void {
             usedToday: usedToday.get(`llm:${cfg.projectId}`) ?? 0,
             dailyBudget: cfg.llm.dailyBudget,
           },
-          tracker: {
-            repo: cfg.tracker.defaultRepo,
-            patSecret,
-            patPresent: Boolean(pat),
-            access,
-            patExpiry,
-          },
+          tracker: patSecret
+            ? {
+                repo,
+                patSecret,
+                patPresent: Boolean(pat),
+                access,
+                patExpiry,
+              }
+            : null,
           ...(cfg.turnstile ? { turnstile: { secret: cfg.turnstile.secret, secretPresent: Boolean(c.env[cfg.turnstile.secret]) } } : {}),
         };
       }),

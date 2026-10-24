@@ -77,6 +77,13 @@ jobs:
         if: vars.FK_GATEWAY_URL != ''
         run: node scripts/smoke-check.mjs "${{ vars.FK_GATEWAY_URL }}" "${{ steps.v.outputs.version }}" stable
 
+      # Config writers accept new delivery shapes only once stable handles them (#109).
+      - name: Record delivery capability
+        run: |
+          level="$(node scripts/delivery-capability.mjs)"
+          pnpm exec wrangler d1 execute feedbackkit --remote --command \
+            "INSERT INTO meta (key, value) VALUES ('delivery_capability', '${level}') ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+
       - name: Release
         env:
           TAG: ${{ steps.v.outputs.tag }}

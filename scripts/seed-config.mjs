@@ -9,6 +9,7 @@ import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { codeDeliveryCapability, requiredDeliveryCapability } from "./delivery-capability.mjs";
 
 const args = process.argv.slice(2);
 const remote = args.includes("--remote");
@@ -33,8 +34,8 @@ delete cfg.publicKey; // stored in its own column, not in the config blob
 const problems = [];
 if (!cfg.projectId) problems.push("projectId is required");
 if (!Array.isArray(cfg.templates) || cfg.templates.length === 0) problems.push("templates must be a non-empty array");
-if (!cfg.tracker?.defaultRepo) problems.push("tracker.defaultRepo is required");
-if (!cfg.tracker?.patSecret) problems.push("tracker.patSecret is required (the name of the GITHUB_PAT_<name> secret)");
+// tracker is optional when every type is stored locally (delivery "local").
+if (cfg.tracker && !cfg.tracker.patSecret) problems.push("tracker.patSecret is required (the name of the GITHUB_PAT_<name> secret)");
 if (!cfg.llm) problems.push("llm is required (provider + model)");
 if (!cfg.auth) problems.push("auth is required (auth.origins)");
 if (problems.length) {
@@ -56,6 +57,32 @@ ON CONFLICT(id) DO UPDATE SET config = excluded.config, config_version = project
 if (dry) {
   console.log(sql);
   process.exit(0);
+}
+
+// Compatibility gate (#109), like the import route: the remote D1 is shared with
+// stable, so new delivery shapes wait until a stable release that handles them
+// is recorded in meta.delivery_capability. A local D1 is not shared: no gate.
+const needed = requiredDeliveryCapability(cfg);
+if (remote && needed > 0) {
+  let stored = 0;
+  try {
+    const out = execFileSync(
+      "pnpm",
+      ["exec", "wrangler", "d1", "execute", "feedbackkit", "--remote", "--json", "--command", "SELECT value FROM meta WHERE key = 'delivery_capability'"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] },
+    );
+    stored = Number(JSON.parse(out)[0]?.results?.[0]?.value ?? 0) || 0;
+  } catch {
+    console.error("seed: could not read meta.delivery_capability from the remote D1 — is wrangler.toml materialized?");
+    process.exit(1);
+  }
+  const available = Math.min(stored, codeDeliveryCapability());
+  if (needed > available) {
+    console.error(
+      `seed: FK_CONFIG_SHAPE_UNSUPPORTED — this config uses delivery settings (delivery, tracker.project or no tracker) that need delivery capability ${needed}; the live stable release provides ${available}. Promote a release that supports them first, or keep tracker and noIssue.`,
+    );
+    process.exit(1);
+  }
 }
 
 if (!pinnedKey) {

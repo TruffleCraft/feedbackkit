@@ -1,9 +1,9 @@
 import { Hono } from "hono";
-import { WIRE_VERSION, SCHEMA_VERSION, FeedbackPayload, EventPayload, FeedbackConfig } from "../shared/contract.js";
+import { WIRE_VERSION, SCHEMA_VERSION, DELIVERY_CAPABILITY, FeedbackPayload, EventPayload, FeedbackConfig, requiredDeliveryCapability } from "../shared/contract.js";
 import { toPublicConfig } from "../shared/projection.js";
 import { orchestrateFeedback, realChat, dryRunPreview, persistFailed } from "./orchestrate.js";
 import { renderTestPage, TEST_PAGE_CSP } from "./testpage.js";
-import { checkSchema, countProjects } from "./db.js";
+import { checkSchema, countProjects, storedDeliveryCapability } from "./db.js";
 import { renderLanding, LANDING_CSP } from "./landing.js";
 import { loadProject } from "./config.js";
 import { originAllowed } from "./security/origin.js";
@@ -105,11 +105,16 @@ app.get("/diag", async (c) => {
     if (loaded === null && tracker.startsWith("skipped")) {
       tracker = llm = "unknown project";
     } else if (loaded) {
-      const pat = c.env[loaded.config.tracker.patSecret] as string | undefined;
-      if (!pat) {
-        tracker = `secret ${loaded.config.tracker.patSecret} not set`;
+      const t = loaded.config.tracker;
+      const pat = t ? (c.env[t.patSecret] as string | undefined) : undefined;
+      if (!t) {
+        tracker = "not configured (every type is stored locally)";
+      } else if (!pat) {
+        tracker = `secret ${t.patSecret} not set`;
+      } else if (!t.defaultRepo) {
+        tracker = "no defaultRepo (no type opens issues in the default repo)";
       } else {
-        const a = await checkRepoAccess(loaded.config.tracker.defaultRepo, pat);
+        const a = await checkRepoAccess(t.defaultRepo, pat);
         tracker = a.ok ? `ok${a.patExpiry ? ` (PAT expires ${a.patExpiry})` : ""}` : `FAIL: ${a.reason}`;
       }
       const key = c.env["LLM_API_KEY"] as string | undefined;
@@ -142,11 +147,12 @@ app.get("/diag", async (c) => {
   // public endpoint without disclosing anything sensitive (presence only).
   const secrets = secretsPresence(c.env);
   const projects = await countProjects(c.env);
+  const needsPat = projects ? await anyProjectHasTracker(c.env) : true;
   const firstRun = projects === null || projects === 0;
   const nextSteps: string[] = [];
   if (!schema.ok) nextSteps.push("apply D1 migrations (see schema.reason)");
   if (!secrets.adminToken) nextSteps.push("set the admin secret: npx wrangler secret put ADMIN_TOKEN");
-  if (!secrets.githubPat) nextSteps.push("set a GitHub PAT: npx wrangler secret put GITHUB_PAT_default");
+  if (!secrets.githubPat && needsPat) nextSteps.push("set a GitHub PAT: npx wrangler secret put GITHUB_PAT_default");
   if (firstRun) nextSteps.push("create your first project: POST /api/admin/config/import (see docs/QUICKSTART.md)");
   if (!secrets.llmKey) nextSteps.push("optional: set LLM_API_KEY to enable AI follow-up questions");
   if (secrets.accessTeamDomain !== secrets.accessAud) nextSteps.push("Access sign-in needs both FK_ACCESS_TEAM_DOMAIN and FK_ACCESS_AUD (see docs/QUICKSTART.md#admin)");
@@ -359,6 +365,33 @@ app.post("/api/admin/config/import", async (c) => {
     return c.json({ v: WIRE_VERSION, status: "error", error: "config failed validation", issues }, 400);
   }
 
+  // Compatibility gate (#109): stable reads the same D1, so a shape it cannot
+  // handle yet would break the project there. Shapes are accepted only once the
+  // promote workflow recorded a stable release that handles them.
+  const needed = requiredDeliveryCapability(cfg);
+  if (needed > 0) {
+    let stored: number;
+    try {
+      stored = Math.min(await storedDeliveryCapability(c.env), DELIVERY_CAPABILITY);
+    } catch (e) {
+      console.error(`[feedbackkit] delivery capability read failed: ${(e as Error).message}`);
+      return c.json({ v: WIRE_VERSION, status: "error", error: "import failed — are migrations applied? see /diag" }, 503);
+    }
+    if (needed > stored) {
+      return c.json(
+        {
+          v: WIRE_VERSION,
+          status: "error",
+          code: "FK_CONFIG_SHAPE_UNSUPPORTED",
+          error: `this config uses delivery settings (delivery, tracker.project or no tracker) that need delivery capability ${needed}; the live stable release provides ${stored}. Promote a release that supports them first, or keep tracker and noIssue.`,
+          required: needed,
+          available: stored,
+        },
+        422,
+      );
+    }
+  }
+
   // Store the raw blob (minus publicKey), like `pnpm seed`: loadProject re-runs
   // Zod on every read, so future schema defaults apply without a re-import.
   const id = validated.data.projectId;
@@ -487,6 +520,23 @@ app.post("/api/feedback", async (c) => {
     return c.json(failed.body, 503, failed.headers);
   }
 });
+
+/** Whether a GitHub PAT is needed: a project has a tracker, or a config can't be
+ * read (then assume it does). Projects that store every report locally need none. */
+async function anyProjectHasTracker(env: Env): Promise<boolean> {
+  try {
+    const rows = await env.DB.prepare("SELECT config FROM projects").all<{ config: string }>();
+    return (rows.results ?? []).some((r) => {
+      try {
+        return (JSON.parse(r.config) as { tracker?: unknown }).tracker != null;
+      } catch {
+        return true;
+      }
+    });
+  } catch {
+    return true;
+  }
+}
 
 /** Id of the stored row for a client submission, or null (none, or D1 down). */
 async function storedFeedbackId(env: Env, projectId: string, clientId: string): Promise<string | null> {

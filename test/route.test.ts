@@ -75,7 +75,7 @@ describe("GET /api/config", () => {
 
 describe("GET /diag", () => {
   it("is green when schema matches and bindings exist", async () => {
-    const res = await app.request("/diag", {}, env((sql) => (sql.includes("meta") ? { value: "3" } : null)));
+    const res = await app.request("/diag", {}, env((sql) => (sql.includes("meta") ? { value: "4" } : null)));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; schema: { ok: boolean } };
     expect(body.ok).toBe(true);
@@ -88,10 +88,10 @@ describe("GET /diag", () => {
   });
 
   it("stays green on a newer, expand-only schema (dev channel migrated first)", async () => {
-    const res = await app.request("/diag", {}, env((sql) => (sql.includes("meta") ? { value: "3" } : null)));
+    const res = await app.request("/diag", {}, env((sql) => (sql.includes("meta") ? { value: "5" } : null)));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { schema: { ok: boolean; version: number } };
-    expect(body.schema).toMatchObject({ ok: true, version: 3 });
+    expect(body.schema).toMatchObject({ ok: true, version: 5 });
   });
 });
 

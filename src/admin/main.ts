@@ -32,7 +32,9 @@ interface Template {
   fields?: FieldSpec[];
   tracker?: { repo?: string; labels?: string[]; type?: string; issueFields?: { fieldId: number }[] };
   noIssue?: boolean;
+  delivery?: Delivery;
 }
+type Delivery = "issue" | "project" | "local";
 interface ProjectConfig {
   publicKey: string;
   configVersion: number;
@@ -40,8 +42,15 @@ interface ProjectConfig {
   locale?: string;
   askType?: boolean;
   templates: Template[];
-  tracker: { defaultRepo: string };
+  delivery?: Delivery;
+  tracker?: { defaultRepo?: string; project?: { org: string; number: number } };
   auth?: { origins?: string[] };
+}
+
+// Same order as resolveDelivery in src/shared/contract.ts (not imported: it would
+// pull zod into this bundle).
+function deliveryOf(cfg: ProjectConfig, t: Template): Delivery {
+  return t.delivery ?? (t.noIssue ? "local" : (cfg.delivery ?? (cfg.tracker ? "issue" : "local")));
 }
 interface Attachment {
   key: string;
@@ -71,13 +80,14 @@ interface SystemProject {
   configValid: boolean;
   enabled?: boolean;
   llm?: { provider: string; model: string | null; usedToday: number; dailyBudget: number };
+  /** null: no tracker, every type is stored locally. */
   tracker?: {
-    repo: string;
+    repo: string | null;
     patSecret: string;
     patPresent: boolean;
     access: { ok: boolean; status: number; reason: string | null } | null;
     patExpiry: { raw: string; at: string | null; daysLeft: number | null } | null;
-  };
+  } | null;
   /** Unhandled reports that retention deletes within 7 days (null: no retentionDays). */
   retention?: { retentionDays: number; dueSoon: number; items: Array<{ id: string; deletesAt: number }> } | null;
 }
@@ -544,12 +554,14 @@ function renderTypes(cfg: ProjectConfig) {
       const fields = t.fields ?? [];
       const required = fields.filter((f) => f.required).length;
       const labels = t.tracker?.labels ?? [];
-      const meta = t.noIssue
-        ? `${fields.length === 0 ? "No fields" : `${fields.length} fields`} · saved without an issue`
+      const delivery = deliveryOf(cfg, t);
+      const project = cfg.tracker?.project;
+      const meta = delivery !== "issue"
+        ? `${fields.length === 0 ? "No fields" : `${fields.length} fields`} · ${delivery === "project" && project ? `GitHub Project ${project.org} #${project.number}` : "saved without an issue"}`
         : [
             fields.length === 1 ? "1 field" : `${fields.length} fields`,
             `${required} required`,
-            t.tracker?.repo ?? cfg.tracker.defaultRepo,
+            t.tracker?.repo ?? cfg.tracker?.defaultRepo,
             t.tracker?.type ? `type ${t.tracker.type}` : null,
             labels.length ? `labels ${labels.join(", ")}` : null,
             t.tracker?.issueFields?.length ? `${t.tracker.issueFields.length} issue field${t.tracker.issueFields.length === 1 ? "" : "s"}` : null,
@@ -586,7 +598,7 @@ function renderTypes(cfg: ProjectConfig) {
                 ),
               ),
             )
-          : el("p", { class: "help" }, t.noIssue ? "Stored in the history. It never opens an issue." : "No fields. The issue holds the text as written."),
+          : el("p", { class: "help" }, delivery === "local" ? "Stored in the history. It never opens an issue." : delivery === "project" ? "No fields. The draft in the GitHub Project holds the text as written." : "No fields. The issue holds the text as written."),
       );
       const d = el("details", { class: "tcard" }, el("summary", null, el("span", { class: "nm" }, labelText(t.label, locale) || t.type), el("span", { class: "meta" }, meta)), inner);
       if (idx === 0) d.open = true;
@@ -642,15 +654,15 @@ function attentionItems(s: SystemInfo): HTMLElement[] {
   const item = (project: string | null, ...text: Kid[]) => out.push(el("div", null, el("span", null, project ? el("b", null, project) : null, project ? " " : null, ...text)));
   if (!s.schema.ok) item(null, `The database schema is v${s.schema.version ?? "?"}, the code expects v${s.schema.expected}. Apply the D1 migrations.`);
   for (const p of s.projects) {
-    if (!p.configValid || !p.tracker || !p.llm) {
+    if (!p.configValid || p.tracker === undefined || !p.llm) {
       item(p.id, "has a stored config that doesn't validate. Import a fixed config.");
       continue;
     }
     const t = p.tracker;
-    if (!t.patPresent) item(p.id, "can't create issues: ", el("code", { class: "mono" }, t.patSecret), " is not set.");
-    else if (t.access && !t.access.ok) item(p.id, `can't reach ${t.repo}: ${t.access.reason ?? `GitHub answered ${t.access.status}`}.`);
-    const days = t.patExpiry?.daysLeft;
-    if (t.patExpiry?.at && typeof days === "number" && days <= PAT_WARN_DAYS) {
+    if (t && !t.patPresent) item(p.id, "can't create issues: ", el("code", { class: "mono" }, t.patSecret), " is not set.");
+    else if (t?.access && !t.access.ok) item(p.id, `can't reach ${t.repo}: ${t.access.reason ?? `GitHub answered ${t.access.status}`}.`);
+    const days = t?.patExpiry?.daysLeft;
+    if (t?.patExpiry?.at && typeof days === "number" && days <= PAT_WARN_DAYS) {
       const when = dateFmt.format(new Date(t.patExpiry.at));
       item(p.id, days < 0 ? `GitHub token expired on ${when}.` : `GitHub token expires on ${when}.`);
     }
@@ -672,7 +684,7 @@ function attentionItems(s: SystemInfo): HTMLElement[] {
 
 function projectRow(p: SystemProject): HTMLElement {
   const name = el("td", { class: "name" }, p.id);
-  if (!p.configValid || !p.llm || !p.tracker) return el("tr", null, name, el("td", { colspan: "3", class: "danger" }, "Config doesn't validate"));
+  if (!p.configValid || !p.llm || p.tracker === undefined) return el("tr", null, name, el("td", { colspan: "3", class: "danger" }, "Config doesn't validate"));
   const { llm, tracker } = p;
   let usage: HTMLElement[];
   if (llm.provider === "off") usage = [el("td", { class: "muted sm" }, "AI off"), el("td")];
@@ -683,8 +695,9 @@ function projectRow(p: SystemProject): HTMLElement {
     usage = [el("td", { class: "w38" }, el("div", { class: "bar", role: "img", "aria-label": `${Math.round(ratio * 100)}% of the daily budget` }, fill)), el("td", { class: "num" }, `${llm.usedToday} / ${llm.dailyBudget}`)];
   }
   let token: HTMLElement;
-  const exp = tracker.patExpiry;
-  if (!tracker.patPresent) token = el("td", null, el("span", { class: "danger" }, "Secret not set"));
+  const exp = tracker?.patExpiry;
+  if (!tracker) token = el("td", { class: "muted" }, "No tracker");
+  else if (!tracker.patPresent) token = el("td", null, el("span", { class: "danger" }, "Secret not set"));
   else if (exp?.at && typeof exp.daysLeft === "number") {
     const soon = exp.daysLeft <= PAT_WARN_DAYS;
     token = el("td", null, el("span", soon ? { class: "danger" } : null, dateFmt.format(new Date(exp.at))), el("div", { class: "sm muted" }, inDays(exp.daysLeft)));
