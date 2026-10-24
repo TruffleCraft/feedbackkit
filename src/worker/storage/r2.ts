@@ -103,22 +103,31 @@ export async function sweepExpiredAssets(env: Env, now = Date.now(), batch = 500
   return n;
 }
 
-/** GDPR Art. 17: delete every attachment tied to a feedback id (admin-authed). */
-export async function deleteAssetsForFeedback(env: Env, feedbackId: string): Promise<number> {
-  const rows = await env.DB.prepare(`SELECT key FROM assets WHERE feedback_id = ?1 AND deleted = 0`)
-    .bind(feedbackId)
-    .all<{ key: string }>();
-  let n = 0;
+/** GDPR Art. 17: delete every attachment tied to a feedback id (admin-authed).
+ * Retention passes the project so it only touches that project's assets. */
+export async function deleteAssetsForFeedback(env: Env, feedbackId: string, projectId?: string): Promise<number> {
+  return (await deleteAssets(env, feedbackId, projectId)).deleted;
+}
+
+/** Like deleteAssetsForFeedback, and also reports the keys that could not be deleted. */
+export async function deleteAssets(env: Env, feedbackId: string, projectId?: string): Promise<{ deleted: number; failed: string[] }> {
+  const rows = await (projectId
+    ? env.DB.prepare(`SELECT key FROM assets WHERE feedback_id = ?1 AND project_id = ?2 AND deleted = 0`).bind(feedbackId, projectId)
+    : env.DB.prepare(`SELECT key FROM assets WHERE feedback_id = ?1 AND deleted = 0`).bind(feedbackId)
+  ).all<{ key: string }>();
+  let deleted = 0;
+  const failed: string[] = [];
   for (const r of rows.results ?? []) {
     // Per-row like the sweep: one bad key must not abort a compliance erasure.
     // Retry is safe (idempotent: WHERE deleted = 0 + idempotent R2 delete).
     try {
       await env.UPLOADS.delete(r.key);
       await env.DB.prepare(`UPDATE assets SET deleted = 1 WHERE key = ?1`).bind(r.key).run();
-      n++;
+      deleted++;
     } catch (e) {
-      console.warn(`[feedbackkit] GDPR delete failed for ${r.key}: ${(e as Error).message}`);
+      failed.push(r.key);
+      console.warn(`[feedbackkit] asset delete failed for ${r.key}: ${(e as Error).message}`);
     }
   }
-  return n;
+  return { deleted, failed };
 }

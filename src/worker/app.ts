@@ -12,6 +12,7 @@ import { verifyTurnstile } from "./security/turnstile.js";
 import { checkRepoAccess } from "./providers/github.js";
 import { sniffImage, storeAttachment, deleteAssetsForFeedback, publicUrl, MAX_UPLOAD_BYTES } from "./storage/r2.js";
 import { ConfigError } from "./errors.js";
+import { retentionNotice, type RetentionNotice } from "./storage/retention.js";
 import { VERSION, releaseOf, bindingsPresence, secretsPresence } from "./status.js";
 import { adminAuthed, adminGate } from "./admin/auth.js";
 import { registerAdminRoutes } from "./admin/routes.js";
@@ -87,6 +88,7 @@ app.get("/diag", async (c) => {
   let tracker = "skipped — pass ?project=<key>";
   let llm = "skipped — pass ?project=<key>";
   let r2 = "skipped — pass ?project=<key> (admin)";
+  let retention: RetentionNotice | string | null = "skipped — pass ?project=<key> (admin)";
   const project = c.req.query("project");
   if (project && !(await adminAuthed(c))) {
     tracker = llm = "unauthorized — deep check requires Authorization: Bearer <ADMIN_TOKEN> or a Cloudflare Access sign-in";
@@ -128,6 +130,9 @@ app.get("/diag", async (c) => {
       } catch (e) {
         r2 = `FAIL: ${(e as Error).message}`;
       }
+
+      // Unhandled reports that retention deletes within the notice period (#108).
+      retention = await retentionNotice(c.env, loaded.config.projectId, loaded.config.storage.retentionDays).catch((e) => `FAIL: ${(e as Error).message}`);
     }
   }
 
@@ -158,7 +163,7 @@ app.get("/diag", async (c) => {
       projects,
       firstRun,
       nextSteps,
-      checks: { tracker, llm, r2 },
+      checks: { tracker, llm, r2, retention },
       ok,
     },
     ok ? 200 : 503,

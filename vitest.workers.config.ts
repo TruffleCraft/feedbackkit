@@ -13,7 +13,9 @@ export default defineWorkersConfig(async () => {
       poolOptions: {
         workers: {
           singleWorker: true,
-          isolatedStorage: true,
+          // Isolated storage cannot pop R2's SQLite frames in this pool version;
+          // test/durable/reset.ts empties D1 and R2 before each test instead.
+          isolatedStorage: false,
           miniflare: {
             compatibilityDate: "2025-01-01",
             compatibilityFlags: ["nodejs_compat"],

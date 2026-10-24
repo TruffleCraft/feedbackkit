@@ -148,6 +148,14 @@ export function system(now = Date.now()) {
         enabled: true,
         llm: { provider: "openrouter", model: "openai/gpt-4o-mini", usedToday: 31, dailyBudget: 150 },
         tracker: { repo: "pantry/app", patSecret: "GITHUB_PAT_PANTRY", patPresent: true, access: { ok: true, status: 200, reason: null }, patExpiry: expiry(145) },
+        retention: {
+          retentionDays: 30,
+          dueSoon: 2,
+          items: [
+            { id: "r1", type: "praise", outcome: "created", createdAt: now - 27 * DAY, deletesAt: now + 3 * DAY },
+            { id: "r2", type: "bug", outcome: "issue_failed", createdAt: now - 25 * DAY, deletesAt: now + 5 * DAY },
+          ],
+        },
       },
     ],
   };
