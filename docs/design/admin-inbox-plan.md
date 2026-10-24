@@ -19,12 +19,13 @@ Projects that should not open issues automatically use `noIssue: true` (getClosr
 ### Goal
 
 1. **No silent loss.** A report that is not delivered anywhere else is only acknowledged after D1 stored it; otherwise the gateway answers a retryable error. The widget's retry must keep the visitor's text and type: today `retry` resets the form to empty (`src/widget/core/state.ts:75`), so the `failed` state carries the last message and `retry` restores it.
-2. **Retention never deletes unhandled work.** A report counts as handled when it was delivered to GitHub (issue or project item) or locally marked done or dismissed. Unhandled reports past retention stay and show up on the System page.
+2. **Retention stays strict and visible.** Reports are deleted at `retentionDays` after submission, handled or not, exactly as the privacy promise says today. Unhandled reports get a notice on the System page and in `/diag` 7 days before deletion, so nothing disappears unseen. (Owner decision 2026-10-24.)
 3. **Three deliveries per type:** `issue` (today's automatic issue), `project` (a draft issue in a private organisation GitHub Project), `local` (stored in FeedbackKit only). `noIssue: true` is read as `delivery: "local"`.
 4. **GitHub Project delivery.** Each report becomes a draft issue with the rendered title and body (screenshot as R2 link), plus project fields Type, Page and Source set by FeedbackKit. Status, notes, assignment and "Convert to issue" happen in GitHub. FeedbackKit stores the project item ID and links to it. No status mirror.
 5. **Minimal local inbox** for `local` deliveries only: open, done, dismissed; one note; delete (row and R2 assets); copy as Markdown for an agent. Reports delivered to GitHub show their link and no local status.
 6. **Config editing in the admin** as a validated JSON editor: load the stored config, edit, validate on the server (Zod issues shown inline), show the diff to the stored version, publish (bumps `config_version` like the import). A form editor comes later.
 7. **Type clarity** in the history: each row leads with a type glyph and word.
+8. **Private screenshots for private deliveries.** For `project` and `local`, screenshot links in drafts and the admin point to an authenticated gateway route (`GET /admin/assets/:key`, Access or admin token) instead of the public R2 URL. Public issue repos keep today's public links. (Owner decision 2026-10-24.)
 
 Out of this plan: the visual restyle (own ADR amending ADR-014, own PR), MCP write scopes (own security decision per ADR-015), a status mirror, a form-based config editor, GitLab/Jira/Trello.
 
@@ -60,7 +61,7 @@ Backfill: rows with `issue_url` get `delivery = 'issue'` and count as handled; r
 
 - `orchestrate.ts`: branch per template delivery. `local`: persist, and if persisting fails answer 503 (retryable) instead of `created`. `project`: create the draft, then persist with the item ID; on failure persist as `delivery_failed` with the draft. `issue`: unchanged.
 - `persistFeedback` returns success so callers can act on it.
-- Retention (`retention.ts`): delete only rows that are handled and older than `retentionDays`; count unhandled rows past retention for the System page. Events keep their own age rule.
+- Retention (`retention.ts`): delete rows older than `retentionDays` together with their assets (joined via `client_feedback_id`); list unhandled rows that will be deleted within 7 days on the System page and in `/diag`. Events keep their own age rule.
 - Admin write routes in `src/worker/admin/routes.ts`, behind `adminGate`, whose Access path already enforces `sameOrigin()` (`src/worker/admin/auth.ts:40`):
   - `PATCH /api/admin/feedback/:id` (disposition, note; `local` rows only)
   - `DELETE /api/admin/feedback/:id` (row + R2 assets via `deleteAssetsForFeedback`)
@@ -86,7 +87,7 @@ Backfill: rows with `issue_url` get `delivery = 'issue'` and count as handled; r
 - **One resolution table for delivery**, shown per template in the editor before publish: template `delivery` > project `delivery` > legacy `noIssue` (→ `local`) > default (`issue` with a tracker, `local` without). `noIssue` together with any `delivery` on the same template is rejected with its JSON path. A config with `tracker.project` but no explicit `delivery` is rejected ("set delivery explicitly") so private feedback never lands as public issues by accident.
 - **Project field mapping keyed by `template.type`**, not by the localised label: `tracker.project.typeOptions?: { [type]: optionName }`, default the template type. Optional `tracker.project.fields?: { type?, page?, source? }` renames the three fields. Skipped fields are stored per row (`delivery_warnings`) and shown on the row, the System page and `/diag`.
 - **Access check that proves what it says:** the System page reports `fieldsReadable` and `draftWriteVerified` separately; the latter only after a real test submission. The validate step rejects user-owned projects with `FK_PROJECT_USER_OWNED`.
-- **Retention for the whole report.** The age clock starts at submission. Rows and their R2 assets are deleted together, and only when handled. Unhandled rows are kept up to a hard cap `storage.unhandledMaxDays` (default: twice `retentionDays`), then deleted with a System page notice beforehand. The independent asset sweep (`r2.ts:86`) is aligned so a delivered draft never links to an already deleted screenshot (assets of unhandled rows get their expiry extended).
+- **Retention for the whole report.** The age clock starts at submission. Rows and their R2 assets are deleted together at `retentionDays`, handled or not, with a 7-day advance notice for unhandled rows. A shortened `retentionDays` never deletes before that notice period has passed. The independent asset sweep (`r2.ts:86`) follows the row, except for the late-delivery minimum below.
 - **Every writer obeys the compatibility gate:** the import route, the editor and `scripts/seed-config.mjs` (which writes to D1 directly). New shapes are accepted only when the stable release implements the full behaviour (delivery, retry, retention), not only parsing. Tests: old stable against new data, new stable against old data, rows inserted during the rollout.
 - **Rollback contract** in `docs/RELEASES.md`: minimum safe rollback version per step, config export before switching, `noIssue` deprecation (accepted and warned, removal not before 1.0). The backfill marks historical rows conservatively (`delivery = NULL` when unsure) instead of inferring from today's templates.
 - **Docs in the same PR as the behaviour:** QUICKSTART section "Deliver to a GitHub Project" (project number from the URL, PAT permission "Projects: write", the three fields, a complete importable JSON per delivery mode, a `noIssue` migration example), README link, retention semantics, RELEASES entry for schema v3, `docs/ERRORS.md`. Acceptance: a newcomer finds the Project setup in under two minutes and completes it without reading TypeScript.
@@ -115,13 +116,13 @@ Backfill: rows with `issue_url` get `delivery = 'issue'` and count as handled; r
 
 These change promises to users and were not auto-decided:
 
-1. **Retention of unhandled reports.** (a) Strict: delete at `retentionDays` whether handled or not, with a System notice 7 days before; the privacy promise stays exactly as today. (b) Keep unhandled until a hard cap (`unhandledMaxDays`, default twice `retentionDays`) with notice; changes the privacy promise and needs a SECURITY.md and privacy-page update. Recommendation: (a) for getClosr because its privacy page promises 30 days, with the notice; operators can opt into (b).
-2. **Screenshot confidentiality.** (a) Keep public bearer links and document the boundary in SECURITY.md. (b) Serve screenshots through an authenticated gateway route (Access or token) so links in drafts only open for signed-in operators. Recommendation: (b) for projects with `delivery: "project" | "local"`, (a) unchanged for public issue repos; about half a day extra.
-3. **Screenshot lifetime after late delivery.** Assets of a report get `expires_at = max(submission + retentionDays, delivery + 7 days)` so a delivered link works for at least a week, within the retention choice of decision 1.
+1. **Retention of unhandled reports. Decided: (a).** (a) Strict: delete at `retentionDays` whether handled or not, with a System notice 7 days before; the privacy promise stays exactly as today. (b) Keep unhandled until a hard cap (`unhandledMaxDays`, default twice `retentionDays`) with notice; changes the privacy promise and needs a SECURITY.md and privacy-page update. Recommendation: (a) for getClosr because its privacy page promises 30 days, with the notice; operators can opt into (b).
+2. **Screenshot confidentiality. Decided: (b).** (a) Keep public bearer links and document the boundary in SECURITY.md. (b) Serve screenshots through an authenticated gateway route (Access or token) so links in drafts only open for signed-in operators. Recommendation: (b) for projects with `delivery: "project" | "local"`, (a) unchanged for public issue repos; about half a day extra.
+3. **Screenshot lifetime after late delivery. Approved.** Assets of a report get `expires_at = max(submission + retentionDays, delivery + 7 days)` so a delivered link works for at least a week, within the retention choice of decision 1.
 
 ### Tests
 
-- Vitest: `local` + D1 failure answers 503 (not `created`); widget reducer: `retry` after `failed` restores the last text and type; retention keeps unhandled rows; contract normalisation `noIssue` → `local`, refinements, absent tracker in all six readers; project delivery success, field skip, failure → `delivery_failed` + retry; retry lock against double click; config validate/PUT version bump; cross-origin write through the Access path refused.
+- Vitest: `local` + D1 failure answers 503 (not `created`); strict retention deletes handled and unhandled rows at the limit and lists unhandled ones 7 days ahead; widget reducer: `retry` after `failed` restores the last text and type; retention keeps unhandled rows; contract normalisation `noIssue` → `local`, refinements, absent tracker in all six readers; project delivery success, field skip, failure → `delivery_failed` + retry; retry lock against double click; config validate/PUT version bump; cross-origin write through the Access path refused.
 - Playwright with the mocked API: local disposition change, note, delete, copy Markdown; delivered row links; JSON editor validation error and publish; phone layout.
 
 ### Rollout
@@ -233,3 +234,7 @@ Test plan written to `~/.gstack/projects/TruffleCraft-feedbackkit/` (eng-review-
 ### Not in scope (all phases)
 
 Visual restyle (own ADR), MCP write scopes, status mirror from GitHub, form-based config editor, GitLab/Jira/Trello, user-owned Projects, notifications beyond "new in 7 days", changing the import route's last-write-wins semantics, fixing older widget builds already cached on host pages.
+
+### Approval (2026-10-24)
+
+Owner approved the plan with decisions 1 (a), 2 (b) and 3. Next: GitHub issues for the five rollout steps, then step 1 (durability fix) in its own branch.
