@@ -5,7 +5,7 @@ import { z } from "zod";
 import { CONTEXT_KEY_RE, MAX_CONTEXT_KEYS, MAX_CONTEXT_VALUE } from "./limits.js";
 
 export const WIRE_VERSION = 1 as const;
-export const SCHEMA_VERSION = 2 as const;
+export const SCHEMA_VERSION = 3 as const;
 
 // ── Template schema (per ADR-002/005) ────────────────────────────────────────
 export const FieldKind = z.enum(["text", "longtext", "select", "url"]);
@@ -205,7 +205,11 @@ export type FeedbackResponse =
   | { v: 1; status: "follow_up"; question: string; extracted: Record<string, string>; summary?: string; type?: string; typeUnclear?: boolean }
   | { v: 1; status: "accepted_incomplete"; id: string; issueUrl?: string; type?: string; summary?: string }
   | { v: 1; status: "issue_failed"; id: string; reason: string }
-  | { v: 1; status: "error"; error: string; degraded?: boolean };
+  // `code` is a stable machine-readable reason (docs/ERRORS.md); `retryable` tells
+  // the client that resending the same submission may succeed.
+  | { v: 1; status: "error"; error: string; degraded?: boolean; code?: ErrorCode; retryable?: boolean };
+
+export type ErrorCode = "FK_PERSIST_FAILED";
 
 // ── Funnel events (enum-only, never content) ──────────────────────────────────
 export const EventName = z.enum([
