@@ -92,6 +92,33 @@ Backfill: rows with `issue_url` get `delivery = 'issue'` and count as handled; r
 - **Docs in the same PR as the behaviour:** QUICKSTART section "Deliver to a GitHub Project" (project number from the URL, PAT permission "Projects: write", the three fields, a complete importable JSON per delivery mode, a `noIssue` migration example), README link, retention semantics, RELEASES entry for schema v3, `docs/ERRORS.md`. Acceptance: a newcomer finds the Project setup in under two minutes and completes it without reading TypeScript.
 - **Time to first draft ≤ 10 minutes in 5 steps:** create the Project, grant the PAT, set `delivery` and `tracker.project` in the editor, run the System check (names missing fields and options), press "Send test report" in the admin (real delivery, unlike the dry-run test page).
 
+### Delivery state machine and identities (from the Eng review)
+
+- **One submission identity.** Migration 0003 adds `feedback.client_feedback_id` (backfilled from `json_extract(payload,'$.feedbackId')`) with a unique index on `(project_id, client_feedback_id)`; dedup becomes project-scoped. Every write is `INSERT … ON CONFLICT DO NOTHING` followed by a read-back. A reused client ID with a different payload answers 409. Row deletion and asset deletion join on this column (assets are indexed by the client ID, rows by a server ID).
+- **Order of operations:** 1) persist the submission with its resolved destination snapshot and `delivery_state = 'pending'` (no acknowledgement before this succeeded); 2) claim delivery atomically (`UPDATE … SET claim_token=?, claim_until=? WHERE id=? AND (claim_until IS NULL OR claim_until < now)` plus a changes check); 3) call GitHub with a stable delivery marker (the row ID) in the body; 4) complete with an update fenced by `claim_token`: `delivered` (store issue URL or project item ID), `failed` (definite 4xx), or `unknown` (timeout, lost response, 5xx).
+- **Draft created = delivered.** A 201 on the draft call sets `delivered`; field updates afterwards only add `delivery_warnings` and are retried without recreating the draft.
+- **Retry** (`POST /api/admin/feedback/:id/retry`, new code, not an existing path) works on `failed` and `unknown` rows. For `unknown` it first reconciles: issues by searching the marker in the repo, drafts by scanning Project items created after the attempt, limited to 5 pages. Found: link it. Not found: answer `FK_DELIVERY_UNKNOWN` and require an explicit "create anyway" from the operator. An expired claim allows reconciliation, never blind re-creation. Retry uses the stored destination snapshot, not the current config. The disabled Retry button in `admin/main.ts:384` becomes live.
+- **Route boundary:** the crash handler in `app.ts:475-479` answers 503 `FK_PERSIST_FAILED` unless a row is confirmed; tested through Hono.
+- **Public response vocabulary stays stable** for widgets already cached on host pages: `delivery_failed` and `unknown` map to the existing `issue_failed` status in the response (report saved, delivery pending); a new status is not introduced.
+- **Delivery resolution, corrected:** template `delivery` > template `noIssue` (→ `local`, a template-level override that a project default never overrides) > project `delivery` > default. `noIssue: true` stays allowed next to `delivery: "project" | "local"` as a safe fallback for older workers after a rollback (an old worker then stores locally instead of opening a public issue); only `noIssue: true` + `delivery: "issue"` is rejected. With automatic type detection, a template switch on POST-1 or POST-2 may change the destination; when the candidate templates of a project have different deliveries, the more private one wins (`local` > `project` > `issue`).
+- **Compatibility gate signal:** the gate stays closed until step 3 is promoted to stable and verified. The signal is a D1 `meta` row `delivery_capability = <stable version>` written by the promote workflow; every writer (import, editor PUT, `scripts/seed-config.mjs`) checks it. The getClosr switch waits until the oldest stable a rollback could land on reads `delivery`.
+- **Config activation:** publish clears the isolate config cache entry for that project in the handling isolate and the editor states "active on all edge locations within 60 s". `projectId` cannot be changed in the editor; `publicKey` and `configVersion` are stripped before diff and restored on save. `expectedVersion` is enforced in the `UPDATE … WHERE config_version = ?` predicate with a changes check.
+- **Widget retry snapshot:** the `failed` state carries leg (1 or 2), client feedback ID, message, type, follow-up answer, extracted fields and uploaded keys. Retry resends the same leg with the same ID and keys and a fresh Turnstile token; it does not call `resetAttempt()` and does not re-upload. The panel restores text and type into the DOM controls (`ui/panel.ts:210`). Editing the text after a failure starts a new ID. The existing test `widget.test.ts:114`, which asserts the empty form, changes.
+- **Test report route:** `POST /api/admin/projects/:id/test-report`, admin-gated and rate-limited, LLM off, rows flagged `is_test` and excluded from the funnel and "new in 7 days"; it is the only evidence for `draftWriteVerified`.
+- **Historical rows:** rows with `delivery = NULL` appear under "Needs a decision" in the history; the operator can mark them done, delete them, or deliver them once to the current destination. Old getClosr reports remain reachable regardless of the new mode.
+- **Screenshot links are bearer links.** R2 objects are public by URL (`r2.ts:59`); a private Project does not protect them. See the owner decisions below. When attachments exist but `publicBaseUrl` is absent, the draft says "screenshot stored in FeedbackKit" with the admin link instead of silently omitting it.
+- **Least privilege:** optional `tracker.project.patSecret` so the Projects permission can live on a separate token from the issue token.
+- **Audit:** DELETE logs identity, feedback ID and result keys, never content. "Copy as Markdown" wraps the visitor text in a fence marked untrusted.
+- **System page cost:** GitHub checks are cached in D1 for 10 minutes per project.
+
+### Owner decisions (from the Eng review)
+
+These change promises to users and were not auto-decided:
+
+1. **Retention of unhandled reports.** (a) Strict: delete at `retentionDays` whether handled or not, with a System notice 7 days before; the privacy promise stays exactly as today. (b) Keep unhandled until a hard cap (`unhandledMaxDays`, default twice `retentionDays`) with notice; changes the privacy promise and needs a SECURITY.md and privacy-page update. Recommendation: (a) for getClosr because its privacy page promises 30 days, with the notice; operators can opt into (b).
+2. **Screenshot confidentiality.** (a) Keep public bearer links and document the boundary in SECURITY.md. (b) Serve screenshots through an authenticated gateway route (Access or token) so links in drafts only open for signed-in operators. Recommendation: (b) for projects with `delivery: "project" | "local"`, (a) unchanged for public issue repos; about half a day extra.
+3. **Screenshot lifetime after late delivery.** Assets of a report get `expires_at = max(submission + retentionDays, delivery + 7 days)` so a delivered link works for at least a week, within the retention choice of decision 1.
+
 ### Tests
 
 - Vitest: `local` + D1 failure answers 503 (not `created`); widget reducer: `retry` after `failed` restores the last text and type; retention keeps unhandled rows; contract normalisation `noIssue` → `local`, refinements, absent tracker in all six readers; project delivery success, field skip, failure → `delivery_failed` + retry; retry lock against double click; config validate/PUT version bump; cross-origin write through the Access path refused.
@@ -105,7 +132,7 @@ Backfill: rows with `issue_url` get `delivery = 'issue'` and count as handled; r
 4. Admin: local inbox, links, JSON config editor.
 5. getClosr: create a private Project in `getclosr-link`, grant the PAT "Projects: write", switch its types from `noIssue` to `delivery: "project"`.
 
-Effort: one PR per step; steps 1 and 2 about half a day each with an agent, steps 3 and 4 about a day each. UI PRs go to the maintainer for merge (repo rule).
+Effort (revised after the Eng review): step 1 about one day (route boundary, identity column, widget retry snapshot across `state.ts`, `index.ts` and `panel.ts`); step 2 half a day; step 3 two days (delivery state machine, reconciliation, retry route, test-report route); step 4 one day. UI PRs go to the maintainer for merge (repo rule). Tests that claim durability run against a real local D1, not the SQL fakes in `test/helpers.ts` (they never execute SQL). That needs a new dev dependency, `@cloudflare/vitest-pool-workers`, set up in step 1 for the new suites only.
 
 ## Review record
 
@@ -181,3 +208,28 @@ Scorecard (native): getting started 5, config ergonomics 7, errors 6 (capped), d
 Verified by the orchestrator: `issue_failed` paths answer 200 after a swallowed persist (`orchestrate.ts:309-313`); the R2 sweep deletes by asset expiry independently (`r2.ts:86`); `scripts/seed-config.mjs` writes to D1 with its own checks.
 
 All DX findings were accepted as obligations (section "Release criteria and error contract"); none changes the owner's direction.
+
+### Phase 3: Eng review (2026-10-24)
+
+Voices: native (Claude subagent, input `eng 77f07b75…`) completed, 4 critical gaps; outside (Codex `gpt-6-astra`) completed, verdict `findings`, P1.
+
+```
+ENG DUAL VOICES — CONSENSUS TABLE:
+  Dimension                           Claude  Codex  Consensus
+  1. Architecture sound?               Yes*    Yes*   CONFIRMED (*needs a delivery state machine)
+  2. Test coverage sufficient?         No      No     CONFIRMED (fakes do not execute SQL)
+  3. Performance risks addressed?      Partly  n/a    single voice (System page GitHub calls, marker scan)
+  4. Security threats covered?         Partly  No     CONFIRMED (rollback to public issue; public R2 links)
+  5. Error paths handled?              No      No     CONFIRMED (crash path, duplicates, unknown outcome)
+  6. Deployment risk manageable?       Yes*    Yes*   CONFIRMED (*gate signal, old widgets, rollback)
+```
+
+Verified by the orchestrator: no retry route exists (`app.ts:577` stub, disabled button `admin/main.ts:384`); `resetAttempt()` clears `feedbackId` and keys (`widget/index.ts:116-126`); `widget.test.ts:114` asserts the empty form; `test/helpers.ts` fakes never execute SQL; config cache TTL is 60 s (`config.ts:21`); no Workers test pool in `package.json`.
+
+All findings were accepted as obligations (section "Delivery state machine and identities") except three that change user-facing promises: they are listed under "Owner decisions".
+
+Test plan written to `~/.gstack/projects/TruffleCraft-feedbackkit/` (eng-review-test-plan). No `TODOS.md` exists in this repo; deferred work stays in "Out of this plan" and becomes GitHub issues after approval, following the repo's issue workflow.
+
+### Not in scope (all phases)
+
+Visual restyle (own ADR), MCP write scopes, status mirror from GitHub, form-based config editor, GitLab/Jira/Trello, user-owned Projects, notifications beyond "new in 7 days", changing the import route's last-write-wins semantics, fixing older widget builds already cached on host pages.
