@@ -1,30 +1,98 @@
 <!-- /autoplan restore point: "/Users/michelschieder/Repos/feedbackkit-wt-admin-mockup/.gstack/tmp/autoplan/design-admin-inbox-mockup-autoplan-restore-20261024-171629.md" -->
-# Admin inbox, delivery modes and config editor
+# Feedback delivery to GitHub Projects, local inbox and config editor
 
-Mockup: [`mockup-admin-inbox-2026-10-24.html`](mockup-admin-inbox-2026-10-24.html)
+Mockup of the first, wider concept (superseded by the hybrid decision): [`mockup-admin-inbox-2026-10-24.html`](mockup-admin-inbox-2026-10-24.html)
 
 ## Implementation plan
 
+Decision 2026-10-24 (owner, after the CEO review): hybrid. Triage lives in a private GitHub Project; FeedbackKit owns capture, delivery, config, funnel and history. A minimal local inbox exists only for projects without GitHub.
+
 ### Problem
 
-The admin UI at `/admin` (ADR-014) is read-only. Operators can see projects, the feedback history, the funnel and the system page, but they cannot act on a report and cannot change a project's config without `curl` against `POST /api/admin/config/import`.
+The admin UI at `/admin` (ADR-014) is read-only. Operators cannot act on a report and cannot change a project's config without `curl` against `POST /api/admin/config/import`.
 
-This hurts most on projects that are not coupled to Git. getClosr sets `noIssue: true` on every template because its reports should not open issues automatically, so its reports exist only in D1 and the read-only history. Nobody can mark them done, dismiss them, note what was decided, or turn a good one into an issue later. NORA and SCTT have the same need on a smaller scale. The tracker block in `FeedbackConfig` is also mandatory today (`tracker.kind: "github"`, `defaultRepo`, `patSecret`), so a project without any repository has to carry a fake tracker.
+Projects that should not open issues automatically use `noIssue: true` (getClosr on every type). Their reports sit in D1 where nobody can mark them done or turn them into an issue later. Worse, two existing defects hit exactly these reports:
+
+- `persistFeedback` swallows D1 errors and the `noIssue` path still answers `created` (`src/worker/orchestrate.ts:301`, `:414`), so a report can be acknowledged and lost.
+- The retention cron deletes feedback by submission age (`src/worker/storage/retention.ts:23`). getClosr has `retentionDays: 30`, so its unhandled reports vanish after 30 days.
 
 ### Goal
 
-1. A triage inbox per project where every report can be worked: status (open, in progress, resolved, dismissed), an internal note, type correction, delete, copy as Markdown for an agent.
-2. Three delivery modes per project, with a per-type override:
-   - **Inbox only**: no GitHub connection at all. The tracker block becomes optional.
-   - **Inbox first**: GitHub connected. Reports wait in the inbox, the operator promotes single reports to an issue through an editable draft.
-   - **Automatic**: today's behaviour, every report opens an issue.
-   Per-type `delivery` replaces `noIssue` (read as `delivery: "inbox"` for backward compatibility).
-3. A config editor in the admin: a form for delivery, GitHub repo and secret name with a live connection check, origins, capture switches, LLM provider, model, budget and rate limit, the type table with per-type delivery; plus a JSON import/export mode that round-trips through `FeedbackConfig`. Publishing bumps `config_version` exactly like the import does today.
-4. Sync rule so there is no double work and no stale items: once a report has an issue, GitHub owns its status. FeedbackKit mirrors it read-only (open/closed in GitHub), the inbox "Open" tab lists only reports without an issue, a separate "In GitHub" tab lists linked ones. Mirror refresh happens lazily when the inbox loads (visible linked items, through the project's PAT) and nightly in the existing `0 3 * * *` cron. An issue that disappears (deleted, transferred out of reach) drops the report back into the inbox with a notice. Resolved and dismissed reports are deleted after a configurable retention together with their R2 assets.
-5. Type clarity: every row leads with a type glyph plus word; the detail shows the type as a select with its source (detected by AI, chosen by the visitor, changed by the operator), locked once an issue exists.
-6. Visual direction: taste-skill app style "Framed sheet" (IBM Plex Sans, teal accent `#1b6c80`, tinted L-frame and white sheet). The brand mark keeps the FeedbackKit violet.
+1. **No silent loss.** A report that is not delivered anywhere else is only acknowledged after D1 stored it; otherwise the gateway answers a retryable error. The widget's retry must keep the visitor's text and type: today `retry` resets the form to empty (`src/widget/core/state.ts:75`), so the `failed` state carries the last message and `retry` restores it.
+2. **Retention never deletes unhandled work.** A report counts as handled when it was delivered to GitHub (issue or project item) or locally marked done or dismissed. Unhandled reports past retention stay and show up on the System page.
+3. **Three deliveries per type:** `issue` (today's automatic issue), `project` (a draft issue in a private organisation GitHub Project), `local` (stored in FeedbackKit only). `noIssue: true` is read as `delivery: "local"`.
+4. **GitHub Project delivery.** Each report becomes a draft issue with the rendered title and body (screenshot as R2 link), plus project fields Type, Page and Source set by FeedbackKit. Status, notes, assignment and "Convert to issue" happen in GitHub. FeedbackKit stores the project item ID and links to it. No status mirror.
+5. **Minimal local inbox** for `local` deliveries only: open, done, dismissed; one note; delete (row and R2 assets); copy as Markdown for an agent. Reports delivered to GitHub show their link and no local status.
+6. **Config editing in the admin** as a validated JSON editor: load the stored config, edit, validate on the server (Zod issues shown inline), show the diff to the stored version, publish (bumps `config_version` like the import). A form editor comes later.
+7. **Type clarity** in the history: each row leads with a type glyph and word.
 
-### Alternative to evaluate: a private GitHub Project as the inbox
+Out of this plan: the visual restyle (own ADR amending ADR-014, own PR), MCP write scopes (own security decision per ADR-015), a status mirror, a form-based config editor, GitLab/Jira/Trello.
+
+### Delivery to a GitHub Project
+
+- Auth: the existing per-project fine-grained PAT gains the organisation permission "Projects: read and write". REST endpoints (documented for fine-grained PATs): `POST /orgs/{org}/projectsV2/{project_number}/drafts`, `PATCH /orgs/{org}/projectsV2/{project_number}/items/{item_id}`, `GET /orgs/{org}/projectsV2/{project_number}/fields`. User-owned projects are not supported (no fine-grained permission; a classic PAT would be too broad).
+- Field mapping: Type (single select, option names from the template labels), Page (text), Source (single select, fixed "FeedbackKit"). Missing fields or options are skipped with a warning in `/diag`, never a failed delivery.
+- Failure: like a tracker failure today. Row persisted with `outcome = "delivery_failed"`, the rendered draft stored, retry from the admin through the existing retry path.
+- Confidentiality: converting a draft to an issue may change the audience (repo permissions). The body never contains the host context marked unverified beyond what automatic issues contain today, and never the local note.
+- Attention: drafts do not notify assignees until converted (GitHub docs). The admin project list shows "new in the last 7 days" per project with a link to the Project, so new reports stay visible without a notification system.
+
+### Config contract (`src/shared/contract.ts`)
+
+- Template `delivery?: "issue" | "project" | "local"`; project-level `delivery` default: `"issue"` when `tracker` exists (today's behaviour), else `"local"`. `noIssue: true` normalises to `"local"`.
+- `tracker.project?: { org: string; number: number }`, required when any delivery is `project`.
+- `tracker` optional when every delivery is `local`.
+- Refinements: `issue` needs `tracker.defaultRepo`; `project` needs `tracker.project`.
+- All six readers of `config.tracker` handle an absent tracker: `contract.ts`, `orchestrate.ts`, `app.ts` (`/diag`), `status.ts`, `admin/routes.ts` (system), `admin/main.ts`.
+- **Compatibility across channels:** dev and stable share one D1 (ADR-013) and today's stable parser requires `tracker`. The read side ships and is promoted to stable first; the import and the editor refuse the new shapes (`delivery`, absent `tracker`, `tracker.project`) until the stable release that reads them is live. A config written by the editor is stored exactly as written (no normalisation on write), so seed files in git round-trip.
+
+### Data model (schema v3, expand only)
+
+`migrations/0003_delivery.sql`:
+- `feedback.delivery TEXT` (`issue | project | local`), `feedback.project_item_id TEXT`, `feedback.project_url TEXT`
+- `feedback.disposition TEXT NOT NULL DEFAULT 'open'` (`open | done | dismissed`, only meaningful for `local`), `feedback.note TEXT`, `feedback.handled_at INTEGER`
+- `feedback.promote_lock INTEGER` (claim before a delivery retry so two clicks cannot create two items)
+- index `(project_id, delivery, disposition, created_at)`
+- `meta.schema_version = 3`
+
+Backfill: rows with `issue_url` get `delivery = 'issue'` and count as handled; rows of `noIssue` templates get `delivery = 'local'`, `disposition = 'open'`.
+
+### Worker
+
+- `orchestrate.ts`: branch per template delivery. `local`: persist, and if persisting fails answer 503 (retryable) instead of `created`. `project`: create the draft, then persist with the item ID; on failure persist as `delivery_failed` with the draft. `issue`: unchanged.
+- `persistFeedback` returns success so callers can act on it.
+- Retention (`retention.ts`): delete only rows that are handled and older than `retentionDays`; count unhandled rows past retention for the System page. Events keep their own age rule.
+- Admin write routes in `src/worker/admin/routes.ts`, behind `adminGate`, whose Access path already enforces `sameOrigin()` (`src/worker/admin/auth.ts:40`):
+  - `PATCH /api/admin/feedback/:id` (disposition, note; `local` rows only)
+  - `DELETE /api/admin/feedback/:id` (row + R2 assets via `deleteAssetsForFeedback`)
+  - `POST /api/admin/feedback/:id/retry` (`issue_failed` and `delivery_failed`, claims `promote_lock`)
+  - `POST /api/admin/projects/:id/config/validate` and `PUT /api/admin/projects/:id/config` (same validation and version bump as the import)
+- System page: Project access check per project (fields readable, draft write allowed via a dry run against the fields endpoint), unhandled rows past retention.
+
+### Admin frontend (current design tokens)
+
+- Project list: add "new in 7 days" and the delivery mode with a link to the GitHub Project or repo.
+- History view: type glyph + word first in each row; delivered rows link out; `local` rows get disposition buttons, note, delete and "copy as Markdown"; tabs Open / Done / All for local rows.
+- Config tab: JSON editor (textarea with line numbers), server validation, diff, publish.
+- Budget 15 kB gz for `dist/admin.js` stays.
+
+### Tests
+
+- Vitest: `local` + D1 failure answers 503 (not `created`); widget reducer: `retry` after `failed` restores the last text and type; retention keeps unhandled rows; contract normalisation `noIssue` → `local`, refinements, absent tracker in all six readers; project delivery success, field skip, failure → `delivery_failed` + retry; retry lock against double click; config validate/PUT version bump; cross-origin write through the Access path refused.
+- Playwright with the mocked API: local disposition change, note, delete, copy Markdown; delivered row links; JSON editor validation error and publish; phone layout.
+
+### Rollout
+
+1. Durability and retention fix, including the widget retry that keeps the text (no contract change). Ships first, alone.
+2. Contract read support + schema v3, promoted to stable.
+3. Project delivery + retry + System checks.
+4. Admin: local inbox, links, JSON config editor.
+5. getClosr: create a private Project in `getclosr-link`, grant the PAT "Projects: write", switch its types from `noIssue` to `delivery: "project"`.
+
+Effort: one PR per step; steps 1 and 2 about half a day each with an agent, steps 3 and 4 about a day each. UI PRs go to the maintainer for merge (repo rule).
+
+## Review record
+
+### GitHub Projects facts (input to the CEO review)
 
 The owner asked whether a private GitHub Project (Projects v2) could replace the self-built inbox for projects without a repository. Facts from the GitHub docs (fetched 2026-10-24):
 
@@ -37,62 +105,6 @@ The owner asked whether a private GitHub Project (Projects v2) could replace the
 
 What it would replace: the triage status, notes, the promote dialog, the GitHub mirror sync and the "In GitHub" tab (a converted draft stays the same project item, so its status lives in one place). What it would not replace: the config editor, the funnel, the system page and the feedback history in D1. Open points: every triager needs a GitHub account with project access; screenshots only as links to the R2 public URL in the body; privacy-first self-hosters without GitHub get no inbox; GitLab, Jira and Trello (P4) have no equivalent here.
 
-### Data model (schema v3, expand only)
-
-`migrations/0003_triage.sql`:
-- `feedback.triage_status TEXT NOT NULL DEFAULT 'open'` (`open | in_progress | resolved | dismissed`)
-- `feedback.triage_note TEXT`
-- `feedback.type_source TEXT` (`ai | visitor | admin`)
-- `feedback.issue_state TEXT` (`open | closed | gone`), `feedback.issue_checked_at INTEGER`
-- `feedback.resolved_at INTEGER`
-- index `(project_id, triage_status, created_at)`
-- `meta.schema_version = 3`
-
-Rows that already have `issue_url` start with `triage_status = 'in_progress'` and `issue_state = NULL` until the first mirror refresh.
-
-### Config contract (`src/shared/contract.ts`)
-
-- `tracker` becomes optional.
-- New project-level `delivery: "inbox" | "auto"` (default `"auto"` when a tracker exists, so existing configs behave as before; `"inbox"` without tracker).
-- New template-level `delivery?: "inbox" | "auto"`; `noIssue: true` is normalised to `delivery: "inbox"` during parse.
-- Refinement: `delivery: "auto"` anywhere requires `tracker`.
-- New `retention.resolvedDays?: number`.
-
-### Worker
-
-- `orchestrate.ts`: decide per template whether to call the tracker (`delivery === "auto"` and tracker present) or to persist as inbox item. Persist the rendered draft for every inbox item so promote needs no LLM call (`issue_draft` exists since schema v2).
-- New write routes in `src/worker/admin/routes.ts`, all behind `adminGate`, CSRF-safe (bearer header or Access JWT, no cookies auth for writes):
-  - `PATCH /api/admin/feedback/:id` (status, note, type)
-  - `DELETE /api/admin/feedback/:id` (row + R2 assets through `deleteAssetsForFeedback`)
-  - `POST /api/admin/feedback/:id/promote` (title, labels, body overrides; creates the issue from the stored draft; idempotent: a second call returns the existing issue)
-  - `POST /api/admin/feedback/:id/retry` (issue_failed rows)
-  - `PUT /api/admin/projects/:id/config` (same validation and version bump as the import; the import route stays)
-  - `GET /api/admin/projects/:id/github-check` (PAT present, repo access, expiry; reuses `checkRepoAccess`)
-- Mirror refresh: `src/worker/providers/github.ts` gets `getIssueStates(repo, numbers, pat)` (one GraphQL query per batch of up to 50); used by the inbox list route and the cron.
-- Cron (`src/worker/index.ts` `scheduled`): refresh linked items not checked in 24 h, delete resolved/dismissed rows past retention.
-- MCP: add `feedback:write` scope with `update_feedback` and `promote_feedback` tools mirroring the routes (later, behind its own scope).
-
-### Admin frontend
-
-- `src/worker/admin/pages.ts`: new shell and CSS from the mockup (framed sheet, project switcher in the sidebar, views as tabs). Keep the nonce CSP; IBM Plex is served from the gateway like Urbanist today (no Google Fonts at runtime).
-- `src/admin/main.ts`: inbox (list + detail, status tabs with counts computed from the view, type filter, search), promote dialog, config form + JSON mode, keep funnel, snippet, projects and system views. Everything from the API still goes through `textContent`.
-- Budget stays 15 kB gz for `dist/admin.js`; if the editor pushes past it, split the config editor into a second chunk.
-
-### Tests
-
-- Vitest: contract normalisation (`noIssue` → `delivery`), refinement errors, orchestrate per delivery mode, promote idempotency, retry, mirror refresh mapping (open, closed, 404 → gone), retention cron, config PUT version bump and validation errors.
-- Playwright (`e2e/admin-*.spec.ts` with the mocked API in `admin-fixtures.ts`): triage status change, type correction, promote dialog, connect-GitHub path for inbox-only projects, config form publish, JSON round-trip, phone layout.
-
-### Rollout
-
-1. Schema v3 + contract + orchestrate (no UI change; getClosr keeps working because `noIssue` maps to inbox).
-2. Write API + mirror refresh + cron.
-3. Admin frontend.
-4. Switch getClosr from `noIssue` on every template to `delivery: "inbox"`; consider SCTT and NORA.
-
-Effort estimate: 2 to 3 days with an agent, split into three PRs along the rollout steps. Each PR with UI goes to the maintainer for merge (repo rule).
-
-## Review record
 
 ### Phase 1: CEO review (2026-10-24, autoplan, run design-admin-inbox-mockup-20261024-171629)
 
