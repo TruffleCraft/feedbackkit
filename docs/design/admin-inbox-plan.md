@@ -75,6 +75,23 @@ Backfill: rows with `issue_url` get `delivery = 'issue'` and count as handled; r
 - Config tab: JSON editor (textarea with line numbers), server validation, diff, publish.
 - Budget 15 kB gz for `dist/admin.js` stays.
 
+### Release criteria and error contract (from the DX review)
+
+- **No acknowledged loss on any path.** Every report that is not confirmed delivered (local, failed issue, failed Project draft) is only acknowledged after D1 confirmed the write. Today the missing-PAT and tracker-failure paths answer HTTP 200 `issue_failed` even when `persistFeedback` failed (`orchestrate.ts:309-313`). If both delivery and storage fail, the gateway answers 503 with `code: "FK_PERSIST_FAILED"`, `retryable: true`, `Retry-After: 5`.
+- **Widget retry keeps everything.** `failed` carries the message, type, follow-up answer and attachment keys; `retry` restores them instead of calling `resetAttempt()` with an empty form (`state.ts:75`, `index.ts:173`). The existing `feedbackId` dedup bounds repeated submits.
+- **Stable error codes** on every new response, in addition to the existing `error` string: `FK_PERSIST_FAILED`, `FK_DELIVERY_FAILED`, `FK_DELIVERY_UNKNOWN`, `FK_RETRY_IN_PROGRESS`, `FK_CONFIG_STALE`, `FK_CONFIG_SHAPE_UNSUPPORTED`, `FK_CONFIG_INVALID`, `FK_NOT_LOCAL`, `FK_PROJECT_USER_OWNED`, `FK_PROJECT_ACCESS`. Each listed in `docs/ERRORS.md` with fix and recovery. Admin responses carry `feedbackId`, attempt ID and config version; never the PAT, report body or full page URL.
+- **Retry without duplicates.** Before calling GitHub, the attempt writes an attempt ID into the row and into the draft body (hidden marker). A retry after an uncertain outcome first looks for a draft with that marker and links it instead of creating a second one. `promote_lock` stores a timestamp and expires after 2 minutes; while held, retry answers 409 `FK_RETRY_IN_PROGRESS`. Retry uses the stored draft and destination, not the current config.
+- **DELETE order:** R2 assets first, then the row; partial failure keeps the row and reports the failed keys.
+- **Config writes with optimistic concurrency.** `PUT` requires `expectedVersion`; a mismatch answers 409 `FK_CONFIG_STALE` with the current version and a fresh diff. The import keeps its current behaviour for scripts.
+- **One resolution table for delivery**, shown per template in the editor before publish: template `delivery` > project `delivery` > legacy `noIssue` (→ `local`) > default (`issue` with a tracker, `local` without). `noIssue` together with any `delivery` on the same template is rejected with its JSON path. A config with `tracker.project` but no explicit `delivery` is rejected ("set delivery explicitly") so private feedback never lands as public issues by accident.
+- **Project field mapping keyed by `template.type`**, not by the localised label: `tracker.project.typeOptions?: { [type]: optionName }`, default the template type. Optional `tracker.project.fields?: { type?, page?, source? }` renames the three fields. Skipped fields are stored per row (`delivery_warnings`) and shown on the row, the System page and `/diag`.
+- **Access check that proves what it says:** the System page reports `fieldsReadable` and `draftWriteVerified` separately; the latter only after a real test submission. The validate step rejects user-owned projects with `FK_PROJECT_USER_OWNED`.
+- **Retention for the whole report.** The age clock starts at submission. Rows and their R2 assets are deleted together, and only when handled. Unhandled rows are kept up to a hard cap `storage.unhandledMaxDays` (default: twice `retentionDays`), then deleted with a System page notice beforehand. The independent asset sweep (`r2.ts:86`) is aligned so a delivered draft never links to an already deleted screenshot (assets of unhandled rows get their expiry extended).
+- **Every writer obeys the compatibility gate:** the import route, the editor and `scripts/seed-config.mjs` (which writes to D1 directly). New shapes are accepted only when the stable release implements the full behaviour (delivery, retry, retention), not only parsing. Tests: old stable against new data, new stable against old data, rows inserted during the rollout.
+- **Rollback contract** in `docs/RELEASES.md`: minimum safe rollback version per step, config export before switching, `noIssue` deprecation (accepted and warned, removal not before 1.0). The backfill marks historical rows conservatively (`delivery = NULL` when unsure) instead of inferring from today's templates.
+- **Docs in the same PR as the behaviour:** QUICKSTART section "Deliver to a GitHub Project" (project number from the URL, PAT permission "Projects: write", the three fields, a complete importable JSON per delivery mode, a `noIssue` migration example), README link, retention semantics, RELEASES entry for schema v3, `docs/ERRORS.md`. Acceptance: a newcomer finds the Project setup in under two minutes and completes it without reading TypeScript.
+- **Time to first draft ≤ 10 minutes in 5 steps:** create the Project, grant the PAT, set `delivery` and `tracker.project` in the editor, run the System check (names missing fields and options), press "Send test report" in the admin (real delivery, unlike the dry-run test page).
+
 ### Tests
 
 - Vitest: `local` + D1 failure answers 503 (not `created`); widget reducer: `retry` after `failed` restores the last text and type; retention keeps unhandled rows; contract normalisation `noIssue` → `local`, refinements, absent tracker in all six readers; project delivery success, field skip, failure → `delivery_failed` + retry; retry lock against double click; config validate/PUT version bump; cross-origin write through the Access path refused.
@@ -139,3 +156,28 @@ User Challenge (both voices, never auto-decided): replace the full native inbox 
 Both voices recommend a manual pilot first: triage ten existing reports in a private Project for 14 days.
 
 Phases 2 (design), 2.5 (DX) and 3 (eng) are paused until the owner decides the User Challenge, because they would review an inbox design that this challenge removes.
+
+### Phase 2: Design review
+
+Skipped. After the rescope the scope tool returned `uiRequired: false`; the remaining UI uses the existing admin tokens (ADR-014). The restyle is out of scope.
+
+### Phase 2.5: DX review (2026-10-24)
+
+Voices: native (Claude subagent, input `dx d2b13617…`) completed, overall 5.9/10; outside (Codex `gpt-6-astra`) completed, verdict `findings`, P1.
+
+```
+DX DUAL VOICES — CONSENSUS TABLE:
+  Dimension                           Claude  Codex  Consensus
+  1. Getting started < 5 min?          No      No     CONFIRMED (20-30 min, target 10)
+  2. API/CLI naming guessable?         Yes*    Yes*   CONFIRMED (*precedence undefined)
+  3. Error messages actionable?        No      No     CONFIRMED (codes, recovery missing)
+  4. Docs findable & complete?         No      No     CONFIRMED (no docs step)
+  5. Upgrade path safe?                Mostly  No     DISAGREE -> taste: Codex wins (parse vs behaviour gate)
+  6. Dev environment friction-free?    Partly  Partly CONFIRMED (no real test delivery)
+```
+
+Scorecard (native): getting started 5, config ergonomics 7, errors 6 (capped), docs 4, escape hatches 5, safety 6, observability 6, upgrade 8.
+
+Verified by the orchestrator: `issue_failed` paths answer 200 after a swallowed persist (`orchestrate.ts:309-313`); the R2 sweep deletes by asset expiry independently (`r2.ts:86`); `scripts/seed-config.mjs` writes to D1 with its own checks.
+
+All DX findings were accepted as obligations (section "Release criteria and error contract"); none changes the owner's direction.
