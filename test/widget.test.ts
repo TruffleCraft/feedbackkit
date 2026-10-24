@@ -106,11 +106,32 @@ describe("state machine", () => {
     // A non-conforming response must not produce an undefined state (render crash).
     expect(reduce(ex, { t: "response", res: { v: 1, status: "weird" } as unknown as FeedbackResponse })).toEqual({ name: "failed", reason: "unexpected response" });
   });
-  it("ignores a response when no call is in flight; asking → submitting; retry → form", () => {
+  it("ignores a response when no call is in flight; asking → submitting", () => {
     const form: WidgetState = { name: "form", type: "bug", text: "" };
     expect(reduce(form, { t: "response", res: { v: 1, status: "created", id: "1" } })).toBe(form);
     const asking: WidgetState = { name: "asking", question: "q", extracted: {} };
     expect(reduce(asking, { t: "answer" })).toEqual({ name: "submitting" });
+  });
+
+  // #108: a failure keeps the report; retry resends the same leg instead of an empty form.
+  const leg1 = { leg: 1 as const, feedbackId: "f-1", text: "Export is gone", type: "bug", attachmentKeys: ["p/a.webp"] };
+  const leg2 = { ...leg1, leg: 2 as const, answer: "it should export", extracted: { repro: "click" } };
+  const busy: WidgetState = { name: "submitting" };
+  const fail = { v: 1 as const, status: "error" as const, error: "report could not be stored", code: "FK_PERSIST_FAILED" as const, retryable: true };
+
+  it("failed keeps the leg, id, text, type, answer and uploaded keys", () => {
+    expect(reduce(busy, { t: "response", res: fail, retry: leg2 })).toEqual({ name: "failed", reason: fail.error, retry: leg2 });
+    expect(reduce(busy, { t: "response", res: { v: 1, status: "weird" } as unknown as FeedbackResponse, retry: leg1 })).toEqual({ name: "failed", reason: "unexpected response", retry: leg1 });
+    // A success ignores the snapshot.
+    expect(reduce(busy, { t: "response", res: { v: 1, status: "created", id: "1" }, retry: leg1 })).toEqual({ name: "done", soft: false });
+  });
+
+  it("retry resends the failed leg: POST-1 → extracting, POST-2 → submitting", () => {
+    expect(reduce({ name: "failed", reason: "x", retry: leg1 }, { t: "retry" })).toEqual({ name: "extracting", sendNow: false });
+    expect(reduce({ name: "failed", reason: "x", retry: leg2 }, { t: "retry" })).toEqual({ name: "submitting" });
+  });
+
+  it("retry without a snapshot (nothing was sent) returns to an empty form", () => {
     expect(reduce({ name: "failed", reason: "x" }, { t: "retry" })).toEqual({ name: "form", type: "", text: "" });
   });
 });

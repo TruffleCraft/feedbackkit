@@ -75,6 +75,12 @@ FeedbackKit stores screenshots and image uploads in a Cloudflare R2 bucket.
   omit it to keep them until an explicit delete.
 - A **daily cron** (`scheduled` handler) deletes expired objects from R2 and
   marks the rows deleted.
+- With `retentionDays`, the same cron deletes stored submissions (`feedback`
+  rows) at that age, handled or not, together with their attachments: the
+  attachments go first, and a row whose attachments could not all be deleted
+  stays until the next run. Unhandled reports (no issue) are listed on the admin
+  System page and in the admin-only `/diag?project=<key>` check 7 days ahead,
+  by id, type and date only.
 - **On-demand delete:** `DELETE /api/admin/assets?feedbackId=<uuid>` (admin-authed)
   removes every attachment tied to one feedback submission.
 

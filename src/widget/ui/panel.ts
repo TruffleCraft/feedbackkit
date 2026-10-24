@@ -611,6 +611,13 @@ export class WidgetUI {
         break;
       }
       case "failed":
+        // The report is kept for the retry: put its text, type and answer back
+        // into the controls so the resend shows what was typed.
+        if (state.retry) {
+          this.textarea.value = state.retry.text;
+          if (state.retry.type) this.selectType(state.retry.type);
+          this.answerBox.value = state.retry.answer ?? "";
+        }
         this.show("failed");
         this.live.textContent = this.tr("failed");
         break;
