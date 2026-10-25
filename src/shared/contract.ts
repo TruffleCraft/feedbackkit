@@ -14,7 +14,7 @@ export const SCHEMA_VERSION = 4 as const;
 //   0  issue delivery and noIssue only (≤ 0.1.13)
 //   1  reads delivery / tracker.project / absent tracker; delivers issue and local
 //   2  also delivers to a GitHub Project
-export const DELIVERY_CAPABILITY = 1 as const;
+export const DELIVERY_CAPABILITY = 2 as const;
 
 // ── Template schema (per ADR-002/005) ────────────────────────────────────────
 export const FieldKind = z.enum(["text", "longtext", "select", "url"]);
@@ -108,7 +108,20 @@ export const FeedbackConfig = z.object({
       defaultRepo: z.string().min(1).optional(), // required when a type opens issues
       patSecret: z.string().min(1), // name of the GITHUB_PAT_<name> worker secret
       // Private organisation GitHub Project for delivery "project" (number from its URL).
-      project: z.object({ org: z.string().min(1), number: z.number().int().positive() }).optional(),
+      project: z
+        .object({
+          org: z.string().min(1),
+          number: z.number().int().positive(),
+          // Separate token for the Projects permission (least privilege); default: tracker.patSecret.
+          patSecret: z.string().min(1).optional(),
+          // Option of the Type field per template type; default: the type itself.
+          typeOptions: z.record(z.string().min(1)).default({}),
+          // Names of the three fields FeedbackKit fills; missing fields are skipped with a warning.
+          fields: z
+            .object({ type: z.string().min(1).default("Type"), page: z.string().min(1).default("Page"), source: z.string().min(1).default("Source") })
+            .default({ type: "Type", page: "Page", source: "Source" }),
+        })
+        .optional(),
     })
     .optional(),
   storage: z

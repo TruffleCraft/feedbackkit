@@ -567,7 +567,7 @@ describe("orchestrateFeedback — journey row (admin history, #70)", () => {
     expect(row).toMatchObject({ outcome: "issue_failed", last_error: "tracker error 502" });
     const draft = JSON.parse(row["issue_draft"] as string) as { title: string; body: string; labels: string[]; repo: string };
     // Exactly what the failed createIssue call sent.
-    expect(draft).toEqual({ title: gh.calls[0]!.body.title, body: gh.calls[0]!.body.body, labels: gh.calls[0]!.body.labels, repo: "acme/site" });
+    expect(draft).toEqual({ title: gh.calls[0]!.body.title, body: gh.calls[0]!.body.body, labels: gh.calls[0]!.body.labels, repo: "acme/site", patSecret: "GITHUB_PAT_default", outcome: "created" });
     expect(gh.calls[0]!.url).toContain("/repos/acme/site/issues");
   });
 
@@ -605,7 +605,7 @@ describe("orchestrateFeedback — delivery (#109)", () => {
     expect(db.feedback[0]!.row).toMatchObject({ delivery: "local", delivery_state: null });
   });
 
-  it("delivery project is stored as pending and never falls back to a public issue", async () => {
+  it("delivery project stores the report with its destination before delivering, never as a public issue", async () => {
     const db = fakeDb();
     const gh = ghCapture();
     const tracker = { kind: "github", defaultRepo: "acme/site", patSecret: "GITHUB_PAT_default", project: { org: "acme", number: 3 } };
@@ -613,7 +613,7 @@ describe("orchestrateFeedback — delivery (#109)", () => {
     expect(r.body).toMatchObject({ status: "issue_failed" });
     expect(gh.calls).toHaveLength(0);
     expect(db.feedback[0]!.row).toMatchObject({ delivery: "project", delivery_state: "pending" });
-    expect(JSON.parse(db.feedback[0]!.row["issue_draft"] as string)).toMatchObject({ title: expect.any(String), body: expect.any(String) }); // kept for the later delivery
+    expect(JSON.parse(db.feedback[0]!.row["issue_draft"] as string)).toMatchObject({ title: expect.any(String), body: expect.any(String), project: { org: "acme", number: 3, patSecret: "GITHUB_PAT_default", typeOption: "bug" } }); // destination pinned on the row
     expect(db.dedup.size).toBe(0);
   });
 

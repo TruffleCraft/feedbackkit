@@ -88,6 +88,8 @@ interface SystemProject {
     access: { ok: boolean; status: number; reason: string | null } | null;
     patExpiry: { raw: string; at: string | null; daysLeft: number | null } | null;
   } | null;
+  /** GitHub Project delivery check (null: no tracker.project). */
+  project?: { org: string; number: number; url: string; patSecret: string; patPresent: boolean; fieldsReadable: boolean | null; reason: string | null; missing: string[]; draftWriteVerified: number | null } | null;
   /** Unhandled reports that retention deletes within 7 days (null: no retentionDays). */
   retention?: { retentionDays: number; dueSoon: number; items: Array<{ id: string; deletesAt: number }> } | null;
 }
@@ -665,6 +667,16 @@ function attentionItems(s: SystemInfo): HTMLElement[] {
     if (t?.patExpiry?.at && typeof days === "number" && days <= PAT_WARN_DAYS) {
       const when = dateFmt.format(new Date(t.patExpiry.at));
       item(p.id, days < 0 ? `GitHub token expired on ${when}.` : `GitHub token expires on ${when}.`);
+    }
+    const pj = p.project;
+    if (pj) {
+      const name = `GitHub Project ${pj.org} #${pj.number}`;
+      if (!pj.patPresent) item(p.id, `can't deliver to ${name}: `, el("code", { class: "mono" }, pj.patSecret), " is not set.");
+      else if (pj.fieldsReadable === false) item(p.id, `can't read ${name}: ${pj.reason ?? "GitHub refused"}.`);
+      else {
+        if (pj.missing.length) item(p.id, `${name} is missing ${pj.missing.join(", ")}. Reports arrive, those values are skipped.`);
+        if (!pj.draftWriteVerified) item(p.id, `has no delivered test report in ${name} yet, so writing drafts is unproven.`);
+      }
     }
     const due = p.retention;
     if (due && due.dueSoon > 0 && due.items[0]) {

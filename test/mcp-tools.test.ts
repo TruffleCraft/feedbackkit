@@ -112,12 +112,12 @@ function handler(s: Store) {
     }
     if (sql.includes("FROM projects WHERE id = ?1")) return s.projects.get(params[0] as string) ?? null;
     if (sql.includes("FROM projects ORDER BY id")) return [...s.projects.values()];
-    if (sql.includes("FROM feedback WHERE created_at >= ?1 GROUP BY project_id, outcome")) {
-      const rows = s.feedback.filter((f) => f.created_at >= (params[0] as number));
+    if (sql.includes("FROM feedback WHERE created_at >= ?1 AND is_test = 0 GROUP BY project_id, outcome")) {
+      const rows = s.feedback.filter((f) => f.created_at >= (params[0] as number) && !(f as { is_test?: number }).is_test);
       return [...tally(rows, (f) => `${f.project_id}|${f.outcome}`)].map(([k, n]) => ({ project_id: k.split("|")[0], outcome: k.split("|")[1], n }));
     }
-    if (sql.includes("FROM feedback WHERE project_id = ?1 AND created_at >= ?2 GROUP BY outcome")) {
-      const rows = s.feedback.filter((f) => f.project_id === params[0] && f.created_at >= (params[1] as number));
+    if (sql.includes("FROM feedback WHERE project_id = ?1 AND created_at >= ?2 AND is_test = 0 GROUP BY outcome")) {
+      const rows = s.feedback.filter((f) => f.project_id === params[0] && f.created_at >= (params[1] as number) && !(f as { is_test?: number }).is_test);
       return [...tally(rows, (f) => f.outcome)].map(([k, n]) => ({ k, n }));
     }
     if (sql.includes("FROM events WHERE project_id = ?1 AND ts >= ?2 GROUP BY name")) {
