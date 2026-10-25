@@ -59,6 +59,7 @@ export async function checkProject(env: Env, config: FeedbackConfig, fetchImpl?:
     const types = config.templates.filter((t) => resolveDelivery(config, t) === "project").map((t) => p.typeOptions[t.type] ?? t.type);
     for (const option of new Set(types)) needOption(p.fields.type, option);
     needOption(p.fields.source, "FeedbackKit");
+    if (p.status) needOption("Status", p.status);
   } catch (e) {
     out.fieldsReadable = false;
     const status = (e as { status?: number }).status;

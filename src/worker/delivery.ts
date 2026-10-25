@@ -21,6 +21,8 @@ export interface ProjectDestination extends ProjectRef {
   patSecret: string;
   typeOption: string;
   fieldNames: { type: string; page: string; source: string };
+  /** Status option for a new draft; absent leaves Status empty. */
+  status?: string;
 }
 
 export type DeliveryResult =
@@ -194,7 +196,8 @@ async function deliverIssue(env: Env, row: Row, draft: IssueDraft, opts: Deliver
   }
 }
 
-/** Feedback type (single select), Page (text) and Source (single select "FeedbackKit").
+/** Feedback type (single select), Page (text), Status (the configured option for new
+ * drafts, if any) and Source (single select "FeedbackKit").
  * A missing field or option is skipped and reported, never a failed delivery. */
 async function setProjectFields(pat: string, dest: ProjectDestination, itemId: number, page: string, fetchImpl?: FetchFn): Promise<string[]> {
   const warnings: string[] = [];
@@ -224,6 +227,10 @@ async function setProjectFields(pat: string, dest: ProjectDestination, itemId: n
   if (type) updates.push(type);
   const pageField = byName(dest.fieldNames.page, "text");
   if (pageField && page) updates.push({ id: pageField.id, value: page });
+  if (dest.status) {
+    const status = option("Status", dest.status);
+    if (status) updates.push(status);
+  }
   const source = option(dest.fieldNames.source, "FeedbackKit");
   if (source) updates.push(source);
   if (updates.length) {
