@@ -212,8 +212,10 @@ item id and links to the Project; it does not mirror the status back.
    it private. The number is in its URL: `github.com/orgs/acme/projects/3` → `3`.
    User-owned Projects are not supported (fine-grained tokens can't reach them).
 2. **Add three fields** (all optional, a missing one is skipped with a warning):
-   `Type` (single select, one option per report type, e.g. `Bug`), `Page`
-   (text), `Source` (single select with the option `FeedbackKit`).
+   `Feedback type` (single select, one option per report type, e.g. `Bug`),
+   `Page` (text), `Source` (single select with the option `FeedbackKit`). Not
+   `Type`: organisation Projects already have a built-in Type field for issue
+   types. Other names: `tracker.project.fields: { "type": …, "page": …, "source": … }`.
 3. **Grant the token:** the fine-grained PAT of the project needs the
    organisation permission **Projects: read and write**. For least privilege use
    a separate token and name it in `tracker.project.patSecret`.

@@ -194,7 +194,7 @@ async function deliverIssue(env: Env, row: Row, draft: IssueDraft, opts: Deliver
   }
 }
 
-/** Type (single select), Page (text) and Source (single select "FeedbackKit").
+/** Feedback type (single select), Page (text) and Source (single select "FeedbackKit").
  * A missing field or option is skipped and reported, never a failed delivery. */
 async function setProjectFields(pat: string, dest: ProjectDestination, itemId: number, page: string, fetchImpl?: FetchFn): Promise<string[]> {
   const warnings: string[] = [];
@@ -204,10 +204,17 @@ async function setProjectFields(pat: string, dest: ProjectDestination, itemId: n
   } catch (e) {
     return [`project fields not readable: ${(e as Error).message}`];
   }
-  const byName = (name: string) => fields.find((f) => f.name.toLowerCase() === name.toLowerCase());
+  // Matched by name AND kind: an org project's built-in "Type" (issue_type) or a
+  // same-named field of another kind is never written to.
+  const byName = (name: string, dataType: string) => {
+    const named = fields.filter((f) => f.name.toLowerCase() === name.toLowerCase());
+    const f = named.find((x) => x.dataType === dataType);
+    if (!f) warnings.push(named.length ? `field "${name}" is not a ${dataType === "text" ? "text" : "single select"} field` : `field "${name}" not found`);
+    return f;
+  };
   const option = (fieldName: string, optionName: string) => {
-    const f = byName(fieldName);
-    if (!f) return warnings.push(`field "${fieldName}" not found`), null;
+    const f = byName(fieldName, "single_select");
+    if (!f) return null;
     const o = f.options.find((x) => x.name.toLowerCase() === optionName.toLowerCase());
     if (!o) return warnings.push(`option "${optionName}" not found in field "${fieldName}"`), null;
     return { id: f.id, value: o.id };
@@ -215,9 +222,8 @@ async function setProjectFields(pat: string, dest: ProjectDestination, itemId: n
   const updates: Array<{ id: number; value: string }> = [];
   const type = option(dest.fieldNames.type, dest.typeOption);
   if (type) updates.push(type);
-  const pageField = byName(dest.fieldNames.page);
-  if (!pageField) warnings.push(`field "${dest.fieldNames.page}" not found`);
-  else if (page) updates.push({ id: pageField.id, value: page });
+  const pageField = byName(dest.fieldNames.page, "text");
+  if (pageField && page) updates.push({ id: pageField.id, value: page });
   const source = option(dest.fieldNames.source, "FeedbackKit");
   if (source) updates.push(source);
   if (updates.length) {
