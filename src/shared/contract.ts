@@ -114,12 +114,13 @@ export const FeedbackConfig = z.object({
           number: z.number().int().positive(),
           // Separate token for the Projects permission (least privilege); default: tracker.patSecret.
           patSecret: z.string().min(1).optional(),
-          // Option of the Type field per template type; default: the type itself.
+          // Option of the feedback type field per template type; default: the type itself.
           typeOptions: z.record(z.string().min(1)).default({}),
           // Names of the three fields FeedbackKit fills; missing fields are skipped with a warning.
           fields: z
-            .object({ type: z.string().min(1).default("Type"), page: z.string().min(1).default("Page"), source: z.string().min(1).default("Source") })
-            .default({ type: "Type", page: "Page", source: "Source" }),
+            // Not "Type": organisation projects already have a built-in Type field (issue types).
+            .object({ type: z.string().min(1).default("Feedback type"), page: z.string().min(1).default("Page"), source: z.string().min(1).default("Source") })
+            .default({ type: "Feedback type", page: "Page", source: "Source" }),
         })
         .optional(),
     })

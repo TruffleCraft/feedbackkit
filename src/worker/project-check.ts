@@ -47,13 +47,15 @@ export async function checkProject(env: Env, config: FeedbackConfig, fetchImpl?:
   try {
     const fields = await listFields({ pat, project: p, fetchImpl });
     out.fieldsReadable = true;
-    const field = (name: string) => fields.find((f) => f.name.toLowerCase() === name.toLowerCase());
+    const field = (name: string, dataType: string) => fields.find((f) => f.name.toLowerCase() === name.toLowerCase() && f.dataType === dataType);
     const needOption = (fieldName: string, option: string) => {
-      const f = field(fieldName);
+      const f = field(fieldName, "single_select");
       if (!f) return;
       if (!f.options.some((o) => o.name.toLowerCase() === option.toLowerCase())) out.missing.push(`option "${option}" in "${fieldName}"`);
     };
-    for (const name of [p.fields.type, p.fields.page, p.fields.source]) if (!field(name)) out.missing.push(`field "${name}"`);
+    if (!field(p.fields.type, "single_select")) out.missing.push(`single select field "${p.fields.type}"`);
+    if (!field(p.fields.page, "text")) out.missing.push(`text field "${p.fields.page}"`);
+    if (!field(p.fields.source, "single_select")) out.missing.push(`single select field "${p.fields.source}"`);
     const types = config.templates.filter((t) => resolveDelivery(config, t) === "project").map((t) => p.typeOptions[t.type] ?? t.type);
     for (const option of new Set(types)) needOption(p.fields.type, option);
     needOption(p.fields.source, "FeedbackKit");

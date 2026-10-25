@@ -34,7 +34,9 @@ const noChat: ChatFn = async () => {
 const gw = { ...env, GITHUB_PAT_default: "tok" } as unknown as Env;
 
 const FIELDS = [
-  { id: 1, name: "Type", data_type: "single_select", options: [{ id: "opt-bug", name: { raw: "Bug", html: "Bug" } }] },
+  // An organisation project's built-in Type field (issue types): never written to.
+  { id: 99, name: "Type", data_type: "issue_type" },
+  { id: 1, name: "Feedback type", data_type: "single_select", options: [{ id: "opt-bug", name: { raw: "Bug", html: "Bug" } }] },
   { id: 2, name: "Page", data_type: "text" },
   { id: 3, name: "Source", data_type: "single_select", options: [{ id: "opt-fk", name: { raw: "FeedbackKit", html: "FeedbackKit" } }] },
 ];
@@ -92,12 +94,12 @@ describe("GitHub Project delivery", () => {
   });
 
   it("missing fields and options only add warnings", async () => {
-    const gh = github({ fields: [{ id: 1, name: "Type", data_type: "single_select", options: [] }] });
+    const gh = github({ fields: [{ id: 1, name: "Feedback type", data_type: "single_select", options: [] }, { id: 2, name: "Page", data_type: "single_select", options: [] }] });
     const r = await send(gh);
     expect(r.body).toMatchObject({ status: "created" });
     const stored = await row();
     expect(stored!["delivery_state"]).toBe("delivered");
-    expect(JSON.parse(String(stored!["delivery_warnings"]))).toEqual(['option "Bug" not found in field "Type"', 'field "Page" not found', 'field "Source" not found']);
+    expect(JSON.parse(String(stored!["delivery_warnings"]))).toEqual(['option "Bug" not found in field "Feedback type"', 'field "Page" is not a text field', 'field "Source" not found']);
   });
 
   it("a definite refusal (4xx) → failed, saved as issue_failed; a retry delivers it", async () => {
@@ -173,9 +175,9 @@ describe("test report and the System check", () => {
 
   it("a delivered test report is is_test, and proves draft writing", async () => {
     const cfg = config();
-    const gh = github({ fields: [FIELDS[0]] });
+    const gh = github({ fields: [FIELDS[0], FIELDS[1]] });
     const before = await checkProject(gw, cfg, gh.fetchImpl);
-    expect(before).toMatchObject({ fieldsReadable: true, draftWriteVerified: null, missing: ['field "Page"', 'field "Source"'] });
+    expect(before).toMatchObject({ fieldsReadable: true, draftWriteVerified: null, missing: ['text field "Page"', 'single select field "Source"'] });
 
     const r = await createTestReport(gw, { config: cfg, version: 1 }, cfg.templates[0]!, { fetchImpl: gh.fetchImpl, now: NOW, origin: "https://fk.example" });
     expect(r.body).toMatchObject({ status: "created" });
