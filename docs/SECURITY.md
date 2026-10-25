@@ -141,7 +141,7 @@ passes regardless. `GET /api/admin/me` answers a request with no credentials
 at all with a `401` that is not counted, because the admin UI calls it on every
 page load. Admin responses carry `Cache-Control: no-store`.
 
-The read-only admin API (P2, step 1):
+The admin API:
 
 | Route | Returns |
 |---|---|
@@ -150,7 +150,17 @@ The read-only admin API (P2, step 1):
 | `GET /api/admin/projects/:id/config` | the stored config plus `publicKey` and `configVersion`; re-importable as is via `POST /api/admin/config/import` |
 | `GET /api/admin/projects/:id/feedback?outcome=&cursor=&limit=` | feedback history, newest first, 25 per page (max 100), keyset cursor |
 | `GET /api/admin/projects/:id/funnel?days=30` | widget events by name and feedback by outcome in the window (1–90 days) |
-| `GET /api/admin/system` | release, schema, bindings, secret presence, LLM calls today against `llm.dailyBudget`, PAT access and expiry per project |
+| `GET /api/admin/system` | release, schema, bindings, secret presence, LLM calls today against `llm.dailyBudget`, PAT access and expiry per project, GitHub Project check, retention notice |
+| `PATCH /api/admin/feedback/:id` | disposition (`open`, `done`, `dismissed`) and note of a local or undecided report; `409 FK_NOT_LOCAL` for delivered ones |
+| `DELETE /api/admin/feedback/:id` | deletes the attachments, then the row; a partial failure keeps the row (`502 FK_DELETE_INCOMPLETE`) |
+| `POST /api/admin/feedback/:id/retry` | delivery retry, see [ERRORS.md](ERRORS.md) |
+| `POST /api/admin/projects/:id/config/validate` | Zod issues, the delivery shape gate and the effective delivery per type; stores nothing |
+| `PUT /api/admin/projects/:id/config` | publishes with `expectedVersion` (`409 FK_CONFIG_STALE` with the current config); `projectId` is locked |
+| `POST /api/admin/projects/:id/test-report` | one real delivery, LLM off, `is_test`; 10 per hour and project |
+
+Every write route goes through the same gate, so on the Access path it only
+counts a same-origin request (CSRF guard above). Writes log identifiers and
+results, never report content.
 
 Feedback items contain what the user wrote (message, summary, page URL without
 query) and attachment URLs. They never contain IP addresses, device info, the

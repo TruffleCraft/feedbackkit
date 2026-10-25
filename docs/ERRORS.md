@@ -60,3 +60,12 @@ Body: `{}` or `{ "createAnyway": true }`. A delivered report answers `200` with
 
 Widgets never see these codes: a report saved with a pending delivery is
 answered as `issue_failed`, as before.
+
+## Admin writes
+
+| Code | HTTP | Where | Meaning |
+|---|---|---|---|
+| `FK_CONFIG_INVALID` | 400 | config import, validate, publish | The config failed validation (`issues` lists each JSON path), `projectId` differs from the project, or `expectedVersion` is missing. |
+| `FK_CONFIG_STALE` | 409 | `PUT /api/admin/projects/:id/config` | Someone published since you loaded it. The answer carries the current `configVersion` and `config`; review the diff and publish again. |
+| `FK_NOT_LOCAL` | 409 | `PATCH /api/admin/feedback/:id` | The report was delivered to GitHub; triage it there. |
+| `FK_DELETE_INCOMPLETE` | 502 | `DELETE /api/admin/feedback/:id` | Some attachments could not be deleted (`failedKeys`). The report is kept; try again. |

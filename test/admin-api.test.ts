@@ -588,6 +588,24 @@ describe("admin API — Cloudflare Access sign-in", () => {
     expect((await del({ Origin: ORIGIN })).status).toBe(200);
   });
 
+  it("every write route of the inbox, editor and delivery refuses a cross-origin Access request (#111)", async () => {
+    const s = store();
+    const e = accessEnv(s);
+    const writes: Array<[string, string, unknown]> = [
+      ["PATCH", "/api/admin/feedback/srv-001", { disposition: "done" }],
+      ["DELETE", "/api/admin/feedback/srv-001", undefined],
+      ["POST", "/api/admin/feedback/srv-001/retry", {}],
+      ["POST", "/api/admin/projects/demo/config/validate", { config: demoConfig }],
+      ["PUT", "/api/admin/projects/demo/config", { config: demoConfig, expectedVersion: 3 }],
+      ["POST", "/api/admin/projects/demo/test-report", {}],
+    ];
+    for (const [method, path, body] of writes) {
+      const init = { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) };
+      expect((await app.request(path, withJwt(null, { Origin: "https://evil.example" }, init), e)).status, `${method} ${path}`).toBe(401);
+      expect((await app.request(path, withJwt(null, { Origin: ORIGIN }, init), e)).status, `${method} ${path}`).not.toBe(401);
+    }
+  });
+
   it("/diag?project= runs the deep check for an Access identity", async () => {
     const s = store();
     const e = accessEnv(s);

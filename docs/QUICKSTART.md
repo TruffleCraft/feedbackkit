@@ -413,17 +413,30 @@ Open `https://<your-gateway>/admin`. There are two ways in:
   `sessionStorage` for this tab only and sends it as a Bearer header. curl and
   scripts use the token too.
 
-In this release the admin pages are read-only. The project list shows each
-project with its feedback count of the last 7 days. A project page has the
-snippet and allowed origins, the feedback types with their fields, and the
-feedback history with the funnel of the last 30 days; screenshots open full
-size from your R2 public URL. The system page lists what needs attention first
-(a missing GitHub token, one that expires within 14 days, an AI budget above
-80 %), then the AI calls per project and the gateway status. The AI budget
-resets at 00:00 UTC.
+The project list shows each project with its feedback count of the last 7
+days and where its reports go (issues, a GitHub Project, stored here), with
+links to the repo or Project. A project page has the snippet and allowed
+origins, a real test report, the feedback types with their fields, the
+feedback history with the funnel of the last 30 days, and the config editor.
 
-Changing configs, fields and retrying failed issues follow in a later release.
-Until then, import configs with `POST /api/admin/config/import` (step 4).
+- **History:** every row starts with its type. Delivered rows link to their
+  issue or Project. Failed and unclear deliveries have a live **Retry**; an
+  unclear one asks before creating again. Reports stored here (delivery
+  `local`) can be marked **Done** or **Dismissed**, get a note, be copied as
+  Markdown for an agent (the visitor text in a fence marked untrusted) or be
+  deleted with their screenshots. **Open**, **Done** and **Needs a decision**
+  (reports from before the delivery model that never became an issue) filter
+  the list.
+- **Config:** the stored JSON in an editor. **Validate** checks it on the
+  gateway, lists where each type goes and shows the changes; **Publish** stores
+  it as written and bumps the version (widgets pick it up within 60 s). If
+  someone published in between, you get the new diff instead of overwriting it.
+  `projectId` can't change here. The import route stays for scripts.
+
+The system page lists what needs attention first (a missing GitHub token, one
+that expires within 14 days, an AI budget above 80 %, Project fields that would
+be skipped, reports retention deletes within 7 days), then the AI calls per
+project and the gateway status. The AI budget resets at 00:00 UTC.
 
 After 20 wrong tokens in an hour, the gateway blocks token requests from that
 network for the rest of the hour (HTTP 429). Access sign-ins are not blocked.
