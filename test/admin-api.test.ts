@@ -255,6 +255,8 @@ describe("GET /api/admin/projects", () => {
       configVersion: 3,
       updatedAt: s.now - DAY,
       feedback7d: { total: 3, byOutcome: { created: 1, accepted_incomplete: 1, "ai-failed": 0, issue_failed: 1 } },
+      deliveries: ["issue"],
+      links: { repo: "https://github.com/acme/site" },
     });
     expect(body.projects.find((p) => p["id"] === "other")!["feedback7d"]).toMatchObject({ total: 1 });
   });
@@ -319,6 +321,16 @@ describe("GET /api/admin/projects/:id/feedback", () => {
       llmModel: "google/gemini-2.5-flash-lite",
       attachments: [{ key: "demo/shot.webp", kind: "screenshot", url: "https://cdn.example/demo/shot.webp" }],
       retryable: false,
+      // Rows the fake stores without the v4 columns read like rows from before schema v4.
+      delivery: null,
+      deliveryState: null,
+      disposition: "open",
+      note: null,
+      handledAt: null,
+      projectUrl: null,
+      projectItemId: null,
+      warnings: [],
+      isTest: false,
     });
   });
 

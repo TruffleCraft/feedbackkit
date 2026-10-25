@@ -1,9 +1,9 @@
 import { Hono } from "hono";
-import { WIRE_VERSION, SCHEMA_VERSION, DELIVERY_CAPABILITY, FeedbackPayload, EventPayload, FeedbackConfig, requiredDeliveryCapability } from "../shared/contract.js";
+import { WIRE_VERSION, SCHEMA_VERSION, FeedbackPayload, EventPayload, FeedbackConfig } from "../shared/contract.js";
 import { toPublicConfig } from "../shared/projection.js";
 import { orchestrateFeedback, realChat, dryRunPreview, persistFailed } from "./orchestrate.js";
 import { renderTestPage, TEST_PAGE_CSP } from "./testpage.js";
-import { checkSchema, countProjects, storedDeliveryCapability } from "./db.js";
+import { checkSchema, countProjects } from "./db.js";
 import { renderLanding, LANDING_CSP } from "./landing.js";
 import { loadProject } from "./config.js";
 import { originAllowed } from "./security/origin.js";
@@ -17,6 +17,7 @@ import { checkProject, type ProjectCheck } from "./project-check.js";
 import { VERSION, releaseOf, bindingsPresence, secretsPresence } from "./status.js";
 import { adminAuthed, adminGate } from "./admin/auth.js";
 import { registerAdminRoutes } from "./admin/routes.js";
+import { checkConfigForWrite } from "./admin/config-write.js";
 import { registerAdminPages } from "./admin/pages.js";
 import { registerOAuthRoutes } from "./oauth/authorize.js";
 import type { Env } from "./env.js";
@@ -362,43 +363,12 @@ app.post("/api/admin/config/import", async (c) => {
     return c.json({ v: WIRE_VERSION, status: "error", error: "publicKey must be 8-64 chars of [A-Za-z0-9_-]" }, 400);
   }
 
-  const validated = FeedbackConfig.safeParse(cfg);
-  if (!validated.success) {
-    // Admin-authed, so detailed Zod paths are safe — and save a debugging loop.
-    const issues = validated.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`);
-    return c.json({ v: WIRE_VERSION, status: "error", error: "config failed validation", issues }, 400);
-  }
-
-  // Compatibility gate (#109): stable reads the same D1, so a shape it cannot
-  // handle yet would break the project there. Shapes are accepted only once the
-  // promote workflow recorded a stable release that handles them.
-  const needed = requiredDeliveryCapability(cfg);
-  if (needed > 0) {
-    let stored: number;
-    try {
-      stored = Math.min(await storedDeliveryCapability(c.env), DELIVERY_CAPABILITY);
-    } catch (e) {
-      console.error(`[feedbackkit] delivery capability read failed: ${(e as Error).message}`);
-      return c.json({ v: WIRE_VERSION, status: "error", error: "import failed — are migrations applied? see /diag" }, 503);
-    }
-    if (needed > stored) {
-      return c.json(
-        {
-          v: WIRE_VERSION,
-          status: "error",
-          code: "FK_CONFIG_SHAPE_UNSUPPORTED",
-          error: `this config uses delivery settings (delivery, tracker.project or no tracker) that need delivery capability ${needed}; the live stable release provides ${stored}. Promote a release that supports them first, or keep tracker and noIssue.`,
-          required: needed,
-          available: stored,
-        },
-        422,
-      );
-    }
-  }
+  const check = await checkConfigForWrite(c.env, cfg);
+  if (!check.ok) return c.json(check.body, check.status);
 
   // Store the raw blob (minus publicKey), like `pnpm seed`: loadProject re-runs
   // Zod on every read, so future schema defaults apply without a re-import.
-  const id = validated.data.projectId;
+  const id = check.config.projectId;
   const publicKey =
     (pinnedRaw as string | undefined) ||
     `fk_pub_${[...crypto.getRandomValues(new Uint8Array(6))].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
