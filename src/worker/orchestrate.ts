@@ -367,6 +367,7 @@ async function finalizeCreate(
       number: p.number,
       patSecret: p.patSecret ?? config.tracker.patSecret,
       typeOption: p.typeOptions[template.type] ?? template.type,
+      ...(p.status ? { status: p.status } : {}),
       fieldNames: p.fields,
     };
     const stored = await persistFeedback(env, { ...row, outcome: "issue_failed", issueUrl: null, lastError: "delivery pending", issueDraft: { ...draft, project }, deliveryState: "pending" });

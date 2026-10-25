@@ -216,6 +216,9 @@ item id and links to the Project; it does not mirror the status back.
    `Page` (text), `Source` (single select with the option `FeedbackKit`). Not
    `Type`: organisation Projects already have a built-in Type field for issue
    types. Other names: `tracker.project.fields: { "type": …, "page": …, "source": … }`.
+   Optional: `tracker.project.status: "New"` sets that option of the built-in
+   Status field on every new draft. GitHub's "Item added to project" workflow
+   only runs for issues and pull requests, not for drafts.
 3. **Grant the token:** the fine-grained PAT of the project needs the
    organisation permission **Projects: read and write**. For least privilege use
    a separate token and name it in `tracker.project.patSecret`.

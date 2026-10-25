@@ -39,6 +39,7 @@ const FIELDS = [
   { id: 1, name: "Feedback type", data_type: "single_select", options: [{ id: "opt-bug", name: { raw: "Bug", html: "Bug" } }] },
   { id: 2, name: "Page", data_type: "text" },
   { id: 3, name: "Source", data_type: "single_select", options: [{ id: "opt-fk", name: { raw: "FeedbackKit", html: "FeedbackKit" } }] },
+  { id: 4, name: "Status", data_type: "single_select", options: [{ id: "opt-new", name: { raw: "New", html: "New" } }] },
 ];
 
 interface Call {
@@ -91,6 +92,15 @@ describe("GitHub Project delivery", () => {
     const patch = gh.calls.find((c) => c.method === "PATCH")!;
     expect(patch.path).toBe("/orgs/acme/projectsV2/3/items/9001");
     expect(patch.body).toEqual({ fields: [{ id: 1, value: "opt-bug" }, { id: 2, value: "https://acme.dev/reports" }, { id: 3, value: "opt-fk" }] });
+  });
+
+  it("sets the configured Status option on a new draft (GitHub's workflows skip drafts)", async () => {
+    const gh = github();
+    const tracker = { kind: "github", patSecret: "GITHUB_PAT_default", project: { org: "acme", number: 3, typeOptions: { bug: "Bug" }, status: "New" } };
+    await send(gh, { tracker });
+    const patch = gh.calls.find((c) => c.method === "PATCH")!;
+    expect((patch.body as { fields: Array<{ id: number; value: string }> }).fields).toContainEqual({ id: 4, value: "opt-new" });
+    expect(await row()).toMatchObject({ delivery_warnings: null });
   });
 
   it("missing fields and options only add warnings", async () => {
