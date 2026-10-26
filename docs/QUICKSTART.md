@@ -224,9 +224,11 @@ item id and links to the Project; it does not mirror the status back.
    a separate token and name it in `tracker.project.patSecret`.
 4. **Import the config** (one of the three below).
 5. **Check and test:** the admin System page lists missing fields and options.
-   Then send one real test report:
+   Then send one real test report with **Send test report** on the project page.
+   Without Cloudflare Access in front of `/api/admin/*`, curl does the same:
    `curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" https://<gateway>/api/admin/projects/<id>/test-report`.
-   Its draft appears in the Project; the System page then shows writing as verified.
+   Its draft appears in the Project, the history marks it "In GitHub Project",
+   and the System page shows writing as verified.
 
 Screenshots in drafts (and local reports) link to `/admin/assets/…` on the
 gateway, which only opens for a Cloudflare Access sign-in, not to the public R2
@@ -414,7 +416,9 @@ Open `https://<your-gateway>/admin`. There are two ways in:
   account and nothing has to be pasted. Setup below.
 - The admin token: paste your `ADMIN_TOKEN`. The page keeps it in
   `sessionStorage` for this tab only and sends it as a Bearer header. curl and
-  scripts use the token too.
+  scripts use the token too, but only on paths Access does not cover: with the
+  Access setup below, `/api/admin/*` answers a token request with a redirect to
+  the sign-in. `/diag` stays outside Access and takes the token.
 
 The project list shows each project with its feedback count of the last 7
 days and where its reports go (issues, a GitHub Project, stored here), with
