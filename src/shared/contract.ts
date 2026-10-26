@@ -116,6 +116,9 @@ export const FeedbackConfig = z.object({
           patSecret: z.string().min(1).optional(),
           // Option of the feedback type field per template type; default: the type itself.
           typeOptions: z.record(z.string().min(1)).default({}),
+          // Option of the built-in Status field for new drafts (e.g. "New"). GitHub's
+          // "Item added to project" workflow does not run for drafts. Unset: Status stays empty.
+          status: z.string().min(1).optional(),
           // Names of the three fields FeedbackKit fills; missing fields are skipped with a warning.
           fields: z
             // Not "Type": organisation projects already have a built-in Type field (issue types).
