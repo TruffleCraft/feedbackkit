@@ -261,6 +261,21 @@ a.thumb:hover{border-color:var(--accent)}
   .brand{min-height:44px}
 }
 @media (max-width:400px){.brand .name{display:none}}
+.t.ty{gap:5px;color:var(--ink);font-weight:800}
+.t.ty .i{width:13px;height:13px}
+.acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.note-edit{display:flex;gap:8px;align-items:flex-end;margin-top:8px}
+.note-in{height:auto;min-height:60px;padding:10px 14px;resize:vertical;font:14px var(--sans)}
+.hrow .note{margin-top:6px}
+.why.err,.help .err{color:var(--danger);font-weight:600}
+.b.danger{color:var(--danger);border-color:var(--line-2)}
+.editor{display:grid;grid-template-columns:auto minmax(0,1fr);border:1.5px solid var(--line-2);border-radius:16px;background:var(--card);overflow:hidden}
+.editor:focus-within{border-color:var(--accent)}
+.editor pre{margin:0;padding:12px 8px 12px 12px;text-align:right;color:var(--muted);font:13px/1.6 var(--mono);background:var(--ground);border-right:1px solid var(--line);overflow:hidden;user-select:none;max-height:520px}
+.editor textarea{border:0;outline:0;resize:vertical;min-height:360px;max-height:520px;padding:12px;font:13px/1.6 var(--mono);color:var(--ink);background:transparent;white-space:pre;overflow:auto;width:100%}
+.diff .add{color:#86efac}
+.diff .del{color:#fca5a5}
+.issues{margin:0;padding-left:18px;color:var(--danger);font-size:13px;display:flex;flex-direction:column;gap:4px}
 .sprite{position:absolute;width:0;height:0;overflow:hidden}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 `;
@@ -272,6 +287,12 @@ const SPRITE = `<svg width="0" height="0" class="sprite" aria-hidden="true" focu
 <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></symbol>
 <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 4v5c0 4.5-3 8-7 9-4-1-7-4.5-7-9V7z"/><path d="M9.5 12l2 2 3.5-3.5"/></symbol>
 <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+<symbol id="i-bug" viewBox="0 0 24 24"><rect x="8" y="6" width="8" height="14" rx="4"/><path d="M12 10v10M8 13H4M20 13h-4M8 17l-3 2M16 17l3 2M8 9 5 7M16 9l3-2M10 6V4M14 6V4"/></symbol>
+<symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.8.7 1 1.5 1 2.5h6c0-1 .2-1.8 1-2.5A6 6 0 0 0 12 3z"/></symbol>
+<symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8-3-3-6 0 0-6 3 3 8-8z"/></symbol>
+<symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5V14M12 17h.01"/></symbol>
+<symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></symbol>
+<symbol id="i-dot" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/></symbol>
 <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></symbol>
 </svg>`;
 
@@ -299,7 +320,7 @@ const PROJECTS = `<section id="view-projects" hidden>
   <div class="pagehead"><div><h1>Projects</h1><p id="projects-sub"></p></div></div>
   <div class="tbl" id="projects-table" hidden>
     <table>
-      <thead><tr><th scope="col">Project</th><th scope="col">Reports, 7 days</th><th scope="col">Issues failed</th><th scope="col">Config</th><th scope="col">Edited</th></tr></thead>
+      <thead><tr><th scope="col">Project</th><th scope="col">Reports, 7 days</th><th scope="col">Issues failed</th><th scope="col">Delivery</th><th scope="col">Config</th><th scope="col">Edited</th></tr></thead>
       <tbody id="projects-rows"></tbody>
     </table>
   </div>
@@ -321,6 +342,7 @@ const PROJECT = `<section id="view-project" hidden>
     <button role="tab" type="button" id="tab-setup" data-tab="setup" aria-controls="panel-setup" aria-selected="false" tabindex="-1">Setup &amp; snippet</button>
     <button role="tab" type="button" id="tab-types" data-tab="types" aria-controls="panel-types" aria-selected="false" tabindex="-1">Types &amp; fields</button>
     <button role="tab" type="button" id="tab-history" data-tab="history" aria-controls="panel-history" aria-selected="true">Feedback history</button>
+    <button role="tab" type="button" id="tab-config" data-tab="config" aria-controls="panel-config" aria-selected="false" tabindex="-1">Config</button>
   </div>
 
   <div class="stack" id="panel-history" role="tabpanel" aria-labelledby="tab-history">
@@ -340,6 +362,9 @@ const PROJECT = `<section id="view-project" hidden>
     </div>
     <div class="chips" role="group" aria-label="Filter by outcome" id="filters">
       <button class="chip" type="button" data-filter="all" aria-pressed="true">All</button>
+      <button class="chip" type="button" data-filter="open" aria-pressed="false">Open</button>
+      <button class="chip" type="button" data-filter="done" aria-pressed="false">Done</button>
+      <button class="chip" type="button" data-filter="undecided" aria-pressed="false">Needs a decision</button>
       <button class="chip" type="button" data-filter="created" aria-pressed="false">Issue created</button>
       <button class="chip" type="button" data-filter="saved" aria-pressed="false">Saved, no issue</button>
       <button class="chip" type="button" data-filter="accepted_incomplete" aria-pressed="false">Sent incomplete</button>
@@ -361,7 +386,16 @@ const PROJECT = `<section id="view-project" hidden>
       <div class="step"><span class="n">3</span><div class="body"><div><h3>Check your CSP</h3><p>Only needed if your site sends a Content-Security-Policy. Add the gateway to <code class="mono">script-src</code>, <code class="mono">connect-src</code> and <code class="mono">font-src</code>, plus <code class="mono">img-src blob: data:</code> for screenshots.</p></div></div></div>
       <div class="step"><span class="n">4</span><div class="body"><div><h3>Send a test report</h3><p>The test page sends a dry run. It doesn't create an issue.</p></div>
         <div><a class="b ghost sm" id="testpage" target="_blank" rel="noopener noreferrer">Open test page ${icon("i-ext")}</a></div></div></div>
+      <div class="step"><span class="n">5</span><div class="body"><div><h3>Send a real test report</h3><p>Goes through the first type's real destination (an issue, a draft in the GitHub Project, or the history here) without the AI. It's marked as a test and left out of the counts.</p></div>
+        <div class="row-flex"><button class="b ghost sm" type="button" id="test-report">Send test report</button><span class="help" id="test-report-msg" role="status"></span></div></div></div>
     </div>
+  </div>
+
+  <div class="stack" id="panel-config" role="tabpanel" aria-labelledby="tab-config" hidden>
+    <p class="muted sm">The stored config of <b id="cfg-id"></b> as JSON. Validate checks it on the gateway and shows where each type goes and what changes. Publishing bumps the config version; widgets pick it up within 60 seconds. <code class="mono">projectId</code> can't change here.</p>
+    <div class="editor"><pre id="cfg-lines" aria-hidden="true"></pre><textarea id="cfg-text" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Config JSON"></textarea></div>
+    <div class="row-flex"><button class="b ghost sm" type="button" id="cfg-validate" disabled>Validate</button><button class="b violet sm" type="button" id="cfg-publish" disabled>Publish</button><span class="help" id="cfg-msg" role="status"></span></div>
+    <div class="stack" id="cfg-out"></div>
   </div>
 
   <div class="stack" id="panel-types" role="tabpanel" aria-labelledby="tab-types" hidden>

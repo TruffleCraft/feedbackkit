@@ -5,6 +5,9 @@ import { dayWindow, hitRateLimit, hourWindow } from "../security/ratelimit.js";
 import { deliverRow } from "../delivery.js";
 import { createTestReport } from "../orchestrate.js";
 import { checkProject } from "../project-check.js";
+import { deleteAssets } from "../storage/r2.js";
+import { forgetConfig } from "../config.js";
+import { checkConfigForWrite } from "./config-write.js";
 import { checkRepoAccess } from "../providers/github.js";
 import { retentionNotice } from "../storage/retention.js";
 import { releaseOf, bindingsPresence, secretsPresence } from "../status.js";
@@ -22,7 +25,18 @@ import type { Env } from "../env.js";
 type AppT = Hono<{ Bindings: Env }>;
 type Ctx = Context<{ Bindings: Env }>;
 
-const err = (c: Ctx, status: 400 | 404 | 500, error: string) => c.json({ v: WIRE_VERSION, status: "error", error }, status);
+const err = (c: Ctx, status: 400 | 404 | 409 | 500 | 502, error: string, code?: string, extra: Record<string, unknown> = {}) =>
+  c.json({ v: WIRE_VERSION, status: "error", error, ...(code ? { code } : {}), ...extra }, status);
+
+const DISPOSITIONS = new Set(["open", "done", "dismissed"]);
+const NOTE_MAX = 2000;
+
+/** The editor sends the export shape; these two live outside the stored blob. */
+function stripColumns(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const { publicKey: _k, configVersion: _v, ...rest } = raw as Record<string, unknown>;
+  return rest;
+}
 
 /** Runs a shared query and maps its QueryError to the admin API's error shape. */
 async function answer(c: Ctx, run: () => Promise<Record<string, unknown>>): Promise<Response> {
@@ -82,6 +96,7 @@ export function registerAdminRoutes(app: AppT): void {
         limit: limitRaw === undefined ? undefined : Number(limitRaw),
         outcome: c.req.query("outcome") || undefined,
         cursor: c.req.query("cursor") || undefined,
+        view: c.req.query("view") || undefined,
       })),
     }));
   });
@@ -92,6 +107,125 @@ export function registerAdminRoutes(app: AppT): void {
     if (denied) return denied;
     const daysRaw = c.req.query("days");
     return answer(c, async () => ({ v: WIRE_VERSION, ...(await getFunnel(c.env, c.req.param("id"), daysRaw === undefined ? undefined : Number(daysRaw))) }));
+  });
+
+  // ── Local inbox (#111): disposition and note, for local and undecided rows ───
+  app.patch("/api/admin/feedback/:id", async (c) => {
+    const denied = await adminGate(c);
+    if (denied) return denied;
+    const id = c.req.param("id");
+    const body = (await c.req.json().catch(() => null)) as { disposition?: unknown; note?: unknown } | null;
+    if (!body || typeof body !== "object") return err(c, 400, "body must be a JSON object");
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    const now = Date.now();
+    if (body.disposition !== undefined) {
+      if (typeof body.disposition !== "string" || !DISPOSITIONS.has(body.disposition)) return err(c, 400, "disposition must be open, done or dismissed");
+      sets.push("disposition = ?", "handled_at = ?");
+      params.push(body.disposition, body.disposition === "open" ? null : now);
+    }
+    if (body.note !== undefined) {
+      if (body.note !== null && (typeof body.note !== "string" || body.note.length > NOTE_MAX)) return err(c, 400, `note must be text of at most ${NOTE_MAX} characters, or null`);
+      sets.push("note = ?");
+      params.push(typeof body.note === "string" && body.note.trim() ? body.note : null);
+    }
+    if (!sets.length) return err(c, 400, "nothing to change (disposition, note)");
+    const row = await c.env.DB.prepare("SELECT delivery, issue_url FROM feedback WHERE id = ?1").bind(id).first<{ delivery: string | null; issue_url: string | null }>();
+    if (!row) return err(c, 404, "no such report", "FK_NOT_FOUND");
+    // Delivered reports are triaged in GitHub; only local and undecided rows have a local state.
+    if (row.delivery !== "local" && !(row.delivery === null && row.issue_url === null)) {
+      return err(c, 409, "this report was delivered to GitHub; triage it there", "FK_NOT_LOCAL");
+    }
+    await c.env.DB.prepare(`UPDATE feedback SET ${sets.join(", ")}, updated_at = ? WHERE id = ?`)
+      .bind(...params, now, id)
+      .run();
+    const updated = await c.env.DB.prepare("SELECT disposition, note, handled_at FROM feedback WHERE id = ?1")
+      .bind(id)
+      .first<{ disposition: string; note: string | null; handled_at: number | null }>();
+    return c.json({ v: WIRE_VERSION, status: "updated", feedbackId: id, disposition: updated?.disposition, note: updated?.note ?? null, handledAt: updated?.handled_at ?? null });
+  });
+
+  // ── Delete a report (#111): attachments first, then the row ─────────────────
+  // A partial failure keeps the row and names the keys, so a second try finishes it.
+  app.delete("/api/admin/feedback/:id", async (c) => {
+    const denied = await adminGate(c);
+    if (denied) return denied;
+    const id = c.req.param("id");
+    const row = await c.env.DB.prepare("SELECT project_id, client_feedback_id, payload FROM feedback WHERE id = ?1")
+      .bind(id)
+      .first<{ project_id: string; client_feedback_id: string | null; payload: string }>();
+    if (!row) return err(c, 404, "no such report", "FK_NOT_FOUND");
+    let clientId = row.client_feedback_id;
+    if (!clientId) {
+      try {
+        const fid = (JSON.parse(row.payload) as { feedbackId?: unknown }).feedbackId;
+        clientId = typeof fid === "string" ? fid : null;
+      } catch {
+        clientId = null;
+      }
+    }
+    const assets = clientId ? await deleteAssets(c.env, clientId, row.project_id) : { deleted: 0, failed: [] };
+    if (assets.failed.length) {
+      console.warn("feedbackkit admin delete incomplete", { feedbackId: id, failedKeys: assets.failed.length });
+      return err(c, 502, "some attachments could not be deleted; the report is kept, try again", "FK_DELETE_INCOMPLETE", { feedbackId: id, failedKeys: assets.failed });
+    }
+    await c.env.DB.prepare("DELETE FROM feedback WHERE id = ?1").bind(id).run();
+    // Audit: identifiers and counts only, never content.
+    console.log("feedbackkit admin delete", { feedbackId: id, projectId: row.project_id, assets: assets.deleted });
+    return c.json({ v: WIRE_VERSION, status: "deleted", feedbackId: id, assetsDeleted: assets.deleted });
+  });
+
+  // ── Config editor (#111): validate, then publish with optimistic concurrency ─
+  app.post("/api/admin/projects/:id/config/validate", async (c) => {
+    const denied = await adminGate(c);
+    if (denied) return denied;
+    const projectId = c.req.param("id");
+    const stored = await c.env.DB.prepare("SELECT config, config_version FROM projects WHERE id = ?1").bind(projectId).first<{ config: string; config_version: number }>();
+    if (!stored) return err(c, 404, "unknown project");
+    const body = (await c.req.json().catch(() => null)) as { config?: unknown } | null;
+    const cfg = stripColumns(body?.config);
+    if (!cfg) return err(c, 400, "config must be a JSON object", "FK_CONFIG_INVALID");
+    if (cfg["projectId"] !== projectId) return err(c, 400, `projectId cannot change here (it is "${projectId}")`, "FK_CONFIG_INVALID", { issues: [`projectId: must stay "${projectId}"`] });
+    const check = await checkConfigForWrite(c.env, cfg);
+    if (!check.ok) return c.json(check.body, check.status);
+    return c.json({ v: WIRE_VERSION, status: "valid", deliveries: check.deliveries, configVersion: Number(stored.config_version) });
+  });
+
+  app.put("/api/admin/projects/:id/config", async (c) => {
+    const denied = await adminGate(c);
+    if (denied) return denied;
+    const projectId = c.req.param("id");
+    const body = (await c.req.json().catch(() => null)) as { config?: unknown; expectedVersion?: unknown } | null;
+    const cfg = stripColumns(body?.config);
+    if (!cfg) return err(c, 400, "config must be a JSON object", "FK_CONFIG_INVALID");
+    if (!Number.isInteger(body?.expectedVersion)) return err(c, 400, "expectedVersion (the config version you edited) is required", "FK_CONFIG_INVALID");
+    if (cfg["projectId"] !== projectId) return err(c, 400, `projectId cannot change here (it is "${projectId}")`, "FK_CONFIG_INVALID", { issues: [`projectId: must stay "${projectId}"`] });
+    const check = await checkConfigForWrite(c.env, cfg);
+    if (!check.ok) return c.json(check.body, check.status);
+    const now = Date.now();
+    // Stored exactly as written (no defaults filled in), so seed files round-trip.
+    const res = await c.env.DB.prepare("UPDATE projects SET config = ?1, config_version = config_version + 1, updated_at = ?2 WHERE id = ?3 AND config_version = ?4")
+      .bind(JSON.stringify(cfg), now, projectId, body!.expectedVersion)
+      .run();
+    const current = await c.env.DB.prepare("SELECT public_key, config, config_version FROM projects WHERE id = ?1")
+      .bind(projectId)
+      .first<{ public_key: string; config: string; config_version: number }>();
+    if (!current) return err(c, 404, "unknown project");
+    if (!res.meta?.changes) {
+      let stored: unknown = null;
+      try {
+        stored = JSON.parse(current.config);
+      } catch {
+        /* report it as null */
+      }
+      return err(c, 409, `the config changed since you loaded it (now v${current.config_version}); review the new diff and publish again`, "FK_CONFIG_STALE", {
+        configVersion: Number(current.config_version),
+        config: stored,
+      });
+    }
+    forgetConfig(current.public_key);
+    console.log("feedbackkit admin config publish", { projectId, configVersion: Number(current.config_version) });
+    return c.json({ v: WIRE_VERSION, status: "published", projectId, configVersion: Number(current.config_version), deliveries: check.deliveries });
   });
 
   // ── Delivery retry (#110): failed and unknown rows, issue or GitHub Project ──

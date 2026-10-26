@@ -72,6 +72,12 @@ export async function loadProject(
   return result;
 }
 
+/** Drop one project from this isolate's cache after a config write. Other
+ * isolates and edge locations pick it up within TTL_MS (60 s). */
+export function forgetConfig(publicKey: string): void {
+  cache.delete(publicKey);
+}
+
 /** Test-only: clear the isolate cache. */
 export function __clearConfigCache(): void {
   cache.clear();

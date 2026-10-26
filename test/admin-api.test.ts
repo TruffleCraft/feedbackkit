@@ -255,6 +255,8 @@ describe("GET /api/admin/projects", () => {
       configVersion: 3,
       updatedAt: s.now - DAY,
       feedback7d: { total: 3, byOutcome: { created: 1, accepted_incomplete: 1, "ai-failed": 0, issue_failed: 1 } },
+      deliveries: ["issue"],
+      links: { repo: "https://github.com/acme/site" },
     });
     expect(body.projects.find((p) => p["id"] === "other")!["feedback7d"]).toMatchObject({ total: 1 });
   });
@@ -319,6 +321,16 @@ describe("GET /api/admin/projects/:id/feedback", () => {
       llmModel: "google/gemini-2.5-flash-lite",
       attachments: [{ key: "demo/shot.webp", kind: "screenshot", url: "https://cdn.example/demo/shot.webp" }],
       retryable: false,
+      // Rows the fake stores without the v4 columns read like rows from before schema v4.
+      delivery: null,
+      deliveryState: null,
+      disposition: "open",
+      note: null,
+      handledAt: null,
+      projectUrl: null,
+      projectItemId: null,
+      warnings: [],
+      isTest: false,
     });
   });
 
@@ -574,6 +586,24 @@ describe("admin API — Cloudflare Access sign-in", () => {
     const del = (headers: Record<string, string>) => app.request(`/api/admin/assets?feedbackId=${clientId(1)}`, withJwt(null, headers, { method: "DELETE" }), e);
     expect((await del({ Origin: "https://evil.example" })).status).toBe(401);
     expect((await del({ Origin: ORIGIN })).status).toBe(200);
+  });
+
+  it("every write route of the inbox, editor and delivery refuses a cross-origin Access request (#111)", async () => {
+    const s = store();
+    const e = accessEnv(s);
+    const writes: Array<[string, string, unknown]> = [
+      ["PATCH", "/api/admin/feedback/srv-001", { disposition: "done" }],
+      ["DELETE", "/api/admin/feedback/srv-001", undefined],
+      ["POST", "/api/admin/feedback/srv-001/retry", {}],
+      ["POST", "/api/admin/projects/demo/config/validate", { config: demoConfig }],
+      ["PUT", "/api/admin/projects/demo/config", { config: demoConfig, expectedVersion: 3 }],
+      ["POST", "/api/admin/projects/demo/test-report", {}],
+    ];
+    for (const [method, path, body] of writes) {
+      const init = { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) };
+      expect((await app.request(path, withJwt(null, { Origin: "https://evil.example" }, init), e)).status, `${method} ${path}`).toBe(401);
+      expect((await app.request(path, withJwt(null, { Origin: ORIGIN }, init), e)).status, `${method} ${path}`).not.toBe(401);
+    }
   });
 
   it("/diag?project= runs the deep check for an Access identity", async () => {

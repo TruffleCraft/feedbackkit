@@ -1,4 +1,4 @@
-import { EventName, FeedbackConfig } from "../../shared/contract.js";
+import { EventName, FeedbackConfig, resolveDelivery, type Delivery } from "../../shared/contract.js";
 import { publicUrl } from "../storage/r2.js";
 import type { Env } from "../env.js";
 
@@ -89,6 +89,14 @@ function parsePayload(raw: string): Record<string, unknown> {
   }
 }
 const str = (v: unknown) => (typeof v === "string" ? v : null);
+function parseWarnings(raw: string | null | undefined): string[] {
+  try {
+    const v = raw ? (JSON.parse(raw) as unknown) : [];
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 export interface Attachment {
   key: string;
@@ -97,6 +105,9 @@ export interface Attachment {
 }
 
 /** Live attachments by client feedbackId (assets are indexed by it, not by the row id). */
+/** The signed-in gateway route for an attachment (private deliveries, #110). */
+export const privateAssetUrl = (key: string) => `/admin/assets/${key.split("/").map(encodeURIComponent).join("/")}`;
+
 async function attachmentsFor(env: Env, projectId: string, clientIds: string[], base: string | undefined): Promise<Map<string, Attachment[]>> {
   const out = new Map<string, Attachment[]>();
   const ids = [...new Set(clientIds)];
@@ -124,13 +135,17 @@ export interface ProjectSummary {
   configVersion: number;
   updatedAt: number;
   feedback7d: { total: number; byOutcome: Record<string, number> };
+  /** Destinations in use, in template order (empty when the config does not parse). */
+  deliveries: Delivery[];
+  /** Where delivered reports land: the GitHub Project and/or the default repo. */
+  links: { project?: string; repo?: string };
 }
 
 /** Every project with its feedback count of the last 7 days. */
 export async function listProjects(env: Env, now = Date.now()): Promise<ProjectSummary[]> {
   const since = now - 7 * DAY_MS;
   const [projects, counts] = await Promise.all([
-    env.DB.prepare("SELECT id, public_key, config_version, updated_at FROM projects ORDER BY id").all<Omit<ProjectRow, "config">>(),
+    env.DB.prepare("SELECT id, public_key, config, config_version, updated_at FROM projects ORDER BY id").all<ProjectRow>(),
     env.DB.prepare("SELECT project_id, outcome, COUNT(*) AS n FROM feedback WHERE created_at >= ?1 AND is_test = 0 GROUP BY project_id, outcome")
       .bind(since)
       .all<{ project_id: string; outcome: string; n: number }>(),
@@ -139,12 +154,20 @@ export async function listProjects(env: Env, now = Date.now()): Promise<ProjectS
   return (projects.results ?? []).map((p) => {
     const mine = countRows.filter((r) => r.project_id === p.id).map((r) => ({ k: r.outcome, n: r.n }));
     const { total, counts: byOutcome } = countBy(mine, OUTCOMES);
+    const cfg = parseConfig(p.config);
+    const deliveries = cfg ? [...new Set(cfg.templates.map((t) => resolveDelivery(cfg, t)))] : [];
+    const links: ProjectSummary["links"] = {};
+    const pr = cfg?.tracker?.project;
+    if (pr && deliveries.includes("project")) links.project = `https://github.com/orgs/${encodeURIComponent(pr.org)}/projects/${pr.number}`;
+    if (cfg?.tracker?.defaultRepo && deliveries.includes("issue")) links.repo = `https://github.com/${cfg.tracker.defaultRepo}`;
     return {
       id: p.id,
       publicKey: p.public_key,
       configVersion: Number(p.config_version),
       updatedAt: Number(p.updated_at),
       feedback7d: { total, byOutcome },
+      deliveries,
+      links,
     };
   });
 }
@@ -178,6 +201,15 @@ interface FeedbackListRow {
   title: string | null;
   llm_model: string | null;
   has_draft: number;
+  delivery?: string | null;
+  delivery_state?: string | null;
+  disposition?: string | null;
+  note?: string | null;
+  handled_at?: number | null;
+  project_url?: string | null;
+  project_item_id?: string | null;
+  delivery_warnings?: string | null;
+  is_test?: number | null;
 }
 
 export interface FeedbackListItem {
@@ -194,11 +226,31 @@ export interface FeedbackListItem {
   llmModel: string | null;
   attachments: Attachment[];
   retryable: boolean;
+  /** issue | project | local; null for rows from before schema v4 whose destination is not proven. */
+  delivery: string | null;
+  deliveryState: string | null;
+  /** Local inbox state (meaningful for local and undecided rows). */
+  disposition: string;
+  note: string | null;
+  handledAt: number | null;
+  projectUrl: string | null;
+  projectItemId: string | null;
+  warnings: string[];
+  isTest: boolean;
 }
+
+/** Inbox views: local reports still open, local ones handled, and rows from
+ * before the delivery model that never got an issue ("Needs a decision"). */
+export const FEEDBACK_VIEWS = {
+  open: "delivery = 'local' AND disposition = 'open'",
+  done: "delivery = 'local' AND disposition <> 'open'",
+  undecided: "delivery IS NULL AND issue_url IS NULL AND disposition = 'open'",
+} as const;
 
 export interface FeedbackListOptions {
   projectId: string;
   outcome?: string;
+  view?: string;
   /** Only feedback created at or after this time (ms since epoch). */
   since?: number;
   cursor?: string;
@@ -225,6 +277,11 @@ export async function listFeedback(env: Env, opts: FeedbackListOptions): Promise
     where.push("outcome = ?");
     params.push(outcome);
   }
+  if (opts.view !== undefined) {
+    const clause = FEEDBACK_VIEWS[opts.view as keyof typeof FEEDBACK_VIEWS];
+    if (!clause) throw new QueryError(400, "invalid view");
+    where.push(clause);
+  }
   if (opts.since !== undefined) {
     where.push("created_at >= ?");
     params.push(Math.floor(opts.since));
@@ -237,7 +294,8 @@ export async function listFeedback(env: Env, opts: FeedbackListOptions): Promise
   const rows =
     (
       await env.DB.prepare(
-        `SELECT id, outcome, payload, issue_url, created_at, type, title, llm_model, issue_draft IS NOT NULL AS has_draft
+        `SELECT id, outcome, payload, issue_url, created_at, type, title, llm_model, issue_draft IS NOT NULL AS has_draft,
+                delivery, delivery_state, disposition, note, handled_at, project_url, project_item_id, delivery_warnings, is_test
          FROM feedback WHERE ${where.join(" AND ")} ORDER BY created_at DESC, id DESC LIMIT ?`,
       )
         .bind(...params)
@@ -255,6 +313,8 @@ export async function listFeedback(env: Env, opts: FeedbackListOptions): Promise
   const items = page.map((r, i) => {
     const pl = payloads[i]!;
     const clientFeedbackId = str(pl["feedbackId"]);
+    const delivery = r.delivery ?? null;
+    const atts = (clientFeedbackId && assets.get(clientFeedbackId)) || [];
     return {
       id: r.id,
       clientFeedbackId,
@@ -267,8 +327,18 @@ export async function listFeedback(env: Env, opts: FeedbackListOptions): Promise
       pageUrl: str(pl["pageUrl"]),
       issueUrl: r.issue_url,
       llmModel: r.llm_model,
-      attachments: (clientFeedbackId && assets.get(clientFeedbackId)) || [],
-      retryable: r.outcome === "issue_failed" && Boolean(r.has_draft),
+      // Private deliveries link to the signed-in route, never the public bucket.
+      attachments: delivery === "project" || delivery === "local" ? atts.map((a) => ({ ...a, url: privateAssetUrl(a.key) })) : atts,
+      retryable: Boolean(r.has_draft) && r.delivery_state !== "delivered" && (delivery === "issue" || delivery === "project" || (delivery === null && r.outcome === "issue_failed")),
+      delivery,
+      deliveryState: r.delivery_state ?? null,
+      disposition: r.disposition ?? "open",
+      note: r.note ?? null,
+      handledAt: r.handled_at == null ? null : Number(r.handled_at),
+      projectUrl: r.project_url ?? null,
+      projectItemId: r.project_item_id ?? null,
+      warnings: parseWarnings(r.delivery_warnings),
+      isTest: Boolean(r.is_test),
     };
   });
   const last = page[page.length - 1];
