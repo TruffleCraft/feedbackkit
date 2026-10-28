@@ -1,6 +1,13 @@
 # Contributing to FeedbackKit
 
-> Pre-0.1: the codebase does not exist yet — we are iterating the [roadmap](docs/ROADMAP.md) first. Until P1 lands, contributions = discussion on issues.
+> Pre-0.1: the codebase does not exist yet — we are iterating the [roadmap](docs/ROADMAP.md) first. Until P1 lands, contributions are ideas in Discussions and comments on `decision` issues.
+
+## Ideas and feature requests
+
+- Post new ideas and feature requests in the [Ideas category](../../discussions/categories/ideas) of Discussions. Upvote the ones you want; we use the vote count to gauge demand.
+- When we accept an idea, a maintainer opens an issue from the discussion and links it to its epic. Bugs still go straight to [issues](../../issues/new/choose).
+- We post releases and roadmap changes in [Announcements](../../discussions/categories/announcements).
+- An idea that needs a design decision first moves to a `decision` issue (see below).
 
 ## How decisions are made
 
