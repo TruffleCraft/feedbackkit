@@ -22,7 +22,11 @@ test("annotate: capture → draw → use → flattened shot uploads and key ride
 
   await expect(page.locator(".fk-panel")).toHaveAttribute("inert", "");
   await expect(page.locator(".fk-backdrop")).toHaveAttribute("aria-hidden", "true");
-  await expect(page.getByRole("button", { name: "Crop" })).toBeFocused();
+  // #121: marking up comes first; Rectangle is selected on open, Crop is last.
+  await expect(page.getByRole("button", { name: "Rectangle" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Rectangle" })).toHaveAttribute("aria-pressed", "true");
+  const order = await page.locator(".fk-toolbar > .fk-tool").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
+  expect(order.slice(0, 5)).toEqual(["Rectangle", "Draw", "Arrow", "Text", "Crop"]);
   await page.getByRole("button", { name: "Use screenshot" }).focus();
   await page.keyboard.press("Tab");
   await expect(page.locator(".fk-editor .fk-x")).toBeFocused();
@@ -62,7 +66,8 @@ test("annotate: crop drag shrinks the exported image to the selected region", as
   await page.goto("/");
   await openAnnotator(page);
 
-  // Crop tool is pre-selected; drag a small region.
+  // Pick the crop tool, then drag a small region.
+  await page.getByRole("button", { name: "Crop" }).click();
   const canvas = page.locator(".fk-canvas");
   const box = (await canvas.boundingBox())!;
   await page.mouse.move(box.x + 20, box.y + 20);

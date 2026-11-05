@@ -26,6 +26,8 @@ export interface UIConfig {
   triggerLabel?: string;
   /** data-trigger="none": no floating button, the host opens the panel itself. */
   hideTrigger?: boolean;
+  /** data-trigger-media: the floating button shows only while this query matches (#437). */
+  triggerMedia?: MediaQueryList;
   /** false when the project switched the page capture off (capture.screenshot). */
   screenshot?: boolean;
   /** Host privacy policy, linked from the footer (https only, checked by caller). */
@@ -152,6 +154,11 @@ export class WidgetUI {
     return t(this.config.locale, k);
   }
 
+  /** No floating button right now: switched off, or its media query does not match. */
+  private get triggerOff() {
+    return !!this.config.hideTrigger || (!!this.config.triggerMedia && !this.config.triggerMedia.matches);
+  }
+
   private get shotAllowed() {
     return this.config.screenshot !== false;
   }
@@ -203,7 +210,11 @@ export class WidgetUI {
     });
 
     this.buildAnnotate();
-    this.trigger.hidden = !!this.config.hideTrigger;
+    this.trigger.hidden = this.triggerOff;
+    // Follow the host's breakpoint live: a window that shrinks below it drops the button.
+    this.config.triggerMedia?.addEventListener("change", () => {
+      if (this.backdrop.hidden) this.trigger.hidden = this.triggerOff;
+    });
     this.shadow.append(this.trigger, this.backdrop, this.annotator.root, this.live);
   }
 
@@ -554,13 +565,13 @@ export class WidgetUI {
   render(state: WidgetState) {
     if (state.name === "closed") {
       this.backdrop.hidden = true;
-      this.trigger.hidden = !!this.config.hideTrigger;
+      this.trigger.hidden = this.triggerOff;
       // Only on a genuine close (not the initial mount) do we unlock scroll and
       // restore focus — otherwise we'd steal the host page's initial focus and
       // wipe its inline overflow on every page load.
       if (this.hasOpened) {
         this.lockScroll(false);
-        if (this.config.hideTrigger) this.hostReturnFocus?.focus(); // back to the host's own button
+        if (this.trigger.hidden) this.hostReturnFocus?.focus(); // back to the host's own button
         else this.trigger.focus();
       }
       return;

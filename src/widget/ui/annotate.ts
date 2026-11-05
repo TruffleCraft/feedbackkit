@@ -33,7 +33,7 @@ export class AnnotatorUI {
   private largerBtn!: HTMLButtonElement;
 
   private img: HTMLImageElement | null = null;
-  private tool: Tool = "crop";
+  private tool: Tool = "rect";
   private annotations: Annotation[] = [];
   private crop: Rect | null = null;
   private drag: { x: number; y: number; a: Annotation | null } | null = null;
@@ -73,11 +73,12 @@ export class AnnotatorUI {
     const bar = document.createElement("div");
     bar.className = "fk-toolbar";
     const tools: [Tool, string, Parameters<typeof t>[1]][] = [
-      ["crop", "⛶", "toolCrop"],
+      // Marking up comes first, cropping is rare (#121).
       ["rect", "▭", "toolRect"],
+      ["pen", "✎", "toolPen"],
       ["arrow", "↗", "toolArrow"],
       ["text", "T", "toolText"],
-      ["pen", "✎", "toolPen"],
+      ["crop", "⛶", "toolCrop"],
     ];
     for (const [tool, glyph, key] of tools) {
       const b = btn("fk-tool", glyph, this.tr(key));
@@ -156,7 +157,7 @@ export class AnnotatorUI {
     this.crop = null;
     this.drag = null;
     this.textSize = fontSize(img.naturalWidth);
-    this.setTool("crop");
+    this.setTool("rect");
     this.fit();
     this.redraw();
   }
