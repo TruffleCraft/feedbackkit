@@ -37,11 +37,18 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 // state-changing request therefore only counts as an Access sign-in when the
 // browser says it came from this origin. Bearer requests need no such check:
 // browsers never attach that header on their own.
+// `Origin: null` (an opaque origin, or a page served with Referrer-Policy:
+// no-referrer posting a form) never matches, so pages that post forms here must
+// not use no-referrer (see oauth/consent-headers.ts).
+export function isSameOriginRequest(req: Request): boolean {
+  if (SAFE_METHODS.has(req.method)) return true;
+  const origin = req.headers.get("Origin");
+  if (origin) return origin === new URL(req.url).origin;
+  return req.headers.get("Sec-Fetch-Site") === "same-origin";
+}
+
 export function sameOrigin(c: Context): boolean {
-  if (SAFE_METHODS.has(c.req.method)) return true;
-  const origin = c.req.header("Origin");
-  if (origin) return origin === new URL(c.req.url).origin;
-  return c.req.header("Sec-Fetch-Site") === "same-origin";
+  return isSameOriginRequest(c.req.raw);
 }
 
 async function accessIdentity(c: Context): Promise<AdminIdentity | null> {
