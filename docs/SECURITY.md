@@ -232,6 +232,12 @@ them; a form field can't add any. The page has no script and a nonce CSP
 form-action 'self' <redirect origin>; frame-ancestors 'none'; base-uri
 'none'`) plus `X-Frame-Options: DENY`. `form-action` lists the client's
 redirect origin because browsers apply it to the redirect after the post.
+`Referrer-Policy` is `same-origin`, not `no-referrer` as on the admin shells:
+with `no-referrer` the browser posts the form with `Origin: null`, and the
+origin check refuses every Allow. `same-origin` keeps the origin on that post
+and still sends no `Referer` to the client or any other site. The admin shells
+are not affected, because they call the API with `fetch()`, which always sends
+the page's origin.
 
 The grant stores the Access email and subject, the client id and name, and
 the scopes. The provider's user id is the URL-encoded email.
