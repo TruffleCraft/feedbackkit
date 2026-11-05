@@ -14,15 +14,29 @@ const PORT = Number(process.env.PORT || 8788);
 // (transpiled on start), so the specs run admin.js under the production CSP.
 // /api/admin/* is mocked per test with page.route.
 const { build } = await import("esbuild");
-const bundled = await build({
-  entryPoints: [join(root, "src", "worker", "admin", "pages.ts")],
-  bundle: true,
-  format: "esm",
-  platform: "neutral",
-  write: false,
-  logLevel: "silent",
-});
-const pages = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`);
+async function load(...file) {
+  const bundled = await build({
+    entryPoints: [join(root, "src", "worker", ...file)],
+    bundle: true,
+    format: "esm",
+    platform: "neutral",
+    write: false,
+    logLevel: "silent",
+  });
+  return import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`);
+}
+const pages = await load("admin", "pages.ts");
+// OAuth consent: the real page headers and the real same-origin check of the
+// POST handler, so a real browser shows which Origin its form post carries.
+const consent = await load("oauth", "consent-headers.ts");
+const { isSameOriginRequest } = await load("admin", "auth.ts");
+
+function consentForm(res, action, headers) {
+  res.writeHead(200, headers);
+  res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Connect</title></head><body>
+<form method="post" action="${action}"><input type="hidden" name="handle" value="h-123">
+<button type="submit" name="decision" value="allow">Allow</button></form></body></html>`);
+}
 
 const ROUTES = {
   "/admin.js": { file: join(root, "dist", "admin.js"), type: "application/javascript; charset=utf-8" },
@@ -62,6 +76,28 @@ createServer((req, res) => {
   if (path === "/api/feedback") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ v: 1, status: "created", id: "local-preview" }));
+    return;
+  }
+  if (path === "/oauth/authorize" && req.method === "GET") {
+    // As the worker serves it, with a client redirect origin in form-action.
+    consentForm(res, "/oauth/authorize", consent.consentHeaders(randomUUID().replace(/-/g, ""), "https://client.example"));
+    return;
+  }
+  if (path === "/oauth/authorize" && req.method === "POST") {
+    // Same decision as the worker's POST handler makes before anything else.
+    const probe = new Request(`http://${req.headers.host}${req.url}`, {
+      method: "POST",
+      headers: Object.fromEntries(["origin", "sec-fetch-site"].filter((h) => req.headers[h]).map((h) => [h, req.headers[h]])),
+    });
+    const allowed = isSameOriginRequest(probe);
+    req.resume();
+    res.writeHead(allowed ? 200 : 403, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end(`${allowed ? "Allowed" : "Request blocked"}\nOrigin: ${req.headers.origin ?? "(none)"}\nSec-Fetch-Site: ${req.headers["sec-fetch-site"] ?? "(none)"}`);
+    return;
+  }
+  // A form on another origin that posts to the consent endpoint (cross-site CSRF).
+  if (path === "/e2e/foreign-consent-form") {
+    consentForm(res, `http://localhost:${PORT}/oauth/authorize`, { "Content-Type": "text/html; charset=utf-8" });
     return;
   }
   const view = pages.adminViewFor(path);

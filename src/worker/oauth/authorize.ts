@@ -4,6 +4,7 @@ import { verifyAccess } from "../admin/access.js";
 import { sameOrigin } from "../admin/auth.js";
 import { CSS, FAVICON } from "../admin/pages.js";
 import { DEFAULT_SCOPES, SCOPE_TEXT, isScope, type AuthProps, type Scope } from "../mcp/scopes.js";
+import { consentHeaders } from "./consent-headers.js";
 import { OAUTH_PATHS, mcpDisabledResponse } from "./provider.js";
 import type { Env } from "../env.js";
 
@@ -32,21 +33,6 @@ const esc = (s: unknown) =>
 export function grantedScopes(requested: readonly string[]): Scope[] {
   const known = [...new Set(requested.filter(isScope))];
   return known.length ? known : [...DEFAULT_SCOPES];
-}
-
-// Same tokens and font as the admin (pages.ts); no script at all. form-action
-// names the client's redirect origin too: browsers apply it to the redirect
-// that follows the form post, and that redirect goes back to the app.
-function consentCsp(nonce: string, redirectOrigin: string | null): string {
-  return [
-    "default-src 'none'",
-    `style-src 'nonce-${nonce}'`,
-    "font-src 'self'",
-    "img-src data:",
-    redirectOrigin ? `form-action 'self' ${redirectOrigin}` : "form-action 'none'",
-    "frame-ancestors 'none'",
-    "base-uri 'none'",
-  ].join("; ");
 }
 
 const PAGE_CSS = `
@@ -81,12 +67,7 @@ ${inner}
 
 function respond(status: number, html: string, nonce: string, redirectOrigin: string | null, base?: Headers): Response {
   const headers = new Headers(base);
-  headers.set("Content-Type", "text/html; charset=utf-8");
-  headers.set("Content-Security-Policy", consentCsp(nonce, redirectOrigin));
-  headers.set("X-Frame-Options", "DENY");
-  headers.set("Referrer-Policy", "no-referrer");
-  headers.set("X-Content-Type-Options", "nosniff");
-  headers.set("Cache-Control", "no-store");
+  for (const [k, v] of Object.entries(consentHeaders(nonce, redirectOrigin))) headers.set(k, v);
   return new Response(html, { status, headers });
 }
 

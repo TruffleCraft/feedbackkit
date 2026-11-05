@@ -188,6 +188,9 @@ describe("/oauth/authorize", () => {
     expect(csp).toMatch(/style-src 'nonce-[0-9a-f]+'/);
     expect(csp).toContain("form-action 'self' https://client.example");
     expect(csp).toContain("frame-ancestors 'none'");
+    // Not no-referrer: then browsers post this page's form with `Origin: null`
+    // and the same-origin check refuses Allow (e2e/oauth-consent.spec.ts).
+    expect(res.headers.get("Referrer-Policy")).toBe("same-origin");
   });
 
   it("Cancel denies: back to the client with access_denied, no grant", async () => {
@@ -216,6 +219,12 @@ describe("/oauth/authorize", () => {
     });
     expect(noAccess.status).toBe(403);
     expect((await decide(e, handle, cookie, "allow", { Origin: "https://evil.example" })).status).toBe(403);
+    // A cross-site form with a valid Access identity and the binding cookie.
+    const crossSite = await decide(e, handle, cookie, "allow", { Origin: "https://evil.example", "Sec-Fetch-Site": "cross-site" });
+    expect(crossSite.status).toBe(403);
+    expect(await crossSite.text()).toContain("Request blocked");
+    // An opaque origin (sandboxed frame, no-referrer page) is not this origin either.
+    expect((await decide(e, handle, cookie, "allow", { Origin: "null", "Sec-Fetch-Site": "cross-site" })).status).toBe(403);
     expect((await decide(e, handle, "", "allow")).status).toBe(400);
     expect(grants(kv)).toEqual([]);
   });
