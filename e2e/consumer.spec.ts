@@ -72,6 +72,46 @@ test("lazy load: nothing from the gateway before the click; data-trigger=none + 
   await expect(page.getByPlaceholder(placeholder)).toBeVisible();
 });
 
+const MEDIA_PAGE = (attrs: string) => `<!doctype html><html><head><meta charset="utf-8"><title>media</title><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>
+<script src="/widget.js" data-project="fk_test" ${attrs}></script></body></html>`;
+
+test("data-trigger-media: the floating button follows the breakpoint live; open() works below it (#437)", async ({ page }) => {
+  await installMocks(page, { post1: created });
+  await page.route("**/media.html", (r) => r.fulfill({ status: 200, contentType: "text/html", body: MEDIA_PAGE('data-trigger-media="(min-width: 861px)"') }));
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await page.goto("/media.html");
+  const trigger = page.locator("[data-feedbackkit=host]").getByRole("button", { name: "Feedback" });
+  await expect(trigger).toBeVisible(); // loaded wide: the button floats
+
+  await page.setViewportSize({ width: 500, height: 800 }); // narrowed after load
+  await expect(trigger).toBeHidden();
+  await page.evaluate(() => (window as unknown as { FeedbackKit: { open(): void } }).FeedbackKit.open());
+  await expect(page.getByPlaceholder(placeholder)).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+  await expect(page.getByPlaceholder(placeholder)).toBeHidden();
+  await expect(trigger).toBeHidden(); // closing does not bring it back below the breakpoint
+
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await expect(trigger).toBeVisible();
+});
+
+test("data-trigger-media: an invalid query is ignored with a warning; --fk-trigger-bottom moves the button", async ({ page }) => {
+  await installMocks(page, { post1: created });
+  await page.route("**/media.html", (r) => r.fulfill({ status: 200, contentType: "text/html", body: MEDIA_PAGE('data-trigger-media="screen and"') }));
+  const warnings: string[] = [];
+  page.on("console", (m) => {
+    if (m.type() === "warning") warnings.push(m.text());
+  });
+  await page.goto("/media.html");
+  const trigger = page.locator("[data-feedbackkit=host]").getByRole("button", { name: "Feedback" });
+  await expect(trigger).toBeVisible();
+  expect(warnings.some((w) => w.includes("data-trigger-media ignored"))).toBe(true);
+
+  await page.addStyleTag({ content: '[data-feedbackkit="host"] { --fk-trigger-bottom: 90px; }' });
+  const bottom = await trigger.evaluate((el) => getComputedStyle(el).bottom);
+  expect(bottom).toBe("90px");
+});
+
 const FAKE_TURNSTILE = `
 let n = 0, cb = null;
 window.turnstile = {

@@ -357,6 +357,26 @@ server before the user asks to:
 </script>
 ```
 
+### Floating button on small screens
+
+If your app has its own bottom bar on phones, keep the floating button out of
+its way in one of two ways:
+
+- `data-trigger-media="(min-width: 861px)"` shows the button only while the
+  media query matches. The widget follows window resizes, so the button also
+  disappears when a wide window is narrowed after load. Below the breakpoint,
+  open the panel from your own UI with `window.FeedbackKit.open()`, as with
+  `data-trigger="none"`. A query the browser cannot parse at all is ignored
+  with a console warning.
+- `--fk-trigger-bottom` moves the button up instead, for example above a 64px
+  tab bar:
+
+```css
+@media (max-width: 860px) {
+  [data-feedbackkit="host"] { --fk-trigger-bottom: calc(76px + env(safe-area-inset-bottom)); }
+}
+```
+
 ### Match your design (theming)
 
 The widget renders in a Shadow DOM, so your CSS cannot reach its rules. It reads
@@ -379,8 +399,8 @@ the widget's defaults:
   --fk-shadow: 0 8px 24px rgba(40, 36, 28, .08);
   --fk-radius: 16px;         /* the panel on wider screens (default 30px) */
   --fk-radius-box: 12px;     /* composer, chat bubbles, done card (default 22px) */
-  --fk-weight-title: 500;    /* heading and summary (default 900 and 800) */
-  --fk-weight-strong: 500;   /* the follow-up question (default 700) */
+  --fk-weight-title: 500;    /* panel headings (default 900) */
+  --fk-weight-strong: 500;   /* the follow-up question and the summary after sending (default 600) */
 }
 html.dark [data-feedbackkit="host"] { /* repeat the tokens for your dark theme */ }
 ```

@@ -30,7 +30,7 @@ function label(l: Label, locale: string): string {
   return typeof l === "string" ? l : (l[locale] ?? Object.values(l)[0] ?? "");
 }
 
-function toUIConfig(cfg: PublicConfig, triggerLabel: string | undefined, hideTrigger: boolean): UIConfig {
+function toUIConfig(cfg: PublicConfig, triggerLabel: string | undefined, hideTrigger: boolean, triggerMedia?: MediaQueryList): UIConfig {
   const locale = (cfg.locale === "de" ? "de" : "en") as Locale;
   // https-only: a server value never goes into an href unchecked.
   const privacyUrl = cfg.privacyUrl && /^https:\/\//i.test(cfg.privacyUrl) ? cfg.privacyUrl : undefined;
@@ -38,6 +38,7 @@ function toUIConfig(cfg: PublicConfig, triggerLabel: string | undefined, hideTri
     locale,
     triggerLabel,
     hideTrigger,
+    triggerMedia,
     screenshot: cfg.capture?.screenshot !== "off",
     privacyUrl,
     autoType: !!cfg.autoType,
@@ -131,6 +132,17 @@ async function boot() {
   // via window.FeedbackKit.open() (own button, or right after a lazy load with
   // data-autoopen).
   const hideTrigger = script.dataset.trigger === "none";
+  // <script … data-trigger-media="(min-width: 861px)">: the floating button shows
+  // only while the query matches, and follows resizes (#437). Below it the host
+  // opens the panel itself, as with data-trigger="none".
+  let triggerMedia: MediaQueryList | undefined;
+  const mediaQuery = script.dataset.triggerMedia?.trim();
+  if (mediaQuery && !hideTrigger && typeof window.matchMedia === "function") {
+    const mql = window.matchMedia(mediaQuery);
+    // Browsers turn an unparsable query into "not all", which would hide the button for good.
+    if (mql.media === "not all" && mediaQuery !== "not all") console.warn(`[feedbackkit] data-trigger-media ignored: "${mediaQuery}" is not a valid media query. See ${DOC}`);
+    else triggerMedia = mql;
+  }
 
   const open = () => {
     if (state.name !== "closed") return;
@@ -149,7 +161,7 @@ async function boot() {
     dispatch({ t: "open", type: cfg.autoType ? "" : (cfg.types[0]?.type ?? "") }, () => api.event("opened"));
   };
 
-  const ui = new WidgetUI(shadow, toUIConfig(cfg, script.dataset.label, hideTrigger), {
+  const ui = new WidgetUI(shadow, toUIConfig(cfg, script.dataset.label, hideTrigger, triggerMedia), {
     onOpen: open,
     onClose: () => {
       draft = state.name === "form"; // closing before sending keeps the draft (scroll, then add another screenshot)
