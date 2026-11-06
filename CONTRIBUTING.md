@@ -26,6 +26,7 @@ Open design questions live as issues labeled [`decision`](../../issues?q=is%3Ais
 - Security findings from the hardening checklist each carry a test — don't remove either.
 - New user-facing strings: English + German keys from the start (`en` is the default locale; `de` ships as a first-class preset).
 - Conventional commits; PRs against `main`; CI must be green.
+- **Title and describe what changes in this repo.** The PR title shows up unchanged in the release notes, so it names the code or docs change, not the app whose rollout prompted it. Config and rollout state of an embedding app (its D1 config, Project, test reports) goes into that app's tracking issue.
 
 ## Security
 
