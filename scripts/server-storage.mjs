@@ -2,6 +2,23 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
+const wait = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+/**
+ * Runs `work` again while SQLite answers "database is locked". The busy timeout
+ * covers most contention, but SQLite skips the busy handler when waiting could
+ * deadlock, for instance when two processes switch a new file to WAL at the same
+ * moment. `work` must be safe to repeat.
+ */
+function retryWhileLocked(work, attempts = 40) {
+  for (let attempt = 1; ; attempt++) {
+    try { return work(); } catch (error) {
+      if (attempt >= attempts || !/database is locked|SQLITE_BUSY/i.test(String(error?.message))) throw error;
+      wait(10 + Math.floor(Math.random() * 40));
+    }
+  }
+}
+
 /** Implements the D1 methods used by the gateway over the same SQLite schema. */
 export function openStorage(filename, migrations) {
   mkdirSync(dirname(filename), { recursive: true });
@@ -13,11 +30,11 @@ export function openStorage(filename, migrations) {
   // new file takes it only if it is set before the switch to WAL writes the
   // header, and a database that already has tables takes it after one VACUUM.
   sqlite.exec("PRAGMA auto_vacuum=INCREMENTAL");
-  sqlite.exec("PRAGMA journal_mode=WAL");
+  retryWhileLocked(() => sqlite.exec("PRAGMA journal_mode=WAL"));
   // secure_delete zeroes the pages a delete frees.
   sqlite.exec("PRAGMA foreign_keys=ON; PRAGMA synchronous=NORMAL; PRAGMA secure_delete=ON");
-  if (sqlite.prepare("PRAGMA auto_vacuum").get().auto_vacuum !== 2) sqlite.exec("VACUUM");
-  sqlite.exec("CREATE TABLE IF NOT EXISTS _fk_migrations (name TEXT PRIMARY KEY)");
+  retryWhileLocked(() => { if (sqlite.prepare("PRAGMA auto_vacuum").get().auto_vacuum !== 2) sqlite.exec("VACUUM"); });
+  retryWhileLocked(() => sqlite.exec("CREATE TABLE IF NOT EXISTS _fk_migrations (name TEXT PRIMARY KEY)"));
   for (const name of readdirSync(migrations).filter((n) => n.endsWith(".sql")).sort()) {
     // The check sits inside the write transaction: a second process that waited
     // for the lock then sees the migration as applied instead of running it twice.
