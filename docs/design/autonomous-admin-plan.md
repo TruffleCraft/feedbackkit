@@ -100,14 +100,15 @@ Each step is one reviewable PR (or a small series) with its own tests and docs. 
 ### Gate 1: masked capture and upload contract (blocks the "private by design" claim)
 
 - **Why:** an original image that reaches the server cannot be called masked, whatever the screen shows afterwards.
+- **Concept:** [privacy-masking.md](privacy-masking.md), with the [image path](diagrams/privacy-image-path.html). Pending the owner's answer on D-07.
 - **Capabilities:**
   - A solid mask tool, rasterized into the pixels. Mask, thumbnail, upload and AI input come from the same bytes.
   - Images stay in memory until the visitor confirms. Removing one leaves no server copy. EXIF is stripped.
-  - Capture skips elements marked private and password fields.
-  - A project can require a widget marker on uploads. Uploads that no report claims expire.
+  - Capture masks form values and password fields and blocks out elements marked `data-fk-private`.
+  - A `privacy.profile` per project: `strict` (new projects, and any public or unreadable destination) or `standard` (private destinations only). Strict requires the widget marker, rejects uploads with metadata and turns console capture off. Uploads that no report claims expire.
 - **Constraints:** mock before build. The widget budget is 23 kB gz and has 0.2 kB left, so the mask tool loads on demand or the budget is changed by decision. No promise of automatic detection.
 - **Non-goals:** replay, OCR, automatic redaction.
-- **Success signals:** a Chromium test decodes every request body for each input path (capture, pick, paste, drop, retry) and shows that masked regions differ from the original, with a negative control that fails without the mask. A server test rejects unmarked uploads for projects that require the marker.
+- **Success signals:** a Chromium test decodes every request body for each input path (capture, pick, paste, drop, retry) and shows that masked regions differ from the original, with a negative control that fails without the mask. A server test rejects unmarked uploads and uploads with metadata in strict projects. A mocked GitHub answer of `private: false`, `true` and an error forces, allows and forces the profile.
 
 ### Gate 2: local accounts and recovery (blocks the "autonomous" claim)
 
@@ -164,8 +165,8 @@ Release strategy for the tarball:
 | Step | Content | Needs first |
 |---|---|---|
 | 4 | Member role, project access, authorization on assets and feedback by project, instance-level AI and GitHub connections referenced by ID | Gate 2 |
-| 5 | Types navigation and board view over the three states | Approved mock, D-05 |
-| 6 | OIDC through a maintained library, binding by `iss` and `sub` | Gate 2, D-04, upstream docs read |
+| 5 | Types navigation and board view over the three states (S17) | Approved mock |
+| 6 | OIDC through a maintained library, binding by `iss` and `sub` (S18) | Gate 2, upstream docs read |
 | 7 | Widget preview and theme tokens (#57) | Approved mock, contrast rules |
 | 8 | Signed webhook (#58) | None, optional |
 

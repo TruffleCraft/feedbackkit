@@ -31,7 +31,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 
 ![Report and delivery lifecycle](diagrams/report-lifecycle.png)
 
-[Open the report lifecycle](diagrams/report-lifecycle.html) (J8, J9, J13, backed by code at commit `e712a01`). The planned install and update flow (J1, J2, J12) is in [release-update-sequence.html](diagrams/release-update-sequence.html). The planned Gate 2 flows (J3, J10, J11, J16) are [bootstrap](diagrams/gate2-bootstrap-sequence.html), [sign-in](diagrams/gate2-signin-sequence.html), [recovery](diagrams/gate2-recovery-sequence.html), [scoped tokens](diagrams/gate2-token-sequence.html) and [account states](diagrams/gate2-account-lifecycle.html).
+[Open the report lifecycle](diagrams/report-lifecycle.html) (J8, J9, J13, backed by code at commit `e712a01`). The planned install and update flow (J1, J2, J12) is in [release-update-sequence.html](diagrams/release-update-sequence.html). The planned Gate 2 flows (J3, J10, J11, J16) are [bootstrap](diagrams/gate2-bootstrap-sequence.html), [sign-in](diagrams/gate2-signin-sequence.html), [recovery](diagrams/gate2-recovery-sequence.html), [scoped tokens](diagrams/gate2-token-sequence.html) and [account states](diagrams/gate2-account-lifecycle.html). The planned image path for J6 and J7 is [privacy-image-path.html](diagrams/privacy-image-path.html).
 
 ## J1 Install on a Linux host
 
@@ -87,9 +87,9 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 
 - **Goal:** Sam describes a problem, answers one follow-up, sends. The report reaches its destination and nothing sensitive leaves the page unmasked.
 - **Steps:** open the widget, type, review the captured screenshot and mask areas, answer the follow-up, confirm.
-- **Guarantees:** the report is confirmed only after it is stored. The screenshot Sam reviewed is the screenshot uploaded and the one the AI sees. Marked private elements and password fields are not captured.
+- **Guarantees:** the report is confirmed only after it is stored. The screenshot Sam reviewed is the screenshot uploaded and the one the AI sees. Form values and password fields are masked and elements marked `data-fk-private` are blocked out before the capture is rasterized. A project whose destination is public or unreadable always uses the strict profile ([concept](privacy-masking.md)).
 - **Failure paths:** AI error (the report goes out unenriched), storage error (retryable 503), tracker error (kept, retry in admin), network loss (the text survives a retry).
-- **Evidence:** exists for loss paths. New: a Chromium test that decodes the request bodies and shows masked pixels differ from the original, plus a negative control.
+- **Evidence:** exists for loss paths. New: a Chromium test that decodes the request bodies and shows masked pixels differ from the original, plus a negative control. The full list is in the [acceptance table](privacy-masking.md#acceptance).
 - **Today:** loss handling works. There is no mask tool (the rectangle is a frame), no exclusion of private elements, and the AI receives whatever the capture produced.
 - **Verified:** `test` `test/widget.test.ts:116-135` and `e2e/feedback.spec.ts:129` (a 503 keeps the report and the retry resends it without uploading again, passed in my run). `code` `src/widget/ui/annotate-model.ts` draws the rectangle with `strokeRect` only, the capture filter in `src/widget/lib/screenshot.ts:58` excludes only the widget's own host element, `src/worker/llm/client.ts` sends `screenshotDataUrl` as received.
 

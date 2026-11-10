@@ -74,7 +74,7 @@ Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready)
 
 1. One node, one process per database. SQLite in WAL mode on a persistent local disk.
 2. The same Hono application and the same behavior tests as the Worker. A difference between the runtimes is a bug or an entry in the parity table of `docs/SELF_HOSTING.md`.
-3. Node.js 24 LTS. The Node documentation labels `node:sqlite` in v24 "Stability: 1.2, release candidate" (nodejs.org, checked 2026-11-10). One version number appears in `engines`, CI and the docs.
+3. Node.js 24 is the floor (S19). The Node documentation labels `node:sqlite` in v24 "Stability: 1.2, release candidate" (nodejs.org, checked 2026-11-10). One version number appears in `engines`, CI and the docs.
 4. Delivered as a release tarball that CI builds from a tag, with a signed checksum file. The target needs Node.js 24 and the standard tools curl, tar, sha256sum and ssh-keygen (OpenSSH 8.0 or newer). It needs no Git, no pnpm, no build and no container. The tarball holds a single-file server, the widget and admin assets, the migrations, the systemd unit and a file that records release, delivery capability and schema version.
 5. `/diag` reports schema, capability and whether stored settings need a newer release than the one running.
 6. Secrets come from environment variables or the service's environment file. The process hands the application an allowlist of them, not its whole environment.
@@ -101,14 +101,14 @@ Settled decisions:
 | S14 | The first owner proves control with a one-time link printed by a host command. On Cloudflare a script run with the operator's Cloudflare credentials prints it. It is the same mechanism as recovery. No static bootstrap secret remains, and the server stops needing `ADMIN_TOKEN` to start once Gate 2 ships | Owner, 2026-11-10 (D-09) |
 | S15 | Cloudflare Access stays an accepted admin identity on the Cloudflare runtime beside accounts, and stays optional. ADR-015 keeps building MCP consent on it | Owner, 2026-11-10 (D-10) |
 | S16 | ADR-016, the standalone Node runtime, is accepted. The conformance suite and the single-node contract are part of it. The runtime counts as supported only after R1 to R9 are closed, one Node floor is chosen, Step D exists and Step 3 has run | Owner, 2026-11-10 (D-01) |
+| S17 | The board keeps three lanes and gets no "in progress" lane. GitHub owns ticket state (S1). A fourth lane would need an expand-only schema plan and a fix in `queries.ts` | Owner, 2026-11-10 (D-05) |
+| S18 | OIDC (Step 6) links an identity to an account by `iss` and `sub`. The link is made through an invitation or from a signed-in session. Email equality grants nothing, so an unverified or recycled address cannot take over an account | Owner delegated the choice, 2026-11-10 (D-04) |
+| S19 | Node 24 is the floor. `engines` says `>=24`, CI runs Node 24 and, once a newer LTS line exists, that one too, and the docs name one version. Node 22 is unsupported | Owner delegated the choice, 2026-11-10 (D-06) |
 
-Open decisions. Each recommendation is mine and needs the owner's answer.
+Open decision. The recommendation is mine and needs the owner's answer.
 
 | ID | Question | Recommendation |
 |---|---|---|
-| D-04 | How does OIDC link to a person? | By `iss` and `sub`, bound to an invitation. Email equality grants nothing |
-| D-05 | Does the board need an "in progress" lane? | Not yet. Three states first. A fourth needs an expand-only schema plan and a fix in `queries.ts` |
-| D-06 | Which Node floor? | 24 LTS everywhere |
-| D-07 | Is masking enforced or optional per project? | Optional flag first, default on for new projects after the widget change has shipped for one release |
+| D-07 | Is masking enforced or optional per project? | Neither switch. A `privacy.profile` of `strict` or `standard`: new projects start strict, and `standard` is allowed only for private destinations. A public or unreadable destination forces strict. The concept is in [privacy-masking.md](privacy-masking.md) |
 
 Co-created by Michel with NORA (AI Agent)
