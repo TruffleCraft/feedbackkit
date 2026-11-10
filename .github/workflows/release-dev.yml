@@ -35,6 +35,7 @@ jobs:
       FK_OAUTH_KV_ID: ${{ vars.FK_OAUTH_KV_ID }} # optional: binds OAUTH_KV, turns on /mcp (ADR-015)
       BUMP: ${{ inputs.bump || 'none' }}
       GH_TOKEN: ${{ github.token }}
+      FK_RELEASE_SIGNING_KEY: ${{ secrets.FK_RELEASE_SIGNING_KEY }} # the dev key (docs/RELEASES.md, Release keys)
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,6 +79,22 @@ jobs:
         env:
           TAG: ${{ steps.v.outputs.tag }}
         run: gh release create "$TAG" dist/widget.js --prerelease --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+
+      # The standalone server as a signed tarball. Without a signing key nothing is
+      # published: an unsigned tarball is never attached to a release.
+      - name: Build, sign and attach the server tarball
+        if: env.FK_RELEASE_SIGNING_KEY != ''
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+          FK_RELEASE: ${{ steps.v.outputs.version }}
+        run: |
+          pnpm build:server
+          node scripts/build-bundle.mjs
+          sh scripts/sign-release.sh dist-bundle/SHA256SUMS
+          gh release upload "$TAG" dist-bundle/feedbackkit-v*.tar.gz dist-bundle/SHA256SUMS dist-bundle/SHA256SUMS.sig
+      - name: No signing key
+        if: env.FK_RELEASE_SIGNING_KEY == ''
+        run: echo "::warning::FK_RELEASE_SIGNING_KEY is not set in the dev environment, so no server tarball was published (docs/RELEASES.md, Release keys)."
 
       - name: Keep the newest 3 dev builds
         run: |

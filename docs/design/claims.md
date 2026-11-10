@@ -21,10 +21,16 @@ Measured at the head of the branch `feat/standalone-runtime-hardening` on 2026-1
 | Claim | Made in | Proof | Status |
 |---|---|---|---|
 | Install from a checkout with pnpm | `README.md`, `docs/SELF_HOSTING.md` | CI builds both bundles and runs the server tests. The same steps ran on a clean Debian 13 LXC ([evidence](evidence/2026-11-10-debian-lxc.md)) | verified on a Debian 13 LXC. Not a cloud VPS (owner's decision) |
-| A release tarball with a signed checksum, an update command and an update notice | `scope.md` only | None | planned (Step D). The user documents do not claim it |
+| The server builds as a release tarball that installs with Node and standard tools only | `docs/RELEASES.md`, `docs/SELF_HOSTING.md` | `test/server-bundle.test.mjs` (byte-identical builds, unpacks and runs with Node alone). The install steps ran in a clean Debian 13 LXC ([evidence](evidence/2026-11-10-tarball-lxc.md)) | verified with fixture releases |
+| A signed release exists | `docs/RELEASES.md` | None: no signing key exists yet and the workflows publish nothing without it | planned: needs the keys (`scripts/gen-release-keys.sh`) |
+| An admin notice for a newer release | `scope.md` only | None | planned: a new UI element, it needs an approved mock first (J2) |
 | A release older than the data refuses to start | `docs/SELF_HOSTING.md` | `test/server-storage-hardening.test.mjs`: "the delivery capability never goes down" | verified |
 | The delivery capability only rises, on both install paths | `docs/RELEASES.md`, `docs/QUICKSTART.md` | `test/server-storage-hardening.test.mjs`, `test/server-capability.test.mjs` | verified |
-| There is a rollback command | none | None | planned (Step D). Going back means restoring the backup taken before the update and starting the older checkout |
+| `feedbackkit-update` updates and rolls back, and a failed update restores the old release and its data | `docs/RELEASES.md`, `docs/SELF_HOSTING.md` | `test/server-update.test.mjs` against a fake GitHub API and a fake `systemctl` that runs the real bundle. The same cases ran under real systemd ([evidence](evidence/2026-11-10-tarball-lxc.md)) | verified with fixture releases |
+| A tampered checksum file, a corrupted tarball, a stable release signed with the dev key, a bundle that names another release and a tarball with extra entries each stop the update | `docs/RELEASES.md` | `test/server-update.test.mjs`. Removing the signature or checksum check makes the matching tests fail | verified |
+| A key rotation works: a release signed with the old key brings the new key list | `docs/RELEASES.md` | `test/server-update.test.mjs` ("a key rotation") | verified as a rehearsal. No real key has been rotated |
+| The stable tarball of a commit equals its tested dev tarball except the files that name the release | `docs/RELEASES.md` | `test/server-release-tools.test.mjs` tests the comparison. The promote workflow step that runs it was not run on GitHub | partly |
+| A checkout install has a rollback command | none | None | convention: there is none, going back means restoring the backup |
 | Migrations only add, so one release back keeps working on the newer schema | `docs/RELEASES.md` | Reviewed by hand, no test | convention |
 
 ## Deletion and retention

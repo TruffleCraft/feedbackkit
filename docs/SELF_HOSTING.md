@@ -2,7 +2,7 @@
 
 The standalone gateway runs on **Node.js 24 or newer**, with SQLite on a persistent disk. It supports the widget, admin UI, inbox, AI extraction, GitHub issue/Project delivery and attachment retention. It needs no Cloudflare account, D1 or R2.
 
-What is verified and what is not: the server and its tests run on a developer machine and in CI on Node 24 and 26, and the steps below ran on a clean, unprivileged Debian 13 LXC without nesting, including systemd, a crash and a reboot. It has not been tested on a cloud VPS, a real GitHub delivery has not been run from it, and there is no release tarball, update command or rollback command yet. [Claims and their proof](design/claims.md) lists each statement with its test.
+What is verified and what is not: the server and its tests run on a developer machine and in CI on Node 24 and 26, and the steps below ran on a clean, unprivileged Debian 13 LXC without nesting, including systemd, a crash and a reboot. The release tarball path ran there too, with fixture releases and throw-away keys: install, `--check`, update, rollback, update again, a release whose server does not start, and a reboot. No signed release has been published yet, it has not been tested on a cloud VPS, and a real GitHub delivery has not been run from it. [Claims and their proof](design/claims.md) lists each statement with its test.
 
 The Cloudflare installation additionally supports OAuth/MCP through its Worker OAuth provider. Those endpoints are explicitly unavailable in the standalone server; admin and widget operation do not depend on them.
 
@@ -52,6 +52,31 @@ sudo systemctl status feedbackkit
 
 systemd creates `/var/lib/feedbackkit` for persistent data. The service user needs read access to the built checkout; it writes only to its state directory. The service uses an hourly retention sweep, and also sweeps on startup.
 
+## Install from a release tarball
+
+A release tarball needs no Git, pnpm or build on the server, and `feedbackkit-update` updates and rolls it back. The first signed release does not exist yet, so until it does, use the checkout install above. The steps below are the ones that apply from then on ([release keys](RELEASES.md#release-keys)).
+
+You need Node.js 24 or newer, curl, tar, sha256sum and ssh-keygen. Create the system user as in the systemd section, then:
+
+```sh
+version=X.Y.Z                      # the newest stable release
+base=https://github.com/TruffleCraft/feedbackkit/releases/download/v$version
+cd /tmp
+curl -fsSLO "$base/feedbackkit-v$version.tar.gz" -O "$base/SHA256SUMS" -O "$base/SHA256SUMS.sig"
+# allowed_signers holds one line: release-stable namespaces="feedbackkit-release" ssh-ed25519 <the stable key from RELEASES.md>
+ssh-keygen -Y verify -f allowed_signers -I release-stable -n feedbackkit-release -s SHA256SUMS.sig < SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS
+sudo mkdir -p /opt/feedbackkit/releases
+sudo tar -xzf "feedbackkit-v$version.tar.gz" -C /opt/feedbackkit/releases
+sudo mv "/opt/feedbackkit/releases/feedbackkit-v$version" "/opt/feedbackkit/releases/$version"
+sudo ln -s "releases/$version" /opt/feedbackkit/current
+sudo install -m 600 -o root -g root .env /etc/feedbackkit.env      # as in the checkout install
+sudo install -m 644 /opt/feedbackkit/current/deploy/feedbackkit.service /etc/systemd/system/feedbackkit.service
+sudo systemctl daemon-reload && sudo systemctl enable --now feedbackkit
+```
+
+Both checks must pass before you extract anything. The unit expects Node at `/usr/bin/node`; change `ExecStart` if yours is elsewhere. `/diag` shows the release and channel. To update, run `/opt/feedbackkit/current/feedbackkit-update --check`, then without `--check`. [Updating](RELEASES.md#updating) lists the commands.
+
 ## Configuration
 
 | Variable | Purpose |
@@ -73,9 +98,9 @@ The database contains project settings, feedback, counters, asset metadata **and
 
 Back up before an upgrade. Stop the service, copy the entire data directory, then start it again. Do not copy only the main SQLite file while the process is writing: WAL files can contain committed data. Proxmox backups should include the LXC state directory; take them with the process stopped or using a consistent snapshot strategy.
 
-To update, fetch the chosen release, install with the lockfile, rebuild both bundles, then restart the service. There is no update or rollback command yet.
+To update a checkout install, fetch the chosen release, install with the lockfile, rebuild both bundles, then restart the service. A tarball install updates and rolls back with `feedbackkit-update` ([Updating](RELEASES.md#updating)).
 
-To go back, stop the service, restore the backup you took before the update and start the older checkout. Do not start an older checkout on the data of a newer one: migrations only add, which is a rule of the repository and not something a test proves. A release older than the data refuses to start when the data needs a newer delivery capability, and says so. Start the newer release again or restore the backup.
+To go back on a checkout install, stop the service, restore the backup you took before the update and start the older checkout. Do not start an older checkout on the data of a newer one: migrations only add, which is a rule of the repository and not something a test proves. A release older than the data refuses to start when the data needs a newer delivery capability, and says so. Start the newer release again or restore the backup.
 
 ## Verification and troubleshooting
 

@@ -52,7 +52,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Guarantees:** the release comes from the record inside the bundle. The notice comes from one plain request to the GitHub Releases API, can be switched off, and its failure never affects the gateway. No data about the installation is sent. Pre-releases are never offered.
 - **Failure paths:** no outbound access (no notice and no error), a newer release that needs a newer Node, a rate-limited API.
 - **Evidence:** unit tests for version comparison and for the switch, and an e2e that shows the notice from a mocked releases response.
-- **Today:** the standalone server reports `0.0.0` and channel `local` because the build records no release. `src/admin` and `src/worker` contain no check for newer releases.
+- **Today:** a release tarball reports its release and channel from `bundle.json`. A checkout reports `0.0.0` and `local`. `feedbackkit-update --check` says whether a newer release exists. The admin notice does not exist: it is a new UI element and needs an approved mock first.
 - **Verified:** `live` `GET /diag` returns `version` `0.0.0` and `channel` `local`. `code` grep for `releases/latest` and the releases API in `src` finds nothing. Repeat: `curl <gateway>/diag`.
 
 ## J3 Bootstrap the first owner
@@ -152,8 +152,8 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Guarantees:** a failed signature or checksum, or a failed health check, restores the previous release and the data copy by itself. Migrations only add. The command refuses a release whose schema or delivery capability is lower than what the data holds. The recorded delivery capability never drops.
 - **Failure paths:** an interrupted download, a service that does not come up, a disk that is full, a copy taken while the process writes (the service is stopped first).
 - **Evidence:** an upgrade and rollback test on a data directory with real rows, with a bad bundle (health check fails), a corrupted tarball (checksum fails) and a tampered checksum file (signature fails), plus a backup test that includes the write-ahead log.
-- **Today:** no update command exists. The docs describe stop, copy, check out, rebuild. The standalone server overwrites the capability on every start. `docs/RELEASES.md` promises the opposite for the Cloudflare path.
-- **Verified:** `code` `scripts/server.mjs:18` upserts `delivery_capability` on every start. `doc` `docs/RELEASES.md:55` says a rollback does not lower it.
+- **Today:** `feedbackkit-update` exists and passes its tests. It ran under real systemd in a clean Debian 13 LXC with fixture releases: update with data, rollback, update again, a release that does not start, the dev channel. No signed release exists yet, so it has not run against a real release. A checkout install still updates by hand. The capability never drops (Step A).
+- **Verified:** `test` `test/server-update.test.mjs` (11 cases) and `test/server-storage-hardening.test.mjs` (the capability). `live` the LXC run ([evidence](evidence/2026-11-10-tarball-lxc.md)). Repeat: `node --test test/server-update.test.mjs`.
 
 ## J13 Reports expire
 

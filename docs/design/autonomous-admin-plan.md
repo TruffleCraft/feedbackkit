@@ -28,6 +28,7 @@ Measured at `3f3caba` on 2026-11-10 (static review, seven specialist passes, an 
 | Accounts, OIDC, roles | Not built | The only credential is `ADMIN_TOKEN` |
 | Board, masks, previews | Not built | Not started |
 | Step A, runtime hardening | Implemented, in pull request #130 | Branch `feat/standalone-runtime-hardening` (six commits on top of `3f3caba`). R1 to R9 closed except R16. `pnpm test` runs the 32 durability tests on workerd and on SQLite, plus 366 unit tests. 17 Node server tests and the admin e2e specs pass. One settings e2e still fails, as it does at `3f3caba` (Step B) |
+| Step D, release tarball and updates | Implemented except the admin notice, in pull request #132 | The tarball, `bundle.json`, `/diag` release and channel, `feedbackkit-update` with check, update and rollback, signing in the dev and promote workflows (inactive until the keys exist), the dev and stable comparison, a key rotation rehearsal. Ran under real systemd in a clean Debian 13 LXC with fixture releases ([evidence](evidence/2026-11-10-tarball-lxc.md)). Open: the admin notice (needs an approved mock), the keys and secrets, the first real signed release |
 | Step C, documentation honesty | Implemented on the docs branch | [claims.md](claims.md) with a proof for each statement, a standalone section in `docs/SECURITY.md`, one Node wording, one inbox term (Open, Done, Dismissed), a corrected anchor and an honest status line in the README and `docs/SELF_HOSTING.md`. The rollback claim now says that no rollback command exists |
 | Step B, safe settings | Implemented, in pull request #130 | Five more commits on the same branch. The admin bundle is 14.9 kB gz (budget 15 kB) and the settings e2e passes. Decisions taken while building: removing a published type archives it (`templates[].archived`, `DELIVERY_CAPABILITY` 3), published field keys are not blocked from removal (only duplicates are refused), the retention minimum is the 7-day notice, and `pnpm deploy` records the capability after the deploy |
 
@@ -54,8 +55,8 @@ Each finding is assigned to a step. IDs are stable so later reviews can refer to
 | R15 | Picked images upload at once and the remove button keeps the object. Private elements are not excluded. Rectangle is a frame | Gate 1 |
 | R16 | Uploads without a report never expire when no retention is set. No quota | Gate 1, A |
 | R18 | `/diag` on the standalone server lists Cloudflare steps as next steps (`npx wrangler secret put`, `docs/QUICKSTART.md`). Seen in the LXC run | D |
-| R19 | The systemd unit leaves `/var/lib/feedbackkit` at mode 755 and `systemd-analyze security` rates it 8.3 EXPOSED. Seen in the LXC run | D (the unit ships in the tarball) |
-| R20 | A checkout install puts 575 MB on the host and needs pnpm, the network and 53 s. Seen in the LXC run | D (same cause as R17) |
+| R19 | The systemd unit leaves `/var/lib/feedbackkit` at mode 755 and `systemd-analyze security` rates it 8.3 EXPOSED. Seen in the LXC run | D. Closed in the bundle unit: mode 700, rated 3.7 OK |
+| R20 | A checkout install puts 575 MB on the host and needs pnpm, the network and 53 s. Seen in the LXC run | D. Closed by the tarball: 190 kB, Node and standard tools only |
 | R17 | The standalone server has no release artifact: installs build on the target, `/diag` reports `0.0.0` and `local`, releases carry only `widget.js`, there is no update command and no notice of a newer release | D |
 
 ## Steps
@@ -165,7 +166,7 @@ Release strategy for the tarball:
 - **Why:** a build that passes on a laptop says little about an LXC.
 - **Capabilities:** run J1, J2, J12 and J14 from the release tarball on a clean Debian LXC and on a clean cloud VPS (for example at Hetzner). Outbound traffic is allowed for the download and blocked until the first report. Include an update with data and a rollback. Update the status of each journey with the evidence.
 - **Success signals:** transcripts and results are linked from the journeys. Only now may README and docs say the gateway runs without Cloudflare. Tag the release after this step.
-- **Status (2026-11-10):** the clone-and-build path ran on a clean Debian 13 LXC ([evidence](evidence/2026-11-10-debian-lxc.md)). A cloud VPS stays untested, by decision of the owner. The tarball path, the update with data, the rollback and J2 wait for Step D.
+- **Status (2026-11-10):** the clone-and-build path ran on a clean Debian 13 LXC ([evidence](evidence/2026-11-10-debian-lxc.md)), and so did the tarball path with fixture releases: install, update with data, rollback, a release that does not start, a reboot ([evidence](evidence/2026-11-10-tarball-lxc.md)). A cloud VPS stays untested, by decision of the owner. J2 (the notice), real signed releases and the promote workflow wait for the keys and an approved mock.
 
 ### Steps 4 to 10, after the gates
 

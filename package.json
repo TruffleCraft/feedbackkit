@@ -25,6 +25,7 @@
     "deploy": "pnpm build:widget && pnpm materialize && pnpm migrate:remote && wrangler deploy && node scripts/record-capability.mjs",
     "setup": "node scripts/setup.mjs",
     "build:server": "node scripts/build-server.mjs",
+    "build:bundle": "node scripts/build-bundle.mjs",
     "start": "node scripts/server.mjs",
     "test:server": "node --test test/server-*.test.mjs"
   },

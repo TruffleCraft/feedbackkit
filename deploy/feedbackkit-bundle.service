@@ -1,0 +1,40 @@
+[Unit]
+Description=FeedbackKit feedback gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=feedbackkit
+Group=feedbackkit
+# One directory per release under /opt/feedbackkit/releases, and `current` points at the running one.
+# feedbackkit-update switches the link; nothing else touches it.
+WorkingDirectory=/opt/feedbackkit/current
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=8787
+Environment=FK_DATA_DIR=/var/lib/feedbackkit
+EnvironmentFile=/etc/feedbackkit.env
+ExecStart=/usr/bin/node /opt/feedbackkit/current/server.mjs
+Restart=on-failure
+StateDirectory=feedbackkit
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/feedbackkit
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
