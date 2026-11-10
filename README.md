@@ -11,18 +11,20 @@ FeedbackKit adds a small feedback widget to any website. Visitors describe a pro
 | What you want | Start with | What you need |
 |---|---|---|
 | Run on your own server or a Proxmox LXC | [Server installation](docs/SELF_HOSTING.md#nodejs-on-a-server-or-proxmox-lxc) | Linux, Node.js 24+, persistent disk |
-| Run with Docker Compose | [Docker installation](docs/SELF_HOSTING.md#docker-compose) | Docker with Compose, persistent volume |
 | Deploy on Cloudflare | [Cloudflare installation](docs/QUICKSTART.md) | Workers, D1 and R2 in your account |
 | Add an already running gateway to a site | [Create a project and install the widget](docs/GETTING_STARTED.md) | Access to the gateway admin and your website |
 | Change settings or understand the delivery log | [Admin guide](docs/ADMIN.md) | Admin access |
 
-For the server and Docker installations, **no Cloudflare account is required**. The gateway runs on Node.js and stores project settings, reports and attachments in SQLite on your persistent disk. Cloudflare deployments use D1 and R2 instead. Both use the same widget, feedback processing and admin UI. OAuth/MCP connections are currently available on the Cloudflare installation; the standalone server returns an explicit unsupported response for those routes.
+For the server installation, **no Cloudflare account is required**. The gateway runs on Node.js and stores project settings, reports and attachments in SQLite on your persistent disk. Cloudflare deployments use D1 and R2 instead. Both use the same widget, feedback processing and admin UI. OAuth/MCP connections are currently available on the Cloudflare installation; the standalone server returns an explicit unsupported response for those routes.
 
-## First run with Docker
+## First run on a Linux server
 
 ```sh
 git clone https://github.com/TruffleCraft/feedbackkit.git
 cd feedbackkit
+corepack enable
+pnpm install --frozen-lockfile
+pnpm build:widget && pnpm build:server
 cp .env.example .env
 openssl rand -hex 32
 ```
@@ -30,10 +32,10 @@ openssl rand -hex 32
 Put the generated value in `.env` as `ADMIN_TOKEN`. Set `FK_PUBLIC_URL` to the address visitors will use, then start:
 
 ```sh
-docker compose up -d --build
+node --env-file=.env scripts/server.mjs
 ```
 
-Open `http://localhost:8787/admin`, sign in with that token, and choose **New project**. Start with the local inbox; it needs neither GitHub credentials nor an AI service. Follow the [first-project walkthrough](docs/GETTING_STARTED.md) to install and test the widget. For public access, configure HTTPS through your reverse proxy. Compose binds to localhost by default.
+Open `http://localhost:8787/admin`, sign in with that token, and choose **New project**. Start with the local inbox; it needs neither GitHub credentials nor an AI service. Follow the [first-project walkthrough](docs/GETTING_STARTED.md) to install and test the widget. For public access, configure HTTPS through your reverse proxy and set `FK_TRUSTED_PROXY_HOPS`. The server binds to localhost by default. [SELF_HOSTING.md](docs/SELF_HOSTING.md) covers running it as a service.
 
 ## What happens to a report?
 
@@ -56,7 +58,7 @@ Give your coding agent [AGENTS.md](AGENTS.md) and [the agent setup guide](docs/A
 
 ## Documentation
 
-- [Installation and first report](docs/GETTING_STARTED.md), [server/Docker/LXC operations](docs/SELF_HOSTING.md), [Cloudflare setup](docs/QUICKSTART.md)
+- [Installation and first report](docs/GETTING_STARTED.md), [server and LXC operations](docs/SELF_HOSTING.md), [Cloudflare setup](docs/QUICKSTART.md)
 - [Admin settings, revisions and delivery logs](docs/ADMIN.md), [release channels and updates](docs/RELEASES.md)
 - [Architecture](docs/ARCHITECTURE.md), [security and retention](docs/SECURITY.md), [API errors](docs/ERRORS.md)
 - [Contributing](CONTRIBUTING.md), [roadmap](docs/ROADMAP.md), [open issues](https://github.com/TruffleCraft/feedbackkit/issues)

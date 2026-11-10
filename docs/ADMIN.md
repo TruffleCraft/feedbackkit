@@ -39,7 +39,7 @@ Retention applies to log records, inbox reports and attachments whether handled 
 
 ## Credentials and hosting
 
-On Cloudflare, use Worker secrets. On a server or LXC, use the protected environment file used by the service; with Docker Compose, use `.env`. Restart the standalone service/container after changing credentials. Project settings can be edited and published without restarting.
+On Cloudflare, use Worker secrets. On a server or LXC, use the protected environment file used by the service; for a foreground run use `.env`. Restart the standalone service after changing credentials. Project settings can be edited and published without restarting.
 
 A GitHub token needs access to the configured repository or organization Project. Inbox-only operation needs none. AI needs `LLM_API_KEY`; switching the provider off keeps required-field forms available. Prefer restricted credentials for each gateway.
 

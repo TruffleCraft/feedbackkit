@@ -1,6 +1,6 @@
 # Cloudflare installation
 
-This guide installs the **Cloudflare** backend. For an independent Linux, Proxmox LXC or Docker installation, use [SELF_HOSTING.md](SELF_HOSTING.md). After installation, follow [GETTING_STARTED.md](GETTING_STARTED.md).
+This guide installs the **Cloudflare** backend. For an independent Linux or Proxmox LXC installation, use [SELF_HOSTING.md](SELF_HOSTING.md). After installation, follow [GETTING_STARTED.md](GETTING_STARTED.md).
 
 Self-host FeedbackKit — one Cloudflare Worker (+ D1 + R2, free tiers) — and get
 your first structured issue. **Existing Cloudflare user: ~15 min. Cold (no CF

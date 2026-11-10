@@ -68,9 +68,9 @@ stays, the next promotion moves on. Dev: re-run `Release (dev channel)` on an ol
 wait for the next merge. D1 migrations are not rolled back; expand/contract keeps the previous
 code working on the newer schema.
 
-## Server, Docker and Proxmox LXC updates
+## Server and Proxmox LXC updates
 
-The standalone runtime is built from a chosen git release tag with `pnpm build:widget && pnpm build:server`. Docker builds the same checkout. Keep the persistent data directory/volume, back it up before upgrading and restart on the new build. [SELF_HOSTING.md](SELF_HOSTING.md#data-backups-and-updates) covers the exact workflow. It does not depend on Workers Builds or a Cloudflare account.
+The standalone runtime is built from a chosen git release tag with `pnpm build:widget && pnpm build:server`. Keep the persistent data directory, back it up before upgrading and restart on the new build. [SELF_HOSTING.md](SELF_HOSTING.md#data-backups-and-updates) covers the exact workflow. It does not depend on Workers Builds or a Cloudflare account.
 
 ## Cloudflare self-hosting updates
 
