@@ -203,6 +203,18 @@ describe("classifyAndExtract — auto-type", () => {
     expect(r.missing).toEqual(["problem"]);
   });
 
+  it("does not offer an archived type to the model, and ignores it if the model names it anyway", async () => {
+    const withArchived = FeedbackConfig.parse({ ...multi, templates: [multi.templates[0], { ...multi.templates[1], archived: true }] });
+    let prompt = "";
+    const chat: ChatFn = async (req) => {
+      prompt = (JSON.parse((req as { init: { body: string } }).init.body) as { messages: Array<{ content: string }> }).messages[1]!.content;
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ type: "idea", summary: "s", repro: "Klick" }) } }] }), { status: 200 });
+    };
+    const r = await classifyAndExtract({ config: withArchived, template: withArchived.templates[0]!, autoType: true, message: "…", apiKey: "k", chat });
+    expect(prompt).not.toContain("- idea");
+    expect(r.type).toBe("bug");
+  });
+
   it("falls back to the given template when the model names an unknown type", async () => {
     const r = await classifyAndExtract({ config: multi, template: multi.templates[0]!, autoType: true, message: "…", apiKey: "k", chat: mockChat(JSON.stringify({ type: "nope", summary: "s", repro: "Klick" })) });
     expect(r.type).toBe("bug");

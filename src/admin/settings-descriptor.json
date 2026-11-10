@@ -1,0 +1,503 @@
+{
+  "k": "object",
+  "shape": {
+    "appearance": {
+      "k": "object",
+      "shape": {
+        "theme": {
+          "k": "enum",
+          "options": [
+            "auto",
+            "light",
+            "dark"
+          ],
+          "opt": true,
+          "def": "auto"
+        },
+        "accent": {
+          "k": "string",
+          "opt": true
+        },
+        "heading": {
+          "k": "string",
+          "opt": true
+        }
+      },
+      "opt": true
+    },
+    "projectId": {
+      "k": "string"
+    },
+    "locale": {
+      "k": "string",
+      "opt": true,
+      "def": "en"
+    },
+    "enabled": {
+      "k": "boolean",
+      "opt": true,
+      "def": true
+    },
+    "askType": {
+      "k": "boolean",
+      "opt": true,
+      "def": false
+    },
+    "templates": {
+      "k": "array",
+      "el": {
+        "k": "object",
+        "shape": {
+          "type": {
+            "k": "string"
+          },
+          "label": {
+            "k": "union",
+            "options": [
+              {
+                "k": "string"
+              },
+              {
+                "k": "record",
+                "val": {
+                  "k": "string"
+                }
+              }
+            ]
+          },
+          "guidance": {
+            "k": "union",
+            "options": [
+              {
+                "k": "string"
+              },
+              {
+                "k": "record",
+                "val": {
+                  "k": "string"
+                }
+              }
+            ],
+            "opt": true
+          },
+          "fields": {
+            "k": "array",
+            "el": {
+              "k": "object",
+              "shape": {
+                "key": {
+                  "k": "string"
+                },
+                "label": {
+                  "k": "union",
+                  "options": [
+                    {
+                      "k": "string"
+                    },
+                    {
+                      "k": "record",
+                      "val": {
+                        "k": "string"
+                      }
+                    }
+                  ]
+                },
+                "kind": {
+                  "k": "enum",
+                  "options": [
+                    "text",
+                    "longtext",
+                    "select",
+                    "url"
+                  ]
+                },
+                "required": {
+                  "k": "boolean",
+                  "opt": true,
+                  "def": false
+                },
+                "askIfMissing": {
+                  "k": "boolean",
+                  "opt": true,
+                  "def": true
+                },
+                "extractionHint": {
+                  "k": "string",
+                  "opt": true,
+                  "def": ""
+                },
+                "options": {
+                  "k": "array",
+                  "el": {
+                    "k": "object",
+                    "shape": {
+                      "value": {
+                        "k": "string"
+                      },
+                      "label": {
+                        "k": "union",
+                        "options": [
+                          {
+                            "k": "string"
+                          },
+                          {
+                            "k": "record",
+                            "val": {
+                              "k": "string"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "opt": true
+                }
+              }
+            },
+            "opt": true,
+            "def": []
+          },
+          "body": {
+            "k": "array",
+            "el": {
+              "k": "object",
+              "shape": {
+                "heading": {
+                  "k": "union",
+                  "options": [
+                    {
+                      "k": "string"
+                    },
+                    {
+                      "k": "record",
+                      "val": {
+                        "k": "string"
+                      }
+                    }
+                  ],
+                  "opt": true
+                },
+                "template": {
+                  "k": "string"
+                }
+              }
+            },
+            "opt": true,
+            "def": []
+          },
+          "tracker": {
+            "k": "object",
+            "shape": {
+              "repo": {
+                "k": "string",
+                "opt": true
+              },
+              "labels": {
+                "k": "array",
+                "el": {
+                  "k": "string"
+                },
+                "opt": true,
+                "def": []
+              },
+              "boardItemType": {
+                "k": "string",
+                "opt": true
+              },
+              "type": {
+                "k": "string",
+                "opt": true
+              },
+              "issueFields": {
+                "k": "array",
+                "el": {
+                  "k": "object",
+                  "shape": {
+                    "fieldId": {
+                      "k": "number"
+                    },
+                    "value": {
+                      "k": "union",
+                      "options": [
+                        {
+                          "k": "string"
+                        },
+                        {
+                          "k": "number"
+                        },
+                        {
+                          "k": "array",
+                          "el": {
+                            "k": "string"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                "opt": true,
+                "def": []
+              }
+            },
+            "opt": true,
+            "def": {
+              "labels": [],
+              "issueFields": []
+            }
+          },
+          "noIssue": {
+            "k": "boolean",
+            "opt": true,
+            "def": false
+          },
+          "delivery": {
+            "k": "enum",
+            "options": [
+              "issue",
+              "project",
+              "local"
+            ],
+            "opt": true
+          },
+          "archived": {
+            "k": "boolean",
+            "opt": true
+          }
+        }
+      }
+    },
+    "createAnyway": {
+      "k": "object",
+      "shape": {
+        "onIncomplete": {
+          "k": "boolean",
+          "opt": true,
+          "def": true
+        },
+        "onLlmError": {
+          "k": "boolean",
+          "opt": true,
+          "def": true
+        }
+      },
+      "opt": true,
+      "def": {
+        "onIncomplete": true,
+        "onLlmError": true
+      }
+    },
+    "llm": {
+      "k": "object",
+      "shape": {
+        "provider": {
+          "k": "enum",
+          "options": [
+            "openrouter",
+            "github-models",
+            "custom",
+            "off"
+          ],
+          "opt": true,
+          "def": "openrouter"
+        },
+        "model": {
+          "k": "string",
+          "opt": true,
+          "def": ""
+        },
+        "baseUrl": {
+          "k": "string",
+          "opt": true
+        },
+        "dailyBudget": {
+          "k": "number",
+          "opt": true,
+          "def": 200
+        },
+        "structuredOutput": {
+          "k": "boolean",
+          "opt": true,
+          "def": true
+        }
+      }
+    },
+    "delivery": {
+      "k": "enum",
+      "options": [
+        "issue",
+        "project",
+        "local"
+      ],
+      "opt": true
+    },
+    "tracker": {
+      "k": "object",
+      "shape": {
+        "kind": {
+          "k": "literal",
+          "value": "github"
+        },
+        "defaultRepo": {
+          "k": "string",
+          "opt": true
+        },
+        "patSecret": {
+          "k": "string"
+        },
+        "project": {
+          "k": "object",
+          "shape": {
+            "org": {
+              "k": "string"
+            },
+            "number": {
+              "k": "number"
+            },
+            "patSecret": {
+              "k": "string",
+              "opt": true
+            },
+            "typeOptions": {
+              "k": "record",
+              "val": {
+                "k": "string"
+              },
+              "opt": true,
+              "def": {}
+            },
+            "status": {
+              "k": "string",
+              "opt": true
+            },
+            "fields": {
+              "k": "object",
+              "shape": {
+                "type": {
+                  "k": "string",
+                  "opt": true,
+                  "def": "Feedback type"
+                },
+                "page": {
+                  "k": "string",
+                  "opt": true,
+                  "def": "Page"
+                },
+                "source": {
+                  "k": "string",
+                  "opt": true,
+                  "def": "Source"
+                }
+              },
+              "opt": true,
+              "def": {
+                "type": "Feedback type",
+                "page": "Page",
+                "source": "Source"
+              }
+            }
+          },
+          "opt": true
+        }
+      },
+      "opt": true
+    },
+    "storage": {
+      "k": "object",
+      "shape": {
+        "kind": {
+          "k": "enum",
+          "options": [
+            "r2",
+            "none"
+          ],
+          "opt": true,
+          "def": "r2"
+        },
+        "publicBaseUrl": {
+          "k": "string",
+          "opt": true
+        },
+        "retentionDays": {
+          "k": "number",
+          "opt": true
+        }
+      },
+      "opt": true,
+      "def": {
+        "kind": "r2"
+      }
+    },
+    "auth": {
+      "k": "object",
+      "shape": {
+        "origins": {
+          "k": "array",
+          "el": {
+            "k": "string"
+          },
+          "opt": true,
+          "def": []
+        }
+      }
+    },
+    "rateLimit": {
+      "k": "object",
+      "shape": {
+        "perHour": {
+          "k": "number",
+          "opt": true,
+          "def": 75
+        }
+      },
+      "opt": true,
+      "def": {
+        "perHour": 75
+      }
+    },
+    "capture": {
+      "k": "object",
+      "shape": {
+        "screenshot": {
+          "k": "enum",
+          "options": [
+            "optional",
+            "off"
+          ],
+          "opt": true,
+          "def": "optional"
+        },
+        "console": {
+          "k": "boolean",
+          "opt": true,
+          "def": true
+        }
+      },
+      "opt": true,
+      "def": {
+        "screenshot": "optional",
+        "console": true
+      }
+    },
+    "privacyUrl": {
+      "k": "string",
+      "opt": true
+    },
+    "issueLink": {
+      "k": "boolean",
+      "opt": true,
+      "def": true
+    },
+    "turnstile": {
+      "k": "object",
+      "shape": {
+        "siteKey": {
+          "k": "string"
+        },
+        "secret": {
+          "k": "string"
+        }
+      },
+      "opt": true
+    }
+  }
+}

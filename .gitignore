@@ -1,5 +1,10 @@
 node_modules/
 dist/
+dist-server/
+data/
+.env
+.env.*
+!.env.example
 .wrangler/
 # Generated from wrangler.template.toml by `pnpm materialize` (ADR-004: operator-specific
 # bindings never live in the repo). Never commit this file.

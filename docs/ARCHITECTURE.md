@@ -7,7 +7,9 @@
 
 ## One artifact, one deploy
 
-FeedbackKit is a **single Cloudflare Worker** (Hono). It serves everything — the widget bundle, the public config, the feedback API, and (from P2) the admin UI — backed by **D1** (config + operational data) and **R2** (attachments). Operators self-host it; there is no central FeedbackKit service. See the invariants and phase scope in [ROADMAP.md](ROADMAP.md).
+FeedbackKit uses one Hono application with two runtime entries: a **Cloudflare Worker** (`src/worker/index.ts`) or a **standalone Node.js server** (`scripts/server.mjs`). The standalone server adapts the existing database operations to persistent SQLite, stores attachment bytes in the same database, serves built assets, applies migrations and runs retention. Cloudflare OAuth/MCP is attached only by the Worker entry. See [SELF_HOSTING.md](SELF_HOSTING.md).
+
+On Cloudflare, FeedbackKit is a **single Cloudflare Worker** (Hono). It serves everything — the widget bundle, the public config, the feedback API, and (from P2) the admin UI — backed by **D1** (config + operational data) and **R2** (attachments). Operators self-host it; there is no central FeedbackKit service. See the invariants and phase scope in [ROADMAP.md](ROADMAP.md).
 
 ## Components
 

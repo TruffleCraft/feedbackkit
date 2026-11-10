@@ -1,9 +1,9 @@
-import { WIRE_VERSION, type FeedbackConfig, type PublicConfig } from "./contract.js";
+import { WIRE_VERSION, activeTemplates, type FeedbackConfig, type PublicConfig } from "./contract.js";
 
 /** The gateway picks the type itself: an LLM is configured, the project does not
  * ask the user, and there is more than one type to choose from. */
 export function autoTypeEnabled(config: FeedbackConfig): boolean {
-  return config.llm.provider !== "off" && !config.askType && config.templates.length > 1;
+  return config.llm.provider !== "off" && !config.askType && activeTemplates(config.templates).length > 1;
 }
 
 // The public projection returned by GET /api/config. Whitelist-only: it carries
@@ -13,6 +13,7 @@ export function toPublicConfig(config: FeedbackConfig, configVersion: number): P
   return {
     v: WIRE_VERSION,
     enabled: config.enabled,
+    ...(config.appearance ? { appearance: config.appearance } : {}),
     locale: config.locale,
     askType: config.askType,
     autoType: autoTypeEnabled(config),
@@ -22,7 +23,7 @@ export function toPublicConfig(config: FeedbackConfig, configVersion: number): P
     capture: { screenshot: config.capture.screenshot, console: config.capture.console },
     ...(config.privacyUrl ? { privacyUrl: config.privacyUrl } : {}),
     ...(config.turnstile ? { turnstileSiteKey: config.turnstile.siteKey } : {}),
-    types: config.templates.map((t) => ({
+    types: activeTemplates(config.templates).map((t) => ({
       type: t.type,
       label: t.label,
       // guidance is user-facing copy (not an internal), so it's part of the projection.

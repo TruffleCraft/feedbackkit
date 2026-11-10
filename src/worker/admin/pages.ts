@@ -13,7 +13,8 @@ import type { Env } from "../env.js";
 // with this response's nonce; styles only with the nonce, so the markup below
 // carries no style attributes. img-src allows https: because each project's R2
 // public base URL differs; listing those origins here would hand them to anyone
-// who loads the (public, unauthenticated) shell.
+// who loads the (public, unauthenticated) shell. blob: is the page's own object
+// URLs for private screenshots, which are fetched with the admin credentials.
 
 export type AdminView = "projects" | "project" | "system";
 
@@ -23,7 +24,7 @@ export const ADMIN_CSP = (nonce: string) =>
     `script-src 'self' 'nonce-${nonce}'`,
     `style-src 'nonce-${nonce}'`,
     "font-src 'self'",
-    "img-src 'self' data: https:",
+    "img-src 'self' blob: data: https:",
     "connect-src 'self'",
     "frame-ancestors 'none'",
     "base-uri 'none'",
@@ -276,6 +277,11 @@ a.thumb:hover{border-color:var(--accent)}
 .diff .add{color:#86efac}
 .diff .del{color:#fca5a5}
 .issues{margin:0;padding-left:18px;color:var(--danger);font-size:13px;display:flex;flex-direction:column;gap:4px}
+dialog{max-width:580px;width:calc(100% - 32px);border:1px solid var(--line-2);border-radius:24px;background:var(--card);color:var(--ink);padding:28px}dialog::backdrop{background:rgba(0,0,0,.3)}
+.settings-layout{display:grid;grid-template-columns:180px minmax(0,1fr);gap:24px}
+.settings-nav{display:flex;flex-direction:column;gap:8px;align-items:stretch}.settings-nav .b{justify-content:flex-start}.settings-nav .active{background:var(--accent-soft);color:var(--accent-text);border-color:var(--accent)}
+.settings-content{min-width:0}.settings-field{margin:18px 0}.settings-field label{display:block;font-weight:700;margin-bottom:6px}.settings-field input,.settings-field textarea,.settings-field select,.settings-field details>select{display:block;width:100%;max-width:100%;padding:10px 12px;border:1px solid var(--line-2);border-radius:12px;background:var(--card);color:var(--ink);font:inherit;box-sizing:border-box}.settings-field textarea{min-height:84px}.settings-field p{font-size:13px;color:var(--muted);margin-top:6px}.settings-field details{border-left:2px solid var(--line);padding-left:14px}.settings-field summary,#cfg-advanced>summary{cursor:pointer;font-weight:700}.settings-item{padding:14px;border:1px solid var(--line);border-radius:14px;margin:12px 0}.settings-item>.b{margin:4px}.settings-unset{border:0;background:transparent;color:var(--muted);font:inherit;font-size:12px;text-decoration:underline;cursor:pointer;margin-top:6px}.settings-content>.b{margin:8px 4px 8px 0}.settings-field input[readonly]{color:var(--muted)}
+@media(max-width:860px){.settings-layout{grid-template-columns:1fr}.settings-nav{flex-direction:row;overflow:auto;padding-bottom:4px}.settings-nav .b{min-height:44px;flex-shrink:0}}@media(max-width:640px){.settings-item{padding:10px}.settings-field details{padding-left:10px}}
 .sprite{position:absolute;width:0;height:0;overflow:hidden}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 `;
@@ -317,17 +323,24 @@ const LOGIN = `<section id="login" class="login" hidden aria-labelledby="login-h
 </section>`;
 
 const PROJECTS = `<section id="view-projects" hidden>
-  <div class="pagehead"><div><h1>Projects</h1><p id="projects-sub"></p></div></div>
+  <div class="pagehead"><div><h1>Projects</h1><p id="projects-sub"></p></div><button class="b violet" type="button" id="new-project">New project</button></div>
+  <dialog id="new-project-dialog"><form id="new-project-form" class="stack">
+    <h2>Create a project</h2><p class="help">Start with the FeedbackKit inbox. No GitHub or AI credentials are needed. You can change delivery and AI settings afterwards.</p>
+    <div class="field"><label for="new-project-id">Project ID</label><input class="in" id="new-project-id" required pattern="[a-z0-9][a-z0-9_\\-]{0,63}" maxlength="64" placeholder="my-website"></div>
+    <div class="field"><label for="new-project-origin">Website origin</label><input class="in" id="new-project-origin" type="url" required placeholder="https://example.org"><p class="help">Include scheme and hostname. No page path.</p></div>
+    <div class="field"><label for="new-project-locale">Issue language</label><select class="in" id="new-project-locale"><option value="en">English</option><option value="de">Deutsch</option></select></div>
+    <p class="help" id="new-project-msg" role="status"></p><div class="row-flex"><button class="b violet" type="submit" id="create-project">Create project</button><button class="b ghost" type="button" id="cancel-project">Cancel</button></div>
+  </form></dialog>
   <div class="tbl" id="projects-table" hidden>
     <table>
-      <thead><tr><th scope="col">Project</th><th scope="col">Reports, 7 days</th><th scope="col">Issues failed</th><th scope="col">Delivery</th><th scope="col">Config</th><th scope="col">Edited</th></tr></thead>
+      <thead><tr><th scope="col">Project</th><th scope="col">Reports, 7 days</th><th scope="col">Issues failed</th><th scope="col">Delivery</th><th scope="col">Settings revision</th><th scope="col">Edited</th></tr></thead>
       <tbody id="projects-rows"></tbody>
     </table>
   </div>
   <div id="projects-empty" hidden>
     <div class="pagehead"><div><h2>Set up your first project</h2><p>About 5 minutes</p></div></div>
     <div class="steps">
-      <div class="step"><span class="n">1</span><div class="body"><div><h3>Import your config</h3><p>Send your <code class="mono">feedbackkit.config.json</code> to the gateway with the admin token. The answer contains the public key, the snippet and the test page.</p></div>
+      <div class="step"><span class="n">1</span><div class="body"><div><h3>Create your first project</h3><p>Use <b>New project</b> above. The project page provides your snippet and test page. Existing configurations can also be imported through the API below.</p></div>
         <pre class="term" id="import-cmd"></pre></div></div>
       <div class="step todo"><span class="n">2</span><div class="body"><div><h3>Add the snippet to your site</h3><p>It's a single script tag, included in the import answer and on the project page.</p></div></div></div>
       <div class="step todo"><span class="n">3</span><div class="body"><div><h3>Send a test report</h3><p>The test page sends a dry run that doesn't open an issue.</p></div></div></div>
@@ -341,11 +354,12 @@ const PROJECT = `<section id="view-project" hidden>
   <div class="tabs" role="tablist" aria-label="Project sections">
     <button role="tab" type="button" id="tab-setup" data-tab="setup" aria-controls="panel-setup" aria-selected="false" tabindex="-1">Setup &amp; snippet</button>
     <button role="tab" type="button" id="tab-types" data-tab="types" aria-controls="panel-types" aria-selected="false" tabindex="-1">Types &amp; fields</button>
-    <button role="tab" type="button" id="tab-history" data-tab="history" aria-controls="panel-history" aria-selected="true">Feedback history</button>
-    <button role="tab" type="button" id="tab-config" data-tab="config" aria-controls="panel-config" aria-selected="false" tabindex="-1">Config</button>
+    <button role="tab" type="button" id="tab-history" data-tab="history" aria-controls="panel-history" aria-selected="true">Delivery log &amp; inbox</button>
+    <button role="tab" type="button" id="tab-config" data-tab="config" aria-controls="panel-config" aria-selected="false" tabindex="-1">Settings</button>
   </div>
 
   <div class="stack" id="panel-history" role="tabpanel" aria-labelledby="tab-history">
+    <p class="help">This log records receipt and delivery, not the current status of GitHub tickets. Follow the destination link for open/closed status, comments and triage. Only reports stored in the FeedbackKit inbox have a local Open/Done state.</p>
     <div class="c">
       <div class="c-head"><h3>Last 30 days</h3><span class="muted sm">Share of opens</span></div>
       <div class="funnel" id="funnel">
@@ -362,8 +376,8 @@ const PROJECT = `<section id="view-project" hidden>
     </div>
     <div class="chips" role="group" aria-label="Filter by outcome" id="filters">
       <button class="chip" type="button" data-filter="all" aria-pressed="true">All</button>
-      <button class="chip" type="button" data-filter="open" aria-pressed="false">Open</button>
-      <button class="chip" type="button" data-filter="done" aria-pressed="false">Done</button>
+      <button class="chip" type="button" data-filter="open" aria-pressed="false">Inbox: open</button>
+      <button class="chip" type="button" data-filter="done" aria-pressed="false">Inbox: handled</button>
       <button class="chip" type="button" data-filter="undecided" aria-pressed="false">Needs a decision</button>
       <button class="chip" type="button" data-filter="created" aria-pressed="false">Issue created</button>
       <button class="chip" type="button" data-filter="saved" aria-pressed="false">Saved, no issue</button>
@@ -392,9 +406,11 @@ const PROJECT = `<section id="view-project" hidden>
   </div>
 
   <div class="stack" id="panel-config" role="tabpanel" aria-labelledby="tab-config" hidden>
-    <p class="muted sm">The stored config of <b id="cfg-id"></b> as JSON. Validate checks it on the gateway and shows where each type goes and what changes. Publishing bumps the config version; widgets pick it up within 60 seconds. <code class="mono">projectId</code> can't change here.</p>
-    <div class="editor"><pre id="cfg-lines" aria-hidden="true"></pre><textarea id="cfg-text" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Config JSON"></textarea></div>
-    <div class="row-flex"><button class="b ghost sm" type="button" id="cfg-validate" disabled>Validate</button><button class="b violet sm" type="button" id="cfg-publish" disabled>Publish</button><span class="help" id="cfg-msg" role="status"></span></div>
+    <p class="muted sm">Settings for <b id="cfg-id"></b>. Review changes before publishing. Settings revisions count edits to this project, not FeedbackKit software releases. Widgets pick up published settings within 60 seconds.</p>
+    <div id="cfg-form" class="settings-layout"></div>
+    <details id="cfg-advanced"><summary>Advanced JSON</summary><p class="help">The same draft as the forms. Close this section to load JSON edits into the forms.</p>
+    <div class="editor"><pre id="cfg-lines" aria-hidden="true"></pre><textarea id="cfg-text" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Config JSON"></textarea></div></details>
+    <div class="row-flex"><button class="b ghost sm" type="button" id="cfg-validate" disabled>Review changes</button><button class="b violet sm" type="button" id="cfg-publish" disabled>Publish</button><span class="help" id="cfg-msg" role="status"></span></div>
     <div class="stack" id="cfg-out"></div>
   </div>
 

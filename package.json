@@ -3,17 +3,18 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Self-hosted feedback gateway — complete-at-the-source user feedback to structured, agent-ready GitHub issues.",
+  "description": "Self-hosted feedback gateway \u2014 complete-at-the-source user feedback to structured, agent-ready GitHub issues.",
   "license": "MIT",
   "packageManager": "pnpm@11.5.0",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=24"
   },
   "scripts": {
     "materialize": "node scripts/materialize-wrangler.mjs",
     "build:widget": "node scripts/build-widget.mjs",
+    "gen:settings": "node scripts/gen-settings-descriptor.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.widget.json && tsc --noEmit -p tsconfig.admin.json",
-    "test": "vitest run && vitest run -c vitest.workers.config.ts",
+    "test": "vitest run && vitest run -c vitest.workers.config.ts && vitest run -c vitest.conformance.config.ts",
     "e2e": "pnpm build:widget && playwright test",
     "check:bundle": "node scripts/check-bundle.mjs",
     "test-issue": "node scripts/test-issue.mjs",
@@ -21,11 +22,15 @@
     "dev": "pnpm materialize && wrangler dev",
     "migrate:local": "wrangler d1 migrations apply feedbackkit --local",
     "migrate:remote": "wrangler d1 migrations apply feedbackkit --remote",
-    "deploy": "pnpm build:widget && pnpm materialize && pnpm migrate:remote && wrangler deploy",
-    "setup": "node scripts/setup.mjs"
+    "deploy": "pnpm build:widget && pnpm materialize && pnpm migrate:remote && wrangler deploy && node scripts/record-capability.mjs",
+    "setup": "node scripts/setup.mjs",
+    "build:server": "node scripts/build-server.mjs",
+    "start": "node scripts/server.mjs",
+    "test:server": "node --test test/server-*.test.mjs"
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^1.2.3",
+    "@hono/node-server": "^1.19.18",
     "@modelcontextprotocol/server": "2.0.0",
     "agents": "^0.27.0",
     "hono": "^4.6.14",

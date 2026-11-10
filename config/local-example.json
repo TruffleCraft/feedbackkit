@@ -1,0 +1,46 @@
+{
+  "projectId": "example-website",
+  "locale": "en",
+  "delivery": "local",
+  "auth": {
+    "origins": [
+      "https://example.org"
+    ]
+  },
+  "llm": {
+    "provider": "off",
+    "model": ""
+  },
+  "templates": [
+    {
+      "type": "bug",
+      "label": "Bug",
+      "fields": [
+        {
+          "key": "actual",
+          "label": "What happened",
+          "kind": "longtext",
+          "required": true
+        },
+        {
+          "key": "expected",
+          "label": "What you expected",
+          "kind": "longtext",
+          "required": true
+        }
+      ]
+    },
+    {
+      "type": "feature",
+      "label": "Feature request",
+      "fields": [
+        {
+          "key": "problem",
+          "label": "What would this help with?",
+          "kind": "longtext",
+          "required": true
+        }
+      ]
+    }
+  ]
+}

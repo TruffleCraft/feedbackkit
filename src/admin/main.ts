@@ -1,3 +1,4 @@
+import { settingsEditor } from "./settings.js";
 // FeedbackKit admin, read-only (P2, step 3, ADR-014). Fills the Worker-rendered
 // shells from /api/admin/*. Two ways in: when Cloudflare Access sits in front of
 // the admin, GET /api/admin/me answers with the signed-in email and no token is
@@ -30,6 +31,7 @@ interface FieldSpec {
 }
 interface Template {
   type: string;
+  archived?: boolean;
   label: Label;
   fields?: FieldSpec[];
   tracker?: { repo?: string; labels?: string[]; type?: string; issueFields?: { fieldId: number }[] };
@@ -164,6 +166,25 @@ async function api<T>(path: string, token = readToken()): Promise<T> {
     throw new HttpError(res.status, msg);
   }
   return (await res.json()) as T;
+}
+
+// Screenshots of local reports and Project drafts sit behind the admin sign-in.
+// An <img> request carries no Authorization header, so they are fetched with it
+// and shown from object URLs, which are released when the list is rebuilt.
+const PRIVATE_ASSETS = "/admin/assets/";
+let shotUrls: string[] = [];
+const releaseShots = () => {
+  for (const u of shotUrls) URL.revokeObjectURL(u);
+  shotUrls = [];
+};
+async function privateImage(url: string): Promise<string> {
+  const headers: Record<string, string> = {};
+  if (accessEmail === null) headers["Authorization"] = `Bearer ${readToken() ?? ""}`;
+  const res = await fetch(url, { headers, cache: "no-store", credentials: "same-origin" });
+  if (!res.ok) throw new HttpError(res.status, `HTTP ${res.status}`);
+  const object = URL.createObjectURL(await res.blob());
+  shotUrls.push(object);
+  return object;
 }
 
 /** A write. Resolves with the status and JSON body; only network failures throw. */
@@ -339,6 +360,27 @@ function fail(err: unknown, what: string) {
 
 // ── projects ──────────────────────────────────────────────────────────────────
 async function loadProjects() {
+  const dialog = $<HTMLDialogElement>("new-project-dialog");
+  $("new-project").onclick = () => dialog.showModal();
+  $("cancel-project").onclick = () => dialog.close();
+  $("new-project-form").onsubmit = async (event) => {
+    event.preventDefault();
+    const button = $<HTMLButtonElement>("create-project");
+    const msg = $("new-project-msg");
+    const projectId = $<HTMLInputElement>("new-project-id").value.trim();
+    const rawOrigin = $<HTMLInputElement>("new-project-origin").value.trim();
+    let origin: URL;
+    try { origin = new URL(rawOrigin); } catch { msg.textContent = "Enter a valid website origin."; return; }
+    if (!["http:", "https:"].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash) { msg.textContent = "Use an http(s) origin without credentials, a path, query or fragment."; return; }
+    button.disabled = true;
+    try {
+      const config = { projectId, locale: $<HTMLSelectElement>("new-project-locale").value, delivery: "local", auth: { origins: [origin.origin] }, llm: { provider: "off", model: "" }, templates: [{ type: "feedback", label: "Feedback", fields: [] }] };
+      const result = await send("POST", "/api/admin/projects", { config });
+      if (result.status !== 201) { msg.textContent = errText(result); return; }
+      location.assign(`/admin/projects/${encodeURIComponent(projectId)}#setup`);
+    } catch { msg.textContent = "The gateway did not answer. Your entries are still here; retry when it is available."; }
+    finally { button.disabled = false; }
+  };
   const r = await api<{ projects: ProjectSummary[] }>("/api/admin/projects");
   const list = r.projects;
   $("projects-sub").textContent = !list.length ? "No projects on this gateway yet" : list.length === 1 ? "1 project on this gateway" : `${list.length} projects on this gateway`;
@@ -364,7 +406,7 @@ async function loadProjects() {
         el("td", { class: "num" }, p.feedback7d.total),
         el("td", null, failed > 0 ? badge("failed", String(failed)) : el("span", { class: "muted" }, "0")),
         el("td", null, deliveryCell(p)),
-        el("td", { class: "mono" }, `v${p.configVersion}`),
+        el("td", { class: "mono" }, `Revision ${p.configVersion}`),
         el("td", null, timeEl(p.updatedAt, "muted")),
       );
     }),
@@ -426,9 +468,20 @@ function thumb(atts: Attachment[]): HTMLElement {
   const n = atts.length === 1 ? "1 attachment" : `${atts.length} attachments`;
   const url = safeUrl(atts.find((a) => a.url)?.url, true);
   if (!url) return el("div", { class: "thumb", title: `${n}, no public URL configured` }, icon("i-image"));
-  const img = el("img", { src: url, alt: "Screenshot of the report", loading: "lazy", decoding: "async" });
+  const isPrivate = new URL(url).pathname.startsWith(PRIVATE_ASSETS);
+  const img = el("img", { ...(isPrivate ? {} : { src: url }), alt: "Screenshot of the report", loading: "lazy", decoding: "async" });
   img.addEventListener("error", () => img.replaceWith(icon("i-image")), { once: true });
-  return el("a", { class: "thumb", href: url, target: "_blank", rel: "noopener noreferrer", title: `${n}, opens full size` }, img);
+  const link = el("a", { class: "thumb", ...(isPrivate ? {} : { href: url }), target: "_blank", rel: "noopener noreferrer", title: `${n}, opens full size` }, img);
+  if (isPrivate) {
+    privateImage(url).then(
+      (object) => {
+        img.src = object;
+        link.href = object;
+      },
+      () => img.replaceWith(icon("i-image")),
+    );
+  }
+  return link;
 }
 
 function issueLink(raw: string | null): HTMLElement | null {
@@ -608,6 +661,7 @@ function initHistory(id: string, typeLabels: Map<string, string>) {
     const mine = ++gen;
     if (reset) {
       cursor = null;
+      releaseShots();
       rows.replaceChildren();
     }
     more.hidden = true;
@@ -734,7 +788,7 @@ function renderTypes(cfg: ProjectConfig) {
       const labels = t.tracker?.labels ?? [];
       const delivery = deliveryOf(cfg, t);
       const project = cfg.tracker?.project;
-      const meta = delivery !== "issue"
+      const metaBase = delivery !== "issue"
         ? `${fields.length === 0 ? "No fields" : `${fields.length} fields`} · ${delivery === "project" && project ? `GitHub Project ${project.org} #${project.number}` : "saved without an issue"}`
         : [
             fields.length === 1 ? "1 field" : `${fields.length} fields`,
@@ -746,6 +800,7 @@ function renderTypes(cfg: ProjectConfig) {
           ]
             .filter(Boolean)
             .join(" · ");
+      const meta = t.archived ? `Archived · ${metaBase}` : metaBase;
       const inner = el("div", { class: "inner" });
       if (required > 3) {
         inner.append(el("p", { class: "note" }, `${required} required fields. Each extra one makes the follow-up longer for the person reporting. Consider making one optional.`));
@@ -803,7 +858,7 @@ async function loadProject() {
     }
     throw err;
   }
-  $("p-meta").textContent = `${cfg.publicKey} · config v${cfg.configVersion}`;
+  $("p-meta").textContent = `${cfg.publicKey} · settings revision ${cfg.configVersion}`;
   renderTypes(cfg);
   initHistory(id, new Map(cfg.templates.map((t) => [t.type, labelText(t.label, cfg.locale) || t.type])));
 
@@ -825,7 +880,7 @@ async function loadProject() {
   }
   renderSetup(cfg, funnel);
   initTestReport(base);
-  initConfigEditor(id, base, (v) => ($("p-meta").textContent = `${cfg.publicKey} · config v${v}`));
+  initConfigEditor(id, base, (v) => ($("p-meta").textContent = `${cfg.publicKey} · settings revision ${v}`));
 }
 
 // ── config editor (#111) ──────────────────────────────────────────────────────
@@ -851,8 +906,39 @@ function lineDiff(a: string, b: string): Array<[" " | "+" | "-", string]> {
   return out.filter((_, k) => keep[k]);
 }
 
+interface RetentionEffect {
+  days: number | null;
+  previousDays: number | null;
+  reports: number;
+  attachments: number;
+}
+/** What a changed retention deletes, shown before anyone can publish it. */
+function retentionNote(raw: unknown): HTMLElement | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as RetentionEffect;
+  const was = r.previousDays === null ? "no limit" : `${r.previousDays} days`;
+  const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+  const effect =
+    r.days === null
+      ? "Reports and attachments are kept until you delete them."
+      : r.reports === 0
+        ? `No stored report is older than ${r.days} days, so nothing is deleted now.`
+        : `At the next daily cleanup ${count(r.reports, "report")} and ${count(r.attachments, "attachment")} older than ${r.days} days are deleted, handled or not. This cannot be undone.`;
+  return el("div", { class: r.days !== null && r.reports > 0 ? "help err" : "help" }, el("h3", { class: "sm" }, "Retention"), el("p", null, `Retention changes from ${was} to ${r.days === null ? "no limit" : `${r.days} days`}. ${effect}`));
+}
+
 function initConfigEditor(id: string, base: string, onPublished: (version: number) => void) {
   const ta = $<HTMLTextAreaElement>("cfg-text");
+  const formRoot = $("cfg-form");
+  // The text is the one draft. The form writes into it, and valid JSON typed
+  // into it is loaded back into the form, so the two never diverge.
+  let writing = false;
+  const form = settingsEditor(formRoot, (draft) => {
+    writing = true;
+    ta.value = pretty(draft);
+    ta.dispatchEvent(new Event("input"));
+    writing = false;
+  });
   const gutter = $("cfg-lines");
   const msg = $("cfg-msg");
   const out = $("cfg-out");
@@ -861,6 +947,7 @@ function initConfigEditor(id: string, base: string, onPublished: (version: numbe
   let version = 0;
   let stored = "";
   let checked: string | null = null; // the exact text that passed validation
+  let jsonPaused = false; // the JSON is invalid, so the form waits instead of overwriting it
 
   const say = (text: string, bad = false) => {
     msg.textContent = text;
@@ -870,16 +957,33 @@ function initConfigEditor(id: string, base: string, onPublished: (version: numbe
     gutter.textContent = Array.from({ length: ta.value.split("\n").length }, (_, k) => k + 1).join("\n");
     gutter.scrollTop = ta.scrollTop;
   };
+  const syncForm = () => {
+    try {
+      const parsed: unknown = JSON.parse(ta.value);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("the settings must be a JSON object");
+      form.load(parsed as Record<string, unknown>, false);
+      if (jsonPaused) {
+        jsonPaused = false;
+        formRoot.inert = false;
+        say("");
+      }
+    } catch (e) {
+      jsonPaused = true;
+      formRoot.inert = true;
+      say(`Not valid JSON: ${(e as Error).message}. The form is paused until the JSON is valid.`, true);
+    }
+  };
   ta.addEventListener("input", () => {
     lines();
     publishBtn.disabled = ta.value !== checked;
+    if (!writing) syncForm();
   });
   ta.addEventListener("scroll", () => (gutter.scrollTop = ta.scrollTop));
 
   const showDiff = (text: string) => {
     const d = lineDiff(stored, text);
-    const pre = el("pre", { class: "term diff" }, ...(d.length ? d.map(([op, l]) => el("span", op === " " ? null : { class: op === "+" ? "add" : "del" }, `${op} ${l}\n`)) : [`No changes against v${version}.`]));
-    return el("div", null, el("h3", { class: "sm" }, `Changes against v${version}`), pre);
+    const pre = el("pre", { class: "term diff" }, ...(d.length ? d.map(([op, l]) => el("span", op === " " ? null : { class: op === "+" ? "add" : "del" }, `${op} ${l}\n`)) : [`No changes against settings revision ${version}.`]));
+    return el("div", null, el("h3", { class: "sm" }, `Changes against settings revision ${version}`), pre);
   };
 
   const parse = (): unknown => {
@@ -894,6 +998,8 @@ function initConfigEditor(id: string, base: string, onPublished: (version: numbe
   validateBtn.addEventListener("click", async () => {
     out.replaceChildren();
     publishBtn.disabled = true;
+    // The text that is sent is the text that gets reviewed and, later, published.
+    const text = ta.value;
     const cfg = parse();
     if (cfg === undefined) return;
     say("Checking…");
@@ -907,16 +1013,22 @@ function initConfigEditor(id: string, base: string, onPublished: (version: numbe
     const deliveries = (r.json["deliveries"] as Array<{ type: string; delivery: Delivery }>) ?? [];
     out.append(
       el("div", { class: "tbl inset" }, el("table", null, el("thead", null, el("tr", null, el("th", { scope: "col" }, "Type"), el("th", { scope: "col" }, "Goes to"))), el("tbody", null, ...deliveries.map((d) => el("tr", null, el("td", { class: "mono" }, d.type), el("td", null, DELIVERY_WORD[d.delivery])))))),
+      ...[retentionNote(r.json["retention"])].filter((n): n is HTMLElement => n !== null),
       showDiff(pretty(cfg)),
     );
-    checked = ta.value;
+    if (ta.value !== text) {
+      say("The settings changed while they were being checked. Review them again.", true);
+      return;
+    }
+    checked = text;
     publishBtn.disabled = false;
     say("Valid. Check the destinations and the changes, then publish.");
   });
 
   publishBtn.addEventListener("click", async () => {
-    const cfg = parse();
-    if (cfg === undefined) return;
+    // Only the reviewed text can be published, never whatever the box holds now.
+    if (checked === null || ta.value !== checked) return;
+    const cfg: unknown = JSON.parse(checked);
     publishBtn.disabled = true;
     const r = await send("PUT", `${base}/config`, { config: cfg, expectedVersion: version });
     if (r.status === 200) {
@@ -924,7 +1036,9 @@ function initConfigEditor(id: string, base: string, onPublished: (version: numbe
       stored = pretty(cfg);
       checked = null;
       out.replaceChildren();
-      say(`Published as v${version}. Active on all edge locations within 60 s.`);
+      // What is published is now fixed: its IDs lock and the form starts from it.
+      form.load(cfg as Record<string, unknown>, true);
+      say(`Published settings revision ${version}. Active on all edge locations within 60 s.`);
       onPublished(version);
       return;
     }
@@ -946,6 +1060,7 @@ function initConfigEditor(id: string, base: string, onPublished: (version: numbe
       version = Number(configVersion);
       stored = pretty(rest);
       ta.value = stored;
+      form.load(rest);
       lines();
       validateBtn.disabled = false;
       $("cfg-id").textContent = id;

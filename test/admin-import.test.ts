@@ -83,6 +83,23 @@ describe("POST /api/admin/config/import", () => {
     expect(JSON.parse(configBlob).projectId).toBe("demo");
   });
 
+  it("refuses an import over an existing project that drops a published type; nothing is stored", async () => {
+    const stored = { ...validConfig, templates: [...validConfig.templates, { type: "idea", label: "Idea" }] };
+    const writes: string[] = [];
+    const res = await app.request(
+      "/api/admin/config/import",
+      importReq(validConfig),
+      env((sql) => {
+        if (/^\s*SELECT config FROM projects WHERE id/.test(sql)) return { config: JSON.stringify(stored) };
+        if (/INSERT INTO projects/.test(sql)) writes.push(sql);
+        return null;
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { issues: string[] }).issues.join("\n")).toContain('type "idea" was published');
+    expect(writes).toEqual([]);
+  });
+
   it("pins a caller-provided publicKey on first import", async () => {
     let insertedKey = "";
     const handler = (sql: string, params: unknown[]) => {
