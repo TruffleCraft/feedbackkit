@@ -6,14 +6,27 @@ import { dirname, join } from "node:path";
 export function openStorage(filename, migrations) {
   mkdirSync(dirname(filename), { recursive: true });
   const sqlite = new DatabaseSync(filename);
-  sqlite.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000");
+  // busy_timeout comes first so that switching to WAL, creating tables and the
+  // migrations wait for a second process that starts at the same moment.
+  sqlite.exec("PRAGMA busy_timeout=5000");
+  // auto_vacuum=INCREMENTAL lets deleted attachments give their space back. A
+  // new file takes it only if it is set before the switch to WAL writes the
+  // header, and a database that already has tables takes it after one VACUUM.
+  sqlite.exec("PRAGMA auto_vacuum=INCREMENTAL");
+  sqlite.exec("PRAGMA journal_mode=WAL");
+  // secure_delete zeroes the pages a delete frees.
+  sqlite.exec("PRAGMA foreign_keys=ON; PRAGMA synchronous=NORMAL; PRAGMA secure_delete=ON");
+  if (sqlite.prepare("PRAGMA auto_vacuum").get().auto_vacuum !== 2) sqlite.exec("VACUUM");
   sqlite.exec("CREATE TABLE IF NOT EXISTS _fk_migrations (name TEXT PRIMARY KEY)");
   for (const name of readdirSync(migrations).filter((n) => n.endsWith(".sql")).sort()) {
-    if (sqlite.prepare("SELECT name FROM _fk_migrations WHERE name = ?").get(name)) continue;
+    // The check sits inside the write transaction: a second process that waited
+    // for the lock then sees the migration as applied instead of running it twice.
     sqlite.exec("BEGIN IMMEDIATE");
     try {
-      sqlite.exec(readFileSync(join(migrations, name), "utf8"));
-      sqlite.prepare("INSERT INTO _fk_migrations VALUES (?)").run(name);
+      if (!sqlite.prepare("SELECT name FROM _fk_migrations WHERE name = ?").get(name)) {
+        sqlite.exec(readFileSync(join(migrations, name), "utf8"));
+        sqlite.prepare("INSERT INTO _fk_migrations VALUES (?)").run(name);
+      }
       sqlite.exec("COMMIT");
     } catch (error) { sqlite.exec("ROLLBACK"); throw error; }
   }
@@ -39,7 +52,25 @@ export function openStorage(filename, migrations) {
       const bytes = new Uint8Array(row.data);
       return { body: bytes, httpMetadata: JSON.parse(row.metadata), async arrayBuffer() { return bytes.slice().buffer; } };
     },
-    async delete(key) { sqlite.prepare("DELETE FROM _fk_objects WHERE key = ?").run(key); },
+    async delete(key) {
+      sqlite.prepare("DELETE FROM _fk_objects WHERE key = ?").run(key);
+      scheduleCompact();
+    },
   };
-  return { DB, UPLOADS, sqlite, close: () => sqlite.close() };
+  // Deleted blobs must leave the file: hand the freed pages back and reset the
+  // write-ahead log, which still holds the old page images until a checkpoint.
+  // Deletes come in bursts (a sweep), so the work is coalesced.
+  function compact() {
+    clearTimeout(compactTimer);
+    compactTimer = undefined;
+    sqlite.exec("PRAGMA incremental_vacuum");
+    sqlite.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  }
+  let compactTimer;
+  function scheduleCompact() {
+    clearTimeout(compactTimer);
+    compactTimer = setTimeout(() => { try { compact(); } catch (error) { console.error("Compaction failed:", error.message); } }, 1000);
+    compactTimer.unref();
+  }
+  return { DB, UPLOADS, sqlite, compact, close: () => { if (compactTimer) compact(); sqlite.close(); } };
 }

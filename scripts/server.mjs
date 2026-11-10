@@ -17,8 +17,13 @@ if ((process.env.ADMIN_TOKEN ?? "").length < 32) throw new Error("Set ADMIN_TOKE
 const origin = new URL(process.env.FK_PUBLIC_URL || "http://localhost:8787");
 if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new Error("FK_PUBLIC_URL must be an http(s) origin, without credentials, path, query or fragment.");
 const storage = openStorage(join(process.env.FK_DATA_DIR || join(root, "data"), "feedbackkit.sqlite"), join(root, "migrations"));
-// This server has one release and one database, unlike the shared Worker channels.
-storage.sqlite.prepare("INSERT INTO meta (key,value) VALUES ('delivery_capability',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(String(codeDeliveryCapability()));
+// The capability only ever rises. A database that a newer release raised past
+// this release holds settings this release cannot honor, and serving them could
+// send a report to a public issue that a newer release would have kept private.
+const supported = codeDeliveryCapability();
+const recorded = Number(storage.sqlite.prepare("SELECT value FROM meta WHERE key='delivery_capability'").get()?.value ?? 0);
+if (recorded > supported) throw new Error(`This database needs delivery capability ${recorded} and this release provides ${supported}. Start the newer release again, or restore the backup taken before the update.`);
+storage.sqlite.prepare("INSERT INTO meta (key,value) VALUES ('delivery_capability',?) ON CONFLICT(key) DO UPDATE SET value=MAX(CAST(meta.value AS INTEGER),CAST(excluded.value AS INTEGER))").run(String(supported));
 const files = new Map([
   ["/widget.js", ["widget.js", "application/javascript; charset=utf-8"]],
   ["/admin.js", ["admin.js", "application/javascript; charset=utf-8"]],
@@ -38,8 +43,9 @@ const env = { ...process.env, DB: storage.DB, UPLOADS: storage.UPLOADS, ASSETS: 
 delete env.OAUTH_KV; delete env.OAUTH_PROVIDER; delete env.FK_ACCESS_TEAM_DOMAIN; delete env.FK_ACCESS_AUD;
 const pending = new Set();
 const context = { waitUntil(p) { const task=Promise.resolve(p).catch((e)=>console.error("Background task failed:",e.message));pending.add(task);task.finally(()=>pending.delete(task)); }, passThroughOnException() {} };
-async function sweep() { await Promise.all([sweepExpiredAssets(env),pruneExpiredRecords(env)]); }
-await sweep();
+async function sweep() { await Promise.all([sweepExpiredAssets(env),pruneExpiredRecords(env)]); storage.compact(); }
+// A failing sweep is logged and retried every hour; it never keeps the service from starting.
+await sweep().catch((e)=>console.error("Start sweep failed:",e.message));
 const timer = setInterval(()=>context.waitUntil(sweep()), 60 * 60 * 1000);
 const server = serve({ hostname: process.env.HOST || "127.0.0.1", port: Number(process.env.PORT || 8787), async fetch(request, bindings) {
   const url = new URL(request.url);
