@@ -13,7 +13,8 @@ import type { Env } from "../env.js";
 // with this response's nonce; styles only with the nonce, so the markup below
 // carries no style attributes. img-src allows https: because each project's R2
 // public base URL differs; listing those origins here would hand them to anyone
-// who loads the (public, unauthenticated) shell.
+// who loads the (public, unauthenticated) shell. blob: is the page's own object
+// URLs for private screenshots, which are fetched with the admin credentials.
 
 export type AdminView = "projects" | "project" | "system";
 
@@ -23,7 +24,7 @@ export const ADMIN_CSP = (nonce: string) =>
     `script-src 'self' 'nonce-${nonce}'`,
     `style-src 'nonce-${nonce}'`,
     "font-src 'self'",
-    "img-src 'self' data: https:",
+    "img-src 'self' blob: data: https:",
     "connect-src 'self'",
     "frame-ancestors 'none'",
     "base-uri 'none'",

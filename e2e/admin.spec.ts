@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { TOKEN, SHOT_URL, installAdminMocks, signedIn, feedbackItems, inboxItems, harborConfig } from "./admin-fixtures";
+import { TOKEN, SHOT_URL, PRIVATE_SHOT_URL, installAdminMocks, signedIn, feedbackItems, inboxItems, harborConfig } from "./admin-fixtures";
 
 // Admin UI, read-only (P2, step 3): the real shells from src/worker/admin/pages.ts
 // under their production CSP, with /api/admin/* mocked. Runs in both projects
@@ -297,6 +297,37 @@ test.describe("project detail", () => {
     await expect(rows.nth(3).locator(".badge")).toHaveText("In GitHub Project");
     const retries = writes.filter((w) => w.path.endsWith("/retry"));
     expect(retries.map((w) => w.body)).toEqual([{}, { createAnyway: true }]);
+  });
+
+  test("a local report's screenshot loads with the admin token and opens full size", async ({ page }) => {
+    const { assetAuth } = await installAdminMocks(page, { items: inboxItems() });
+    await signedIn(page);
+    await page.goto("/admin/projects/harborline");
+    const thumb = page.locator("#rows .hrow").first().locator("a.thumb");
+    await expect.poll(() => thumb.locator("img").evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0);
+    await expect(thumb).toHaveAttribute("href", /^blob:/);
+    await expect(thumb.locator("img")).toHaveAttribute("src", /^blob:/);
+    // Every request for the screenshot carried the token. A bare image request would have been a counted 401.
+    expect(assetAuth.length).toBeGreaterThan(0);
+    expect(new Set(assetAuth)).toEqual(new Set([`Bearer ${TOKEN}`]));
+    expect(PRIVATE_SHOT_URL.startsWith("/admin/assets/")).toBe(true);
+    // Clicking the thumbnail opens the full image in a new tab.
+    const [opened] = await Promise.all([page.context().waitForEvent("page"), thumb.click()]);
+    await opened.waitForLoadState();
+    expect(opened.url()).toMatch(/^blob:/);
+    // The fixture serves an SVG, so the new tab is an SVG document, not an <img> page.
+    expect(await opened.evaluate(() => document.contentType)).toBe("image/svg+xml");
+  });
+
+  test("a screenshot that cannot be loaded falls back to the placeholder", async ({ page }) => {
+    await installAdminMocks(page, { items: inboxItems() });
+    await page.route("**/admin/assets/**", (r) => r.fulfill({ status: 404, contentType: "application/json", body: "{}" }));
+    await signedIn(page);
+    allowStatus.push(404);
+    await page.goto("/admin/projects/harborline");
+    const first = page.locator("#rows .hrow").first();
+    await expect(first.locator(".thumb img")).toHaveCount(0);
+    await expect(first.locator(".thumb svg")).toBeVisible();
   });
 
   test("local inbox: done, note, copy as Markdown, delete; views Open, Done, Needs a decision", async ({ page, context, browserName }) => {

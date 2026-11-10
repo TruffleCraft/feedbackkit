@@ -167,6 +167,25 @@ async function api<T>(path: string, token = readToken()): Promise<T> {
   return (await res.json()) as T;
 }
 
+// Screenshots of local reports and Project drafts sit behind the admin sign-in.
+// An <img> request carries no Authorization header, so they are fetched with it
+// and shown from object URLs, which are released when the list is rebuilt.
+const PRIVATE_ASSETS = "/admin/assets/";
+let shotUrls: string[] = [];
+const releaseShots = () => {
+  for (const u of shotUrls) URL.revokeObjectURL(u);
+  shotUrls = [];
+};
+async function privateImage(url: string): Promise<string> {
+  const headers: Record<string, string> = {};
+  if (accessEmail === null) headers["Authorization"] = `Bearer ${readToken() ?? ""}`;
+  const res = await fetch(url, { headers, cache: "no-store", credentials: "same-origin" });
+  if (!res.ok) throw new HttpError(res.status, `HTTP ${res.status}`);
+  const object = URL.createObjectURL(await res.blob());
+  shotUrls.push(object);
+  return object;
+}
+
 /** A write. Resolves with the status and JSON body; only network failures throw. */
 async function send(method: string, path: string, body?: unknown): Promise<{ status: number; json: Record<string, unknown> }> {
   const headers: Record<string, string> = { Accept: "application/json", "Content-Type": "application/json" };
@@ -448,9 +467,20 @@ function thumb(atts: Attachment[]): HTMLElement {
   const n = atts.length === 1 ? "1 attachment" : `${atts.length} attachments`;
   const url = safeUrl(atts.find((a) => a.url)?.url, true);
   if (!url) return el("div", { class: "thumb", title: `${n}, no public URL configured` }, icon("i-image"));
-  const img = el("img", { src: url, alt: "Screenshot of the report", loading: "lazy", decoding: "async" });
+  const isPrivate = new URL(url).pathname.startsWith(PRIVATE_ASSETS);
+  const img = el("img", { ...(isPrivate ? {} : { src: url }), alt: "Screenshot of the report", loading: "lazy", decoding: "async" });
   img.addEventListener("error", () => img.replaceWith(icon("i-image")), { once: true });
-  return el("a", { class: "thumb", href: url, target: "_blank", rel: "noopener noreferrer", title: `${n}, opens full size` }, img);
+  const link = el("a", { class: "thumb", ...(isPrivate ? {} : { href: url }), target: "_blank", rel: "noopener noreferrer", title: `${n}, opens full size` }, img);
+  if (isPrivate) {
+    privateImage(url).then(
+      (object) => {
+        img.src = object;
+        link.href = object;
+      },
+      () => img.replaceWith(icon("i-image")),
+    );
+  }
+  return link;
 }
 
 function issueLink(raw: string | null): HTMLElement | null {
@@ -630,6 +660,7 @@ function initHistory(id: string, typeLabels: Map<string, string>) {
     const mine = ++gen;
     if (reset) {
       cursor = null;
+      releaseShots();
       rows.replaceChildren();
     }
     more.hidden = true;
