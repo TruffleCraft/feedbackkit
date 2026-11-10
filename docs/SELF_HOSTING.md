@@ -2,7 +2,7 @@
 
 The standalone gateway runs on **Node.js 24 or newer**, with SQLite on a persistent disk. It supports the widget, admin UI, inbox, AI extraction, GitHub issue/Project delivery and attachment retention. It needs no Cloudflare account, D1 or R2.
 
-What is verified and what is not: the server and its tests run on a developer machine and in CI on Node 24 and 26, and the steps below ran on a clean, unprivileged Debian 13 LXC without nesting, including systemd, a crash and a reboot. The release tarball path ran there too, with fixture releases and throw-away keys: install, `--check`, update, rollback, update again, a release whose server does not start, and a reboot. No signed release has been published yet, it has not been tested on a cloud VPS, and a real GitHub delivery has not been run from it. [Claims and their proof](design/claims.md) lists each statement with its test.
+What is verified and what is not: the server and its tests run on a developer machine and in CI on Node 24 and 26, and the steps below ran on a clean, unprivileged Debian 13 LXC without nesting, including systemd, a crash and a reboot. The release tarball path ran there too, first with fixture releases and throw-away keys (including a release whose server does not start, and a reboot), then with the real signed dev builds 0.1.19-dev.5 and 0.1.19-dev.6 from GitHub: install, `--check`, update, rollback, update again ([evidence](design/evidence/2026-11-10-real-release-lxc.md)). No stable release has been signed yet, it has not been tested on a cloud VPS, and a real GitHub delivery has not been run from it. [Claims and their proof](design/claims.md) lists each statement with its test.
 
 The Cloudflare installation additionally supports OAuth/MCP through its Worker OAuth provider. Those endpoints are explicitly unavailable in the standalone server; admin and widget operation do not depend on them.
 
@@ -54,7 +54,7 @@ systemd creates `/var/lib/feedbackkit` for persistent data. The service user nee
 
 ## Install from a release tarball
 
-A release tarball needs no Git, pnpm or build on the server, and `feedbackkit-update` updates and rolls it back. The first signed release does not exist yet, so until it does, use the checkout install above. The steps below are the ones that apply from then on ([release keys](RELEASES.md#release-keys)).
+A release tarball needs no Git, pnpm or build on the server, and `feedbackkit-update` updates and rolls it back. Signed dev builds exist (`v0.1.19-dev.N`, signed with the dev key in `release-keys/dev.pub`). The first stable release does not exist yet, so for production use the checkout install above until it does. The steps below are written for a stable release ([release keys](RELEASES.md#release-keys)); to try a dev build, use its version, the principal `release-dev` and the dev key.
 
 You need Node.js 24 or newer, curl, tar, sha256sum and ssh-keygen. Create the system user as in the systemd section, then:
 
