@@ -75,3 +75,58 @@ test("a setting without a default starts empty, and emptying an optional setting
   await delivery.selectOption("local");
   expect((await draft())["delivery"]).toBe("local");
 });
+
+test("the JSON and the form are one draft: valid JSON reaches the form, invalid JSON pauses it", async ({ page }) => {
+  await installAdminMocks(page); await signedIn(page);
+  await page.goto("/admin/projects/harborline#config");
+  const settings = page.locator("#cfg-form");
+  await page.locator("#cfg-advanced > summary").click();
+  const json = page.getByLabel("Config JSON");
+  const current = JSON.parse(await json.inputValue()) as { llm: Record<string, unknown> };
+  await json.fill(JSON.stringify({ ...current, llm: { ...current.llm, model: "from-json" } }, null, 2));
+  await settings.getByRole("button", { name: "AI & follow-ups", exact: true }).click();
+  await expect(settings.getByLabel("Model ID", { exact: true })).toHaveValue("from-json");
+
+  await json.fill("{ not json");
+  await expect(settings).toHaveAttribute("inert", "");
+  await expect(page.locator("#cfg-msg")).toContainText("Not valid JSON");
+  await json.fill(JSON.stringify({ ...current, llm: { ...current.llm, model: "fixed" } }, null, 2));
+  await expect(settings).not.toHaveAttribute("inert", "");
+  await expect(settings.getByLabel("Model ID", { exact: true })).toHaveValue("fixed");
+});
+
+test("a review covers exactly the text that was checked: a change while checking needs another review", async ({ page }) => {
+  await installAdminMocks(page); await signedIn(page);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/config/validate", async (route) => { await gate; await route.fallback(); });
+  await page.goto("/admin/projects/harborline#config");
+  const settings = page.locator("#cfg-form");
+  await settings.getByRole("button", { name: "AI & follow-ups", exact: true }).click();
+  const model = settings.getByLabel("Model ID", { exact: true });
+  await model.fill("first");
+  await page.getByRole("button", { name: "Review changes", exact: true }).click();
+  await model.fill("second"); // typed while the gateway is still checking "first"
+  release();
+  await expect(page.locator("#cfg-msg")).toContainText("changed while they were being checked");
+  await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Review changes", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeEnabled();
+});
+
+test("IDs lock once they are published", async ({ page }) => {
+  const { writes } = await installAdminMocks(page); await signedIn(page);
+  await page.goto("/admin/projects/harborline#config");
+  const settings = page.locator("#cfg-form");
+  await settings.getByRole("button", { name: "Types & delivery", exact: true }).click();
+  await settings.getByRole("button", { name: "Add feedback type", exact: true }).click();
+  await settings.locator("summary", { hasText: "Feedback types 5" }).click(); // the new type opens collapsed
+  const typeId = settings.getByLabel("Type ID", { exact: true }).last();
+  await typeId.fill("newtype");
+  await settings.getByLabel("Label", { exact: true }).last().fill("New type");
+  await expect(typeId).not.toHaveAttribute("readonly", "");
+  await page.getByRole("button", { name: "Review changes", exact: true }).click();
+  await page.getByRole("button", { name: "Publish", exact: true }).click();
+  await expect.poll(() => writes.at(-1)?.method).toBe("PUT");
+  await expect(settings.getByLabel("Type ID", { exact: true }).last()).toHaveAttribute("readonly", "");
+});

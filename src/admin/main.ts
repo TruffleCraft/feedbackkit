@@ -906,13 +906,15 @@ function lineDiff(a: string, b: string): Array<[" " | "+" | "-", string]> {
 
 function initConfigEditor(id: string, base: string, onPublished: (version: number) => void) {
   const ta = $<HTMLTextAreaElement>("cfg-text");
-  const form = settingsEditor($("cfg-form"), (draft) => {
+  const formRoot = $("cfg-form");
+  // The text is the one draft. The form writes into it, and valid JSON typed
+  // into it is loaded back into the form, so the two never diverge.
+  let writing = false;
+  const form = settingsEditor(formRoot, (draft) => {
+    writing = true;
     ta.value = pretty(draft);
     ta.dispatchEvent(new Event("input"));
-  });
-  $("cfg-advanced").addEventListener("toggle", () => {
-    if (($("cfg-advanced") as HTMLDetailsElement).open) return;
-    try { form.load(JSON.parse(ta.value) as Record<string, unknown>, false); } catch { /* JSON validation explains errors. */ }
+    writing = false;
   });
   const gutter = $("cfg-lines");
   const msg = $("cfg-msg");
@@ -922,6 +924,7 @@ function initConfigEditor(id: string, base: string, onPublished: (version: numbe
   let version = 0;
   let stored = "";
   let checked: string | null = null; // the exact text that passed validation
+  let jsonPaused = false; // the JSON is invalid, so the form waits instead of overwriting it
 
   const say = (text: string, bad = false) => {
     msg.textContent = text;
@@ -931,9 +934,26 @@ function initConfigEditor(id: string, base: string, onPublished: (version: numbe
     gutter.textContent = Array.from({ length: ta.value.split("\n").length }, (_, k) => k + 1).join("\n");
     gutter.scrollTop = ta.scrollTop;
   };
+  const syncForm = () => {
+    try {
+      const parsed: unknown = JSON.parse(ta.value);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("the settings must be a JSON object");
+      form.load(parsed as Record<string, unknown>, false);
+      if (jsonPaused) {
+        jsonPaused = false;
+        formRoot.inert = false;
+        say("");
+      }
+    } catch (e) {
+      jsonPaused = true;
+      formRoot.inert = true;
+      say(`Not valid JSON: ${(e as Error).message}. The form is paused until the JSON is valid.`, true);
+    }
+  };
   ta.addEventListener("input", () => {
     lines();
     publishBtn.disabled = ta.value !== checked;
+    if (!writing) syncForm();
   });
   ta.addEventListener("scroll", () => (gutter.scrollTop = ta.scrollTop));
 
@@ -955,6 +975,8 @@ function initConfigEditor(id: string, base: string, onPublished: (version: numbe
   validateBtn.addEventListener("click", async () => {
     out.replaceChildren();
     publishBtn.disabled = true;
+    // The text that is sent is the text that gets reviewed and, later, published.
+    const text = ta.value;
     const cfg = parse();
     if (cfg === undefined) return;
     say("Checking…");
@@ -970,14 +992,19 @@ function initConfigEditor(id: string, base: string, onPublished: (version: numbe
       el("div", { class: "tbl inset" }, el("table", null, el("thead", null, el("tr", null, el("th", { scope: "col" }, "Type"), el("th", { scope: "col" }, "Goes to"))), el("tbody", null, ...deliveries.map((d) => el("tr", null, el("td", { class: "mono" }, d.type), el("td", null, DELIVERY_WORD[d.delivery])))))),
       showDiff(pretty(cfg)),
     );
-    checked = ta.value;
+    if (ta.value !== text) {
+      say("The settings changed while they were being checked. Review them again.", true);
+      return;
+    }
+    checked = text;
     publishBtn.disabled = false;
     say("Valid. Check the destinations and the changes, then publish.");
   });
 
   publishBtn.addEventListener("click", async () => {
-    const cfg = parse();
-    if (cfg === undefined) return;
+    // Only the reviewed text can be published, never whatever the box holds now.
+    if (checked === null || ta.value !== checked) return;
+    const cfg: unknown = JSON.parse(checked);
     publishBtn.disabled = true;
     const r = await send("PUT", `${base}/config`, { config: cfg, expectedVersion: version });
     if (r.status === 200) {
@@ -985,6 +1012,8 @@ function initConfigEditor(id: string, base: string, onPublished: (version: numbe
       stored = pretty(cfg);
       checked = null;
       out.replaceChildren();
+      // What is published is now fixed: its IDs lock and the form starts from it.
+      form.load(cfg as Record<string, unknown>, true);
       say(`Published settings revision ${version}. Active on all edge locations within 60 s.`);
       onPublished(version);
       return;
