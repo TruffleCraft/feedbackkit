@@ -31,17 +31,17 @@ function keypair(dir, name) {
 }
 const sign = (sums, key) => execFileSync('ssh-keygen', ['-Y', 'sign', '-q', '-f', key, '-n', 'feedbackkit-release', sums]);
 
-/** Unpack a tarball, let `change` edit the files, pack it again. */
+/** Unpack a tarball, let `change` edit the files (it gets the release directory and its parent), pack it again. */
 function repack(tarball, change) {
   const dir = tmp();
   execFileSync('tar', ['-xzf', tarball, '-C', dir]);
   const top = readdirSync(dir)[0];
-  change(join(dir, top));
-  const walk = (base, rel = '') => readdirSync(join(base, rel), { withFileTypes: true }).flatMap((e) => {
-    const p = join(rel, e.name);
-    return e.isDirectory() ? [{ path: `${top}/${p}`, mode: 0o755, dir: true }, ...walk(base, p)] : [{ path: `${top}/${p}`, mode: statSync(join(base, p)).mode & 0o777, data: readFileSync(join(base, p)) }];
+  change(join(dir, top), dir);
+  const walk = (rel = '') => readdirSync(join(dir, rel), { withFileTypes: true }).flatMap((e) => {
+    const p = rel ? `${rel}/${e.name}` : e.name;
+    return e.isDirectory() ? [{ path: p, mode: 0o755, dir: true }, ...walk(p)] : [{ path: p, mode: statSync(join(dir, p)).mode & 0o777, data: readFileSync(join(dir, p)) }];
   });
-  const out = packTarGz([{ path: top, mode: 0o755, dir: true }, ...walk(dir, top).map((e) => e)].map((e) => ({ ...e, path: e.path.replace(`${top}/${top}/`, `${top}/`) })).filter((e) => e.path !== `${top}/${top}`), 0);
+  const out = packTarGz(walk(), 0);
   rmSync(dir, { recursive: true, force: true });
   return out;
 }
@@ -161,6 +161,12 @@ test('an update keeps the data, shows the new release and keeps a way back; --ro
     assert.equal((await h.diag()).version, '1.0.0');
     assert.deepEqual(await h.projects(), ['before'], 'the data is the copy from before the update');
     assert.ok(readdirSync(join(h.dir)).some((n) => n.startsWith('var.after-rollback-')), 'what came in since is kept aside, not destroyed');
+    // The release we went back from is still on disk, and updating to it again must work.
+    const again = await h.run();
+    assert.equal(again.status, 0, again.stdout + again.stderr);
+    assert.equal(h.current(), '1.1.0');
+    assert.equal((await h.diag()).version, '1.1.0');
+    assert.deepEqual(await h.projects(), ['before'], 'the data is still the restored copy');
   } finally { await h.close(); }
 });
 
@@ -187,19 +193,29 @@ for (const [title, options, pattern] of [
   });
 }
 
-test('a release that does not start is rolled back by the update itself, with the data copy', async () => {
+test('a release that does not start is rolled back by the update itself, with the data copy and the way back it had', async () => {
   const h = await harness();
   try {
     await h.install('1.0.0');
+    await h.publish('1.1.0');
+    assert.equal((await h.run()).status, 0);
     await h.createProject('keep');
-    await h.publish('1.1.0', { mutate: (dir) => writeFileSync(join(dir, 'server.mjs'), 'throw new Error("this release is broken");\n') });
+    await h.publish('1.2.0', { mutate: (dir) => writeFileSync(join(dir, 'server.mjs'), 'throw new Error("this release is broken");\n') });
     const r = await h.run();
     assert.notEqual(r.status, 0);
-    assert.match(r.stdout + r.stderr, /did not become healthy\. Restoring 1\.0\.0/);
-    assert.match(r.stderr, /1\.0\.0 is running again with its data/);
-    assert.equal(h.current(), '1.0.0');
-    assert.equal((await h.up('1.0.0')).version, '1.0.0');
+    assert.match(r.stdout + r.stderr, /did not become healthy\. Restoring 1\.1\.0/);
+    assert.match(r.stderr, /1\.1\.0 is running again with its data/);
+    assert.equal(h.current(), '1.1.0');
+    assert.equal((await h.up('1.1.0')).version, '1.1.0');
     assert.deepEqual(await h.projects(), ['keep']);
+    // The failed attempt changed nothing about the way back: 1.0.0 is still the previous release with its data copy.
+    assert.equal(basename(readlinkSync(join(h.base, 'previous'))), '1.0.0');
+    assert.ok(existsSync(`${h.data}.backup-1.0.0`));
+    assert.deepEqual(readdirSync(join(h.base, 'releases')).sort(), ['1.0.0', '1.1.0'], 'the failed release is not kept');
+    assert.ok(!existsSync(`${h.data}.backup-1.1.0`), 'the copy made for the failed attempt is gone');
+    // And --rollback still works afterwards.
+    assert.equal((await h.run('--rollback')).status, 0);
+    assert.equal(h.current(), '1.0.0');
   } finally { await h.close(); }
 });
 
@@ -261,5 +277,19 @@ test('a key rotation: a release signed with the old key brings the new key list,
     assert.notEqual(r.status, 0);
     assert.match(r.stderr, /does not verify/);
     assert.equal(h.current(), '1.2.0');
+  } finally { await h.close(); }
+});
+
+test('a tarball with more than the release directory is refused and leaves nothing behind', async () => {
+  const h = await harness();
+  try {
+    await h.install('1.0.0');
+    await h.publish('1.1.0', { mutate: (dir, parent) => writeFileSync(join(parent, 'extra-file'), 'unexpected') });
+    const r = await h.run();
+    assert.notEqual(r.status, 0, r.stdout);
+    assert.match(r.stderr, /exactly one directory/);
+    assert.equal(h.current(), '1.0.0');
+    assert.deepEqual(readdirSync(join(h.base, 'releases')).sort(), ['1.0.0'], 'no half-unpacked release is left');
+    assert.equal((await h.diag()).version, '1.0.0');
   } finally { await h.close(); }
 });
