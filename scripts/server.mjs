@@ -7,8 +7,11 @@ import { app } from "../dist-server/app.mjs";
 import { sweepExpiredAssets } from "../dist-server/r2.mjs";
 import { pruneExpiredRecords } from "../dist-server/retention.mjs";
 import { codeDeliveryCapability } from "./delivery-capability.mjs";
+import { canonicalUrl, clientAddress, readTrustedHops } from "./server-http.mjs";
 
 process.umask(0o077);
+const trustedHops = readTrustedHops(process.env);
+let warnedForwarded = false;
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 if ((process.env.ADMIN_TOKEN ?? "").length < 32) throw new Error("Set ADMIN_TOKEN to a random secret of at least 32 characters before starting.");
 const origin = new URL(process.env.FK_PUBLIC_URL || "http://localhost:8787");
@@ -40,6 +43,8 @@ await sweep();
 const timer = setInterval(()=>context.waitUntil(sweep()), 60 * 60 * 1000);
 const server = serve({ hostname: process.env.HOST || "127.0.0.1", port: Number(process.env.PORT || 8787), async fetch(request, bindings) {
   const url = new URL(request.url);
+  const target = canonicalUrl(origin, url.pathname, url.search);
+  if (!target) return new Response("Invalid path", { status: 400 });
   if (files.has(url.pathname) && (request.method === "GET" || request.method === "HEAD")) {
     const response=await asset(url.pathname);return request.method === "HEAD" ? new Response(null,response) : response;
   }
@@ -52,13 +57,15 @@ const server = serve({ hostname: process.env.HOST || "127.0.0.1", port: Number(p
     const obj=known?await storage.UPLOADS.get(key):null;
     return obj?new Response(obj.body,{headers:{"Content-Type":obj.httpMetadata.contentType||'application/octet-stream',"Cache-Control":"public, max-age=300","X-Content-Type-Options":"nosniff","Content-Security-Policy":"default-src 'none'; sandbox"}}):new Response('Not found',{status:404});
   }
-  // Canonical external origin makes same-origin write checks and snippets work
-  // behind a TLS proxy. The proxy must forward Host, but its IP headers are
-  // ignored unless the operator explicitly trusts that private proxy network.
-  const target=new URL(url.pathname+url.search,origin);
+  // The canonical external origin makes same-origin write checks and snippets
+  // work behind a TLS proxy, whatever Host the proxy sends. The client address
+  // comes from the socket, or from X-Forwarded-For read from the right through
+  // the configured number of trusted proxies.
   const headers=new Headers(request.headers);
   headers.delete('Cf-Access-Jwt-Assertion');
-  headers.set('CF-Connecting-IP',process.env.FK_TRUST_PROXY==='true' ? (headers.get('X-Forwarded-For')?.split(',')[0]?.trim() || bindings.incoming.socket.remoteAddress || 'unknown') : bindings.incoming.socket.remoteAddress || 'unknown');
+  const forwardedFor=headers.get('X-Forwarded-For');
+  if (forwardedFor && trustedHops===0 && !warnedForwarded) { warnedForwarded=true; console.warn("X-Forwarded-For arrived but FK_TRUSTED_PROXY_HOPS is 0, so every client behind the proxy shares one address and one failed-login limit. Set FK_TRUSTED_PROXY_HOPS to the number of proxies in front of this server."); }
+  headers.set('CF-Connecting-IP',clientAddress({forwardedFor,peer:bindings.incoming.socket.remoteAddress,hops:trustedHops}));
   return app.fetch(new Request(target,{method:request.method,headers,body:['GET','HEAD'].includes(request.method)?undefined:request.body,duplex:'half'}),env,context);
 } }, () => console.log(`FeedbackKit listening on ${process.env.HOST || "127.0.0.1"}:${process.env.PORT || 8787}; public URL ${origin.origin}`));
 async function close() { clearInterval(timer);server.close(async()=>{await Promise.allSettled([...pending]);storage.close();process.exit(0)}); }

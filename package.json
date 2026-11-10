@@ -25,7 +25,7 @@
     "setup": "node scripts/setup.mjs",
     "build:server": "node scripts/build-server.mjs",
     "start": "node scripts/server.mjs",
-    "test:server": "node --test test/server-storage.test.mjs"
+    "test:server": "node --test test/server-*.test.mjs"
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^1.2.3",

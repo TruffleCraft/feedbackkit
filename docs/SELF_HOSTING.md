@@ -74,9 +74,9 @@ The Dockerfile builds from this checkout; the repository does not require a pre-
 | `FK_DATA_DIR` | Directory for `feedbackkit.sqlite`; default `./data`, Docker `/data`, systemd `/var/lib/feedbackkit` |
 | `HOST`, `PORT` | Listen interface and port; defaults `127.0.0.1`, `8787` (Docker listens inside the container on `0.0.0.0`) |
 | `LLM_API_KEY`, `GITHUB_PAT_<name>`, `TURNSTILE_SECRET_<name>` | Optional integration secrets; project settings reference the variable names |
-| `FK_TRUST_PROXY` | Default false. Set true only when all access comes through your trusted private proxy; then its `X-Forwarded-For` supplies the visitor IP for rate limits |
+| `FK_TRUSTED_PROXY_HOPS` | Default 0. The number of reverse proxies in front of this server, for example 1 for one nginx or Caddy. The visitor address for rate limits and the failed-login limit is then read from `X-Forwarded-For` through that many proxies, counted from the right. With 0 every client behind a proxy shares the proxy's address, and the server logs a warning once |
 
-Never expose a plain HTTP admin endpoint to the internet. Use HTTPS through your own reverse proxy and preserve the external Host/Origin. Incoming Cloudflare Access assertion headers are discarded by the standalone server; login uses the admin token. `FK_TRUST_PROXY` is a network trust decision, not an automatic detector.
+Never expose a plain HTTP admin endpoint to the internet. Use HTTPS through your own reverse proxy and preserve the external Host/Origin. Incoming Cloudflare Access assertion headers are discarded by the standalone server; login uses the admin token. `FK_TRUSTED_PROXY_HOPS` is a network trust decision, not an automatic detector: set it to the real number of proxies, or a client can pick its own address. The earlier `FK_TRUST_PROXY=true` is refused at start. Request paths that start with two slashes are answered with 400, and the server builds every request URL from `FK_PUBLIC_URL`, never from the `Host` header.
 
 For issue screenshots, set the project's public attachment base to `https://<gateway>/attachments`. Only attachments of persisted issue deliveries are served there. Inbox and GitHub Project attachments remain behind the authenticated admin asset route.
 
