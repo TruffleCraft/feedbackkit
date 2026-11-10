@@ -38,7 +38,7 @@ Each finding is assigned to a step. IDs are stable so later reviews can refer to
 | R2 | Failed-login lockout runs before the token check and is shared behind a proxy. 21 wrong tokens lock out the right one (reproduced) | A |
 | R3 | `X-Forwarded-For` is read from the left, so a client can pick its own address (reproduced) | A |
 | R4 | Admin screenshots cannot load with token auth, and each refused request counts toward the lockout | A, then Gate 2 |
-| R5 | A failing sweep on start ends the process. Concurrent first starts fail. `busy_timeout` is set after WAL | A |
+| R5 | A failing sweep on start ends the process. At least one of two concurrent first starts fails (10 of 10 trials). `busy_timeout` is set after WAL | A |
 | R6 | `delivery_capability` is overwritten on every start. No guard against newer schema or settings | A |
 | R7 | The whole process environment is visible to settings that name secrets. `llm.baseUrl` receives the AI key | A, then Step 4 |
 | R8 | Deleted attachments stay in the database file. Blobs never shrink the file | A |
@@ -117,6 +117,10 @@ Each step is one reviewable PR (or a small series) with its own tests and docs. 
 - **Non-goals:** roles beyond owner and member, OIDC, public sign-up.
 - **Success signals:** concurrent bootstrap yields one owner. A virtual authenticator completes enrollment and sign-in. A recovery drill works on a clean instance. A valid login is never blocked by other people's failed attempts, with and without a proxy.
 
+![First owner bootstrap](diagrams/gate2-bootstrap-sequence.png)
+
+[Open the bootstrap sequence](diagrams/gate2-bootstrap-sequence.html). The other Gate 2 flows are [sign-in](diagrams/gate2-signin-sequence.html), [recovery](diagrams/gate2-recovery-sequence.html) and [account states](diagrams/gate2-account-lifecycle.html). They are planned designs that assume D-02 and D-03 as recommended. Token lifetime, command name and cookie attributes are decided in the PR.
+
 ### Step D: release tarball, version and updates
 
 - **Why:** operators should install and update a finished release, without Git, pnpm or a compiler on the server (R17).
@@ -177,7 +181,7 @@ Release strategy for the tarball:
 
 - The tests named in the step pass in CI. A green build is not evidence of behavior.
 - Docs change in the same PR: README, `ADMIN.md`, `SELF_HOSTING.md`, `ERRORS.md`, `SECURITY.md` as affected.
-- The affected journeys in [journeys.md](journeys.md) get their new status and an evidence link.
+- The affected journeys in [journeys.md](journeys.md) get their new status, and their `Verified` lines are repeated against the code or a live run.
 - A decision that changes scope gets an ADR. A new error gets a code.
 - The PR body starts with its issues (`Fixes`, `Refs` or `No issue`). Parent epics #1, #2 and #6 stay open until their acceptance criteria are met.
 

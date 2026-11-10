@@ -2,6 +2,8 @@
 
 One page per question: who does what, what the system guarantees, what proves it. Status is measured against the WIP branch `codex/admin-self-hosting` at `3f3caba` and the review of 2026-11-10. A journey is `works` only when the evidence named here exists and passes. A mock, a build or a passing unit test does not move it.
 
+Every `Today` statement ends in a `Verified` line: the kind of evidence, the date and what to run to repeat it. Kinds are `live` (run against a real process or browser), `test` (an existing test that passes), `code` (read at a file and line) and `doc` (read in the documentation). A statement without a `Verified` line is a claim, not a fact. Probes ran on Node 26.12 against the WIP checkout `3f3caba`.
+
 Roles and examples are fictional. Robin runs `example.org` and operates the gateway. Sam visits the site and sends a report. Taylor is a teammate Robin invites. The setup agent is an LLM with terminal access.
 
 Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps are in [the plan](autonomous-admin-plan.md).
@@ -28,16 +30,17 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 
 ![Report and delivery lifecycle](diagrams/report-lifecycle.png)
 
-[Open the report lifecycle](diagrams/report-lifecycle.html) (J8, J9, J13, backed by code at commit `e712a01`). The planned install and update flow (J1, J2, J12) is in [release-update-sequence.html](diagrams/release-update-sequence.html).
+[Open the report lifecycle](diagrams/report-lifecycle.html) (J8, J9, J13, backed by code at commit `e712a01`). The planned install and update flow (J1, J2, J12) is in [release-update-sequence.html](diagrams/release-update-sequence.html). The planned Gate 2 flows (J3, J10, J11) are [bootstrap](diagrams/gate2-bootstrap-sequence.html), [sign-in](diagrams/gate2-signin-sequence.html), [recovery](diagrams/gate2-recovery-sequence.html) and [account states](diagrams/gate2-account-lifecycle.html).
 
 ## J1 Install on Linux or a Proxmox LXC
 
 - **Goal:** Robin has a running gateway on an LXC from a finished release, without Git, pnpm, Docker or a Cloudflare account.
 - **Steps:** install Node.js 24 LTS, download the release tarball, `SHA256SUMS` and `SHA256SUMS.sig`, verify signature and checksum, extract to `/opt/feedbackkit`, install the systemd unit from the tarball, fill the environment file, start.
 - **Guarantees:** a failed signature or checksum stops the install. The service refuses to start with a weak admin token or a bad public URL. Migrations run once. The first sweep cannot keep the service from starting. `/diag` is green only when schema and capability match, and it shows the release.
-- **Failure paths:** two starts at once on one data directory (today both fail 6 of 6 times in the probe), a failing sweep (crash loop under `Restart=on-failure`), a Node release without `node:sqlite`.
+- **Failure paths:** two starts at once on one data directory (today at least one of the two fails, in 10 of 10 trials, both in 4), a failing start sweep (the process exits with code 1; systemd would retry under `Restart=on-failure` and give up after its start limit, which was not run), a Node release without `node:sqlite`.
 - **Evidence:** a fresh LXC with only Node, curl and tar installed. Installation from the docs to a green `/diag` that shows the release number, then reboot and restart tests. Outbound traffic is needed once for the download and blocked afterwards until the first report. A conformance suite runs on both runtimes.
 - **Today:** no tarball is built. The docs still describe a clone, `pnpm install` and a build on the server. The happy path works from a checkout on a Mac with Node 26. systemd and a real LXC were not run. The docs say "Node 24+", `engines` says `>=22.13`, CI runs 22 and 24.
+- **Verified:** `live` start probes (10 concurrent first starts; a database without the `projects` table exits with `no such table: projects`). `doc` and `code`: `docs/SELF_HOSTING.md`, `package.json` engines, `.github/workflows/ci.yml`. Repeat: start `scripts/server.mjs` twice at once on an empty `FK_DATA_DIR`.
 
 ## J2 Robin sees which release runs and that a newer one exists
 
@@ -47,6 +50,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Failure paths:** no outbound access (no notice and no error), a newer release that needs a newer Node, a rate-limited API.
 - **Evidence:** unit tests for version comparison and for the switch, and an e2e that shows the notice from a mocked releases response.
 - **Today:** the standalone server reports `0.0.0` and channel `local` because the build records no release. `src/admin` and `src/worker` contain no check for newer releases.
+- **Verified:** `live` `GET /diag` returns `version` `0.0.0` and `channel` `local`. `code` grep for `releases/latest` and the releases API in `src` finds nothing. Repeat: `curl <gateway>/diag`.
 
 ## J3 Bootstrap the first owner
 
@@ -56,6 +60,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Failure paths:** a second browser races the first, the passkey ceremony fails halfway, the public URL changes after enrollment (passkeys bind to it).
 - **Evidence:** integration tests with concurrent requests, a Playwright virtual authenticator, a threat model section in `docs/SECURITY.md`.
 - **Today:** not built. The only credential is the static `ADMIN_TOKEN`.
+- **Verified:** `code` `src/worker/admin/auth.ts` accepts a bearer token (or Cloudflare Access on the Worker) and nothing else.
 
 ## J4 Create a project and receive a first report
 
@@ -64,7 +69,8 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Guarantees:** creating never overwrites. The response contains the snippet. Errors carry codes from `docs/ERRORS.md`.
 - **Failure paths:** duplicate ID (409, exists), origin typo, Cloudflare gateway without delivery capability (the create call is refused with 422 on a fresh deploy, found by reading the code, not yet reproduced).
 - **Evidence:** unit tests for the create route on the Worker runtime, an e2e for the dialog (success, 409, invalid origin, network failure).
-- **Today:** the dialog and route work on the standalone server. The route has no Worker-side test and no error codes. The response omits the snippet that `AGENT_SETUP.md` tells agents to install.
+- **Today:** the dialog and route work on the standalone server. The dialog posts a local-delivery config, redirects to the project page and rejects an origin with a path. The route has no Worker-side test and no error codes. The response omits the snippet that `AGENT_SETUP.md` tells agents to install.
+- **Verified:** `live` browser run of the New project dialog against a mocked API (posted body, redirect to `#setup`, origin message) and the `test:server` run (201 and 409 on a real server). `code` `src/worker/admin/routes.ts` response fields, `docs/AGENT_SETUP.md:45`, `src/worker/admin/config-write.ts` (422 when the stored capability is lower than the one a config needs, and a missing `delivery_capability` row counts as 0). The Cloudflare 422 itself was not run. No vitest test posts to the route.
 
 ## J5 Define feedback types, fields and destinations
 
@@ -73,7 +79,8 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Guarantees:** type and field IDs are unique and never change once published, enforced by the server. Removing a type archives it. Numbers and enums never start with a destructive value. A publish needs a review of exactly the text that is published.
 - **Failure paths:** two admins publish at once (409 exists), a reload mid-edit, JSON edits while the form is open.
 - **Evidence:** server tests for duplicate and renamed IDs, e2e for reorder, remove, JSON round trip and stale save.
-- **Today:** the form exists. IDs are locked only in the browser. A review can be published after the text changed during the request. Closing the JSON panel can drop edits.
+- **Today:** the form exists. IDs are locked only in the browser: the contract accepts duplicate type IDs and duplicate field keys. A review can be published after the text changed during the request. A JSON edit made while Advanced JSON is open is lost when a form field changes.
+- **Verified:** `live` contract probe (duplicate type IDs and field keys accepted) and a browser run (a `privacyUrl` typed into the JSON is gone after a form edit). `code` `src/admin/main.ts` sets `checked = ta.value` after the validate request returns, not the text that was validated.
 
 ## J6 Sam sends a report with a screenshot
 
@@ -83,6 +90,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Failure paths:** AI error (the report goes out unenriched), storage error (retryable 503), tracker error (kept, retry in admin), network loss (the text survives a retry).
 - **Evidence:** exists for loss paths. New: a Chromium test that decodes the request bodies and shows masked pixels differ from the original, plus a negative control.
 - **Today:** loss handling works. There is no mask tool (the rectangle is a frame), no exclusion of private elements, and the AI receives whatever the capture produced.
+- **Verified:** `test` `test/widget.test.ts:116-135` and `e2e/feedback.spec.ts:129` (a 503 keeps the report and the retry resends it without uploading again, passed in my run). `code` `src/widget/ui/annotate-model.ts` draws the rectangle with `strokeRect` only, the capture filter in `src/widget/lib/screenshot.ts:58` excludes only the widget's own host element, `src/worker/llm/client.ts` sends `screenshotDataUrl` as received.
 
 ## J7 Sam attaches an own image
 
@@ -92,6 +100,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Failure paths:** a huge or malformed file, a tab closed before sending, an old widget that uploads on pick.
 - **Evidence:** the same byte-level test for every input path (capture, manual pick, paste, drop, retry), and a server test that rejects unmarked uploads for projects that require masking.
 - **Today:** a picked image uploads at once. The remove button drops the key, not the stored object. A project without a retention period never expires uploads that no report claims.
+- **Verified:** `code` `src/widget/index.ts:396-404` uploads on pick and `:196-200` removes only the key from the local list. `src/worker/storage/r2.ts:57` sets `expires_at` only when a retention period exists and `:89` sweeps only rows with an `expires_at`.
 
 ## J8 Robin triages the local inbox
 
@@ -101,6 +110,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Failure paths:** screenshots behind token auth, a state value an older reader does not know.
 - **Evidence:** e2e in a real browser with token auth and with a session, a test that a new state value is rejected until readers handle it.
 - **Today:** list, states, notes and delete work. With a bearer token the screenshot `<img>` cannot authenticate, and each refused request counts toward the login lockout.
+- **Verified:** `live` 25 header-less requests to `/admin/assets/...` return 401 and then 429 from the 21st, and the correct token is then refused with 429. `test` `e2e/admin.spec.ts` (39 passed, 1 skipped in my run) covers list, filters, states, notes and delete against a mocked API.
 
 ## J9 Robin follows a GitHub delivery
 
@@ -110,6 +120,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Failure paths:** token without Projects permission, a field that does not exist, a delivery that may have succeeded.
 - **Evidence:** exists on the Worker with mocked GitHub. New: one real, authorized test delivery per runtime, with the destination checked by hand.
 - **Today:** the delivery model is on `main`. The standalone server has not delivered to a real GitHub destination.
+- **Verified:** `doc` commits `ec76887`, `403de94`, `f8f6730` on `main`. `test` `test/delivery.test.ts` (11 tests) and `test/admin-delivery.test.ts` (12 tests) pass with mocked GitHub in my run. No real delivery was run on either runtime in this review.
 
 ## J10 Taylor signs in
 
@@ -119,6 +130,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Failure paths:** reused or expired invitation, an identity provider that returns an unverified email, a deleted passkey.
 - **Evidence:** tests for state, nonce and PKCE, for cross-project denial and for revocation. Libraries for WebAuthn and OIDC, no hand-written protocol.
 - **Today:** not built. Every credential holder is a full admin.
+- **Verified:** `code` as J3: one token, no roles.
 
 ## J11 Robin is locked out and recovers
 
@@ -128,6 +140,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Failure paths:** all passkeys lost, the identity provider is down, a flood of wrong tokens from other visitors.
 - **Evidence:** a test with and without a reverse proxy that 25 wrong tokens do not block the right one. A recovery drill on a clean instance.
 - **Today:** 21 wrong tokens from one address make the correct token return 429 (reproduced). Behind a proxy that address is shared by everyone.
+- **Verified:** `live` 25 wrong tokens, then the correct one: 401 until the 21st, then 429 for the correct token too. The proxy case follows from `scripts/server.mjs` setting the client address from the socket (`code`) and was not run behind a real proxy.
 
 ## J12 Upgrade and roll back
 
@@ -137,6 +150,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Failure paths:** an interrupted download, a service that does not come up, a disk that is full, a copy taken while the process writes (the service is stopped first).
 - **Evidence:** an upgrade and rollback test on a data directory with real rows, with a bad bundle (health check fails), a corrupted tarball (checksum fails) and a tampered checksum file (signature fails), plus a backup test that includes the write-ahead log.
 - **Today:** no update command exists. The docs describe stop, copy, check out, rebuild. The standalone server overwrites the capability on every start. `docs/RELEASES.md` promises the opposite for the Cloudflare path.
+- **Verified:** `code` `scripts/server.mjs:18` upserts `delivery_capability` on every start. `doc` `docs/RELEASES.md:55` says a rollback does not lower it.
 
 ## J13 Reports expire
 
@@ -146,6 +160,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Failure paths:** a form that seeds one day, a clock that jumps forward, a sweep that fails on start.
 - **Evidence:** tests for the notice guard and the count, a test on the file that a deleted blob's bytes are gone, a startup test with a failing sweep.
 - **Today:** deletion is strict and retroactive. The form can seed one day. Freed pages keep their content until reused.
+- **Verified:** `live` browser run: choosing "Delete after (days)" under "Add Attachments & retention setting" puts `retentionDays: 1` into the draft. `live` SQLite probe: `secure_delete` is 0 and a deleted blob's bytes are still in the main file after a checkpoint. `code` `src/worker/storage/retention.ts:22-48` deletes every row older than the current period, handled or not.
 
 ## J14 A setup agent installs and verifies
 
@@ -155,6 +170,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Failure paths:** a local AI endpoint that needs no key but the gateway insists on one, an agent that claims a planned feature.
 - **Evidence:** an agent run on a clean host with a transcript, each claim in the guide linked to a test or a step.
 - **Today:** the guide is a draft. It describes a placeholder key for local AI and a snippet the API does not return.
+- **Verified:** `doc` `docs/AGENT_SETUP.md:45` (install the returned snippet) and `:51` (placeholder key). `code` the create route returns no snippet (J4).
 
 ## J15 Robin changes the widget look and previews it
 
@@ -164,5 +180,6 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Failure paths:** an accent with poor contrast, a host that sets its own theme.
 - **Evidence:** a widget test that reads the applied tokens, a contrast check, a preview that uses the widget's own bundle.
 - **Today:** theme, accent and heading exist. Only the accent variable is set, so the soft and text variants stay violet. No widget test reads them.
+- **Verified:** `code` `src/widget/index.ts` sets `--fk-accent` only, `src/widget/ui/styles.ts` defines the soft and text variants separately. `test` a search of `test` and `e2e` finds `appearance` only in `test/server-storage.test.mjs`, which checks the public config JSON.
 
 Co-created by Michel with NORA (AI Agent)
