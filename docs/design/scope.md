@@ -100,12 +100,12 @@ Settled decisions:
 | S13 | Cloudflare is the managed path for operators who do not want to host anything. The Node runtime is the self-hosted path and runs on any Linux host, for example at Hetzner | Owner, 2026-11-10 |
 | S14 | The first owner proves control with a one-time link printed by a host command. On Cloudflare a script run with the operator's Cloudflare credentials prints it. It is the same mechanism as recovery. No static bootstrap secret remains, and the server stops needing `ADMIN_TOKEN` to start once Gate 2 ships | Owner, 2026-11-10 (D-09) |
 | S15 | Cloudflare Access stays an accepted admin identity on the Cloudflare runtime beside accounts, and stays optional. ADR-015 keeps building MCP consent on it | Owner, 2026-11-10 (D-10) |
+| S16 | ADR-016, the standalone Node runtime, is accepted. The conformance suite and the single-node contract are part of it. The runtime counts as supported only after R1 to R9 are closed, one Node floor is chosen, Step D exists and Step 3 has run | Owner, 2026-11-10 (D-01) |
 
 Open decisions. Each recommendation is mine and needs the owner's answer.
 
 | ID | Question | Recommendation |
 |---|---|---|
-| D-01 | Accept ADR-016, the standalone runtime? | Yes, with a conformance suite that runs the same tests on both runtimes and the single-node contract above |
 | D-04 | How does OIDC link to a person? | By `iss` and `sub`, bound to an invitation. Email equality grants nothing |
 | D-05 | Does the board need an "in progress" lane? | Not yet. Three states first. A fourth needs an expand-only schema plan and a fix in `queries.ts` |
 | D-06 | Which Node floor? | 24 LTS everywhere |

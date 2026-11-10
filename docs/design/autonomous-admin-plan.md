@@ -92,7 +92,7 @@ Each step is one reviewable PR (or a small series) with its own tests and docs. 
 ### Step C: scope and documentation honesty
 
 - **Why:** the repo must say what it does, and every claim must have a proof.
-- **Capabilities:** the three documents of this change, ADR-016 as proposed, the roadmap backlog line, a standalone section in `docs/SECURITY.md` (proxy, attachment route, deletion guarantee), corrected anchors, one term for each state, one Node version, and a claim table that links each statement about runtime, rollback and deletion to a test or a step.
+- **Capabilities:** the three documents of this change, ADR-016 as accepted, the roadmap backlog line, a standalone section in `docs/SECURITY.md` (proxy, attachment route, deletion guarantee), corrected anchors, one term for each state, one Node version, and a claim table that links each statement about runtime, rollback and deletion to a test or a step.
 - **Constraints:** documentation only. A claim without a proof is removed or marked planned.
 - **Non-goals:** behavior changes.
 - **Success signals:** link check passes. Every row of the claim table names its proof.
