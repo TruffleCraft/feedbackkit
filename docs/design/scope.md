@@ -84,7 +84,7 @@ Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready)
 
 ## Decisions
 
-Settled decisions:
+Settled decisions. [Claims and their proof](claims.md) lists every statement the user documents make about the runtimes, updates, rollback and deletion, with its test or its step.
 
 | ID | Decision | Source |
 |---|---|---|

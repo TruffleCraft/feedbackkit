@@ -20,7 +20,7 @@ On the project's **Setup & snippet** tab, copy its script tag into your website 
 <script src="https://<your-gateway>/widget.js" data-project="fk_pub_…"></script>
 ```
 
-Use the actual snippet from your project. Its public key identifies the project; it is not the admin token. The widget can be embedded in any website stack. Under a Content Security Policy, allow the gateway in the directives listed in [the CSP guide](QUICKSTART.md#4-embed-the-widget).
+Use the actual snippet from your project. Its public key identifies the project; it is not the admin token. The widget can be embedded in any website stack. Under a Content Security Policy, allow the gateway in the directives listed in [the CSP guide](QUICKSTART.md#host-csp).
 
 ## 4. Check both the widget and delivery
 

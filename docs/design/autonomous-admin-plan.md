@@ -28,6 +28,7 @@ Measured at `3f3caba` on 2026-11-10 (static review, seven specialist passes, an 
 | Accounts, OIDC, roles | Not built | The only credential is `ADMIN_TOKEN` |
 | Board, masks, previews | Not built | Not started |
 | Step A, runtime hardening | Implemented, in pull request #130 | Branch `feat/standalone-runtime-hardening` (six commits on top of `3f3caba`). R1 to R9 closed except R16. `pnpm test` runs the 32 durability tests on workerd and on SQLite, plus 366 unit tests. 17 Node server tests and the admin e2e specs pass. One settings e2e still fails, as it does at `3f3caba` (Step B) |
+| Step C, documentation honesty | Implemented on the docs branch | [claims.md](claims.md) with a proof for each statement, a standalone section in `docs/SECURITY.md`, one Node wording, one inbox term (Open, Done, Dismissed), a corrected anchor and an honest status line in the README and `docs/SELF_HOSTING.md`. The rollback claim now says that no rollback command exists |
 | Step B, safe settings | Implemented, in pull request #130 | Five more commits on the same branch. The admin bundle is 14.9 kB gz (budget 15 kB) and the settings e2e passes. Decisions taken while building: removing a published type archives it (`templates[].archived`, `DELIVERY_CAPABILITY` 3), published field keys are not blocked from removal (only duplicates are refused), the retention minimum is the 7-day notice, and `pnpm deploy` records the capability after the deploy |
 
 ## Findings that change the plan

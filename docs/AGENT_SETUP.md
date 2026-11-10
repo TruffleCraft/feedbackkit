@@ -20,7 +20,7 @@ Inspect the current version, service and stored configuration before changing an
 
 ## 2. Install and start
 
-For direct Linux/LXC, install Node.js 24+, clone the chosen release, run `pnpm install --frozen-lockfile`, `pnpm build:widget` and `pnpm build:server`. Follow [the systemd instructions](SELF_HOSTING.md#keep-it-running-with-systemd) for persistent operation. Cloudflare uses its own resource and migration workflow.
+For direct Linux/LXC, install Node.js 24 or newer, clone the chosen release, run `pnpm install --frozen-lockfile`, `pnpm build:widget` and `pnpm build:server`. Follow [the systemd instructions](SELF_HOSTING.md#keep-it-running-with-systemd) for persistent operation. Cloudflare uses its own resource and migration workflow.
 
 Generate a random `ADMIN_TOKEN` in the target's approved secret/environment store. Never print it, put it in an issue, or ask the operator to paste it into chat. The standalone service refuses tokens shorter than 32 characters. Set `FK_PUBLIC_URL` to the actual external origin, and verify data-directory permissions before startup.
 
