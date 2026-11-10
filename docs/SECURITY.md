@@ -117,6 +117,7 @@ The standalone Node server (`scripts/server.mjs`) runs the same application as t
 - **Deletion.** The database runs with `secure_delete=ON` and `auto_vacuum=INCREMENTAL`. After attachments or reports are deleted the server hands the freed pages back and truncates the write-ahead log, so the deleted content is in neither the database file nor the log. This covers those files only. Snapshots of the disk or the LXC, backups and copies of the data directory keep what they held, and GitHub keeps issue text and may cache images (see camo above).
 - **Durability.** The database runs in WAL mode with `synchronous=NORMAL`. A crash of the process loses nothing that was confirmed. A power loss or kernel crash can lose the last few reports but does not corrupt the database.
 - **Files.** The server sets `umask 077`, so the data directory and the database are readable by its user only.
+- **Update check.** On a release tarball install the server makes one `GET` to the GitHub Releases API at most once a day (once an hour after a failure) so the System page can say that a newer release exists. The request carries a fixed `User-Agent` (`feedbackkit-update-check`) and an `Accept` header: no credential, cookie, installed version or host name. GitHub sees the server's IP address, as it does for any client. The browser never calls GitHub, and the admin CSP stays `connect-src 'self'`. The link to the release notes is built from the validated version, never taken from the answer. A failed or rate-limited check shows a short fixed reason on the System page and changes nothing else. `FK_UPDATE_CHECK=off` removes it, and a checkout install and Cloudflare make no such request. Test: `test/server-update-notice.test.mjs`.
 - **Not built yet.** Accounts, passkeys and scoped API tokens (Gate 2), masking of screenshots before upload (Gate 1) and signed release artifacts (Step D). See the [plan](design/autonomous-admin-plan.md).
 
 ## Admin endpoints
@@ -163,7 +164,7 @@ The admin API:
 | `GET /api/admin/projects/:id/config` | the stored config plus `publicKey` and `configVersion`; re-importable as is via `POST /api/admin/config/import` |
 | `GET /api/admin/projects/:id/feedback?outcome=&cursor=&limit=` | feedback history, newest first, 25 per page (max 100), keyset cursor |
 | `GET /api/admin/projects/:id/funnel?days=30` | widget events by name and feedback by outcome in the window (1–90 days) |
-| `GET /api/admin/system` | release, schema, bindings, secret presence, LLM calls today against `llm.dailyBudget`, PAT access and expiry per project, GitHub Project check, retention notice |
+| `GET /api/admin/system` | release, schema, bindings, secret presence, LLM calls today against `llm.dailyBudget`, PAT access and expiry per project, GitHub Project check, retention notice, and on a tarball install the notice for a newer release (`update`) |
 | `PATCH /api/admin/feedback/:id` | disposition (`open`, `done`, `dismissed`) and note of a local or undecided report; `409 FK_NOT_LOCAL` for delivered ones |
 | `DELETE /api/admin/feedback/:id` | deletes the attachments, then the row; a partial failure keeps the row (`502 FK_DELETE_INCOMPLETE`) |
 | `POST /api/admin/feedback/:id/retry` | delivery retry, see [ERRORS.md](ERRORS.md) |

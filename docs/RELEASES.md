@@ -95,6 +95,8 @@ The standalone server ships as a tarball, so an operator installs a finished rel
 
 `feedbackkit-update` is part of every release and needs nothing beyond Node and the tools above. It makes one plain read of the GitHub Releases API and sends nothing about the installation. Nothing updates unless you run it.
 
+A tarball install also tells you on the System page when a newer release waits. The server asks the same API at most once a day (the browser never does), `FK_UPDATE_CHECK=off` turns it off ([SELF_HOSTING.md](SELF_HOSTING.md#configuration)), and the notice only points at this command.
+
 | Command | What it does |
 |---|---|
 | `feedbackkit-update --check` | Prints the installed and the newest release. Exit 0 when up to date, 10 when an update waits |
