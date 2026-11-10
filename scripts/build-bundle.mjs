@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { packTarGz } from "./tar-pack.mjs";
-import { codeDeliveryCapability, codeSchemaVersion } from "./delivery-capability.mjs";
+import { codeDeliveryCapability, codeSchemaVersion } from "./code-capability.mjs";
 
 const SEMVER = /^(\d+)\.(\d+)\.(\d+)(?:-dev\.(\d+))?$/;
 
@@ -26,7 +26,7 @@ export function channelOf(release) {
   return m[4] === undefined ? "stable" : "dev";
 }
 
-export async function buildBundle({ root, outDir, release, commit = null, epoch = 0 }) {
+export async function buildBundle({ root, outDir, release, commit = null, epoch = 0, keysDir = join(root, "release-keys") }) {
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(release)) throw new Error(`release must look like 1.2.3 or 1.2.3-dev.4, got "${release}"`);
   for (const need of ["dist/widget.js", "dist/admin.js", "dist/widget.ver", "dist-server/app.mjs"]) {
     if (!existsSync(join(root, need))) throw new Error(`${need} is missing: run pnpm build:widget and pnpm build:server first`);
@@ -54,8 +54,10 @@ export async function buildBundle({ root, outDir, release, commit = null, epoch 
   for (const name of readdirSync(join(root, "migrations")).filter((n) => n.endsWith(".sql")).sort()) entries.push(file(`migrations/${name}`));
   entries.push({ path: `feedbackkit-v${release}/deploy/feedbackkit.service`, mode: 0o644, data: readFileSync(join(root, "deploy/feedbackkit-bundle.service")) });
   if (existsSync(join(root, "scripts/feedbackkit-update"))) entries.push({ ...file("scripts/feedbackkit-update", 0o755), path: `feedbackkit-v${release}/feedbackkit-update` });
-  if (existsSync(join(root, "release-keys"))) {
-    for (const name of readdirSync(join(root, "release-keys")).filter((n) => n.endsWith(".pub")).sort()) entries.push(file(`release-keys/${name}`));
+  if (existsSync(keysDir)) {
+    for (const name of readdirSync(keysDir).filter((n) => n.endsWith(".pub")).sort()) {
+      entries.push({ path: `feedbackkit-v${release}/release-keys/${name}`, mode: 0o644, data: readFileSync(join(keysDir, name)) });
+    }
   }
   if (existsSync(join(root, "LICENSE"))) entries.push(file("LICENSE"));
 

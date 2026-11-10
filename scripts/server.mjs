@@ -7,7 +7,7 @@ import { openStorage } from "./server-storage.mjs";
 import { app } from "../dist-server/app.mjs";
 import { sweepExpiredAssets } from "../dist-server/r2.mjs";
 import { pruneExpiredRecords } from "../dist-server/retention.mjs";
-import { codeDeliveryCapability } from "./delivery-capability.mjs";
+import { codeDeliveryCapability } from "./code-capability.mjs";
 import { canonicalUrl, clientAddress, readTrustedHops } from "./server-http.mjs";
 import { appEnvironment } from "./server-env.mjs";
 
