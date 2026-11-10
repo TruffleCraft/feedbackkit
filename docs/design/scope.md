@@ -65,6 +65,10 @@ Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready)
 
 ## Runtime contract for the standalone server
 
+![Runtime architecture: one Hono app, two entries](diagrams/runtime-architecture.png)
+
+[Open the explorable diagram](diagrams/runtime-architecture.html). Its source references are pinned to commit `e712a01`.
+
 1. One node, one process per database. SQLite in WAL mode on a persistent local disk.
 2. The same Hono application and the same behavior tests as the Worker. A difference between the runtimes is a bug or an entry in the parity table of `docs/SELF_HOSTING.md`.
 3. Node.js 24 LTS. The Node documentation labels `node:sqlite` in v24 "Stability: 1.2, release candidate" (nodejs.org, checked 2026-11-10). One version number appears in `engines`, CI and the docs.

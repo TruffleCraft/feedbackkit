@@ -54,6 +54,10 @@ Each finding is assigned to a step. IDs are stable so later reviews can refer to
 
 ## Steps
 
+![Step plan and release gates](diagrams/step-plan.png)
+
+[Open the explorable diagram](diagrams/step-plan.html).
+
 Each step is one reviewable PR (or a small series) with its own tests and docs. The spec fields are Why, Capabilities, Constraints, Non-goals and Success signals. UI changes follow mock before build and go to the maintainer for merge.
 
 ### Step A: harden the standalone runtime
@@ -126,6 +130,10 @@ Each step is one reviewable PR (or a small series) with its own tests and docs. 
 - **Constraints:** the target needs Node.js 24 and the standard tools curl, tar, sha256sum and ssh-keygen, nothing else. Everything the repo ships is English: release notes, command output, docs and `bundle.json`. The admin notice has `en` and `de` keys, as `CONTRIBUTING.md` requires for user-facing strings. Nothing updates without an operator command. The update check is one plain request to the GitHub Releases API and sends nothing about the installation. One bundle serves every Linux target. The update script is POSIX shell and CI tests it on fixtures.
 - **Non-goals:** a Docker image, an npm registry package, an auto-update daemon, delta updates, init systems other than systemd.
 - **Success signals:** the workflow produces tarball, checksums and signature from a dev tag (a dry run before the first stable tag). A fresh LXC installs it with only Node and the standard tools. An update from one release to the next keeps the data. A corrupted tarball, a tampered checksum file, a dev-signed stable release and a bad bundle each stop the update and restore the previous state. A key rotation has been rehearsed before the first signed release. `/diag` shows release and channel.
+
+![Planned release and update flow](diagrams/release-update-sequence.png)
+
+[Open the explorable diagram](diagrams/release-update-sequence.html). It describes the planned flow of this step, not shipped behavior.
 
 Release strategy for the tarball:
 

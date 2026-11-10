@@ -24,6 +24,12 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 | J14 | A setup agent installs and verifies | draft | autonomy |
 | J15 | Robin changes the widget look and previews it | partly | none |
 
+## Diagrams
+
+![Report and delivery lifecycle](diagrams/report-lifecycle.png)
+
+[Open the report lifecycle](diagrams/report-lifecycle.html) (J8, J9, J13, backed by code at commit `e712a01`). The planned install and update flow (J1, J2, J12) is in [release-update-sequence.html](diagrams/release-update-sequence.html).
+
 ## J1 Install on Linux or a Proxmox LXC
 
 - **Goal:** Robin has a running gateway on an LXC from a finished release, without Git, pnpm, Docker or a Cloudflare account.
