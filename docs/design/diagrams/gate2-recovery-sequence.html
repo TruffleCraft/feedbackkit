@@ -5354,15 +5354,15 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <text data-detail="context" x="129.5" y="122" class="t-muted" font-size="7" text-anchor="middle">on the host</text>
         </g>
 
-        <g id="node-host" data-node-id="host" data-node-label="Host command" tabindex="0" role="button" aria-label="Focus Host command, run as the service user, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="run as the service user" data-node-context="Sequence participant">
-          <title>Host command · run as the service user · Sequence participant</title>
+        <g id="node-host" data-node-id="host" data-node-label="Host command" tabindex="0" role="button" aria-label="Focus Host command, run on the host, Sequence participant" aria-pressed="false" data-node-kind="backend" data-node-sublabel="run on the host" data-node-context="Sequence participant">
+          <title>Host command · run on the host · Sequence participant</title>
           <rect x="232.75" y="72" width="135" height="60" rx="6" class="c-mask"/>
           <rect x="232.75" y="72" width="135" height="60" rx="6" class="c-backend" data-animate="node" style="--step:1" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(238.75 78) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
           <text data-node-label="" data-detail-anchor="" x="300.25" y="108" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Host command</text>
-          <text data-detail="context" x="300.25" y="122" class="t-muted" font-size="7" text-anchor="middle">run as the service user</text>
+          <text data-detail="context" x="300.25" y="122" class="t-muted" font-size="7" text-anchor="middle">run on the host</text>
         </g>
 
         <g id="node-browser" data-node-id="browser" data-node-label="Browser" tabindex="0" role="button" aria-label="Focus Browser, passkey prompt, Sequence participant" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="passkey prompt" data-node-context="Sequence participant">
@@ -5614,10 +5614,11 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       <div class="card">
         <div class="card-header">
           <div class="card-dot amber"></div>
-          <h3>Assumptions</h3>
+          <h3>Decided and assumed</h3>
         </div>
         <ul>
-          <li>D-02: ADMIN_TOKEN has a mode full, recovery or off. In off mode only this path restores access</li>
+          <li>D-02 decided: ADMIN_TOKEN grants nothing once the first owner exists, so this link is the only recovery path</li>
+          <li>D-03 decided: on Cloudflare the same link is issued by a script run with the operator&#39;s Cloudflare credentials</li>
           <li>The command name and token lifetime are decided in the PR</li>
         </ul>
       </div>

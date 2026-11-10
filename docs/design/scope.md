@@ -4,6 +4,8 @@ Status: proposed scope, challenged on 2026-11-10. Settled items name their sourc
 
 FeedbackKit completes a visitor's feedback while they are still on the page and delivers it as a structured report to a destination the operator owns. It does not manage the work that follows.
 
+There are two ways to run it. Managed on Cloudflare, for operators who do not want to host anything. Self-hosted from a release tarball on any Linux host: a home Proxmox LXC, a Hetzner server or any other VPS. The self-hosted path is the primary one. Cloudflare is the convenient start.
+
 Companion documents: [journeys](journeys.md) say how each role gets through each task, the [plan](autonomous-admin-plan.md) says in which reviewable steps the gaps close.
 
 ## Challenge result
@@ -14,7 +16,7 @@ Each premise of the sprint plan was checked against the code (branch `codex/admi
 |---|---|---|
 | Operators need full autonomy from Cloudflare | Keep, as a second runtime with a written single-node contract | The roadmap lists the Node/SQLite runtime as backlog with a Docker checkpoint (`docs/ROADMAP.md`, Backlog). That is a changed invariant, so it needs [ADR-016](../DECISIONS.md). The first standalone layer had five blocking defects in about 110 lines, so the second runtime must pass the same tests as the Worker. |
 | Operators install and update the standalone server | A release tarball with a checksum. Operators do not build on the server. Docker and an npm package are backlog | Today an install needs Git, pnpm 11 and a build on the target (about 540 MB of dependencies). `/diag` reports `0.0.0` and `local`, releases carry only `widget.js`, and nothing tells an operator that a newer release exists. Owner decision 2026-11-10. |
-| Local accounts with passkeys, invitations, roles and OIDC | Keep, but narrow and sequence it | Identity is a product of its own. The gateway has to know who may change settings. It does not have to be an identity provider. Break-glass token first, then sessions with bootstrap and recovery, then passkeys, then OIDC through a library. Two roles at first: owner and member. |
+| Local accounts with passkeys, invitations, roles and OIDC | Keep, but narrow and sequence it | Identity is a product of its own. The gateway has to know who may change settings. It does not have to be an identity provider. Sessions with bootstrap and recovery, then passkeys, with scoped API tokens replacing `ADMIN_TOKEN` (S11), then OIDC through a library. Two roles at first: owner and member. Accounts run on both runtimes (S12). |
 | A simple Kanban for local reports | Keep as a view over the three existing states | Owner decision 2026-10-24: triage lives in GitHub, the local inbox stays minimal. A fourth state breaks old readers (`queries.ts` counts every value except `open` as handled). |
 | PII masking has the highest priority | Keep, as a release gate with a testable design | Upload only after the visitor confirms the final review. Masks are burned into the pixels. Thumbnail, upload and AI call receive the same masked bytes. The server cannot verify a mask, so a project can require a marker that old widgets lack. |
 | Settings through real UI controls | Keep, but the form must be safe by construction | The first form seeds numbers with `1`, pulls zod into the admin bundle (28.4 kB gz against a 15 kB budget) and enforces IDs only in the browser. |
@@ -26,21 +28,22 @@ Each premise of the sprint plan was checked against the code (branch `codex/admi
 
 Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready) or `planned`.
 
-| Capability | Cloudflare | Standalone | Status |
+| Capability | Managed (Cloudflare) | Self-hosted (Node) | Status |
 |---|---|---|---|
 | Widget with follow-up questions, screenshot, console context | yes | yes | shipped |
 | Feedback types with required fields, per-type destination | yes | yes | shipped |
 | Delivery to a GitHub issue or GitHub Project draft, with retry | yes | yes | shipped |
 | Local inbox: open, done, dismissed, note, delete | yes | yes | shipped |
 | Settings revisions, publish with conflict detection | yes | yes | shipped |
-| Run on Linux or a Proxmox LXC with SQLite | n/a | yes | branch |
+| Run on a Linux host (home LXC, Hetzner server, any VPS) with SQLite | n/a | yes | branch |
 | Install from a release tarball, update with one command, release shown in `/diag`, notice for a newer release | n/a | yes | planned |
 | Settings form for types, fields, AI, appearance | yes | yes | branch |
 | Create-only project API and New project dialog | yes | yes | branch |
 | Local AI endpoint without a placeholder key | yes | yes | planned |
 | Masked images only, uploaded after review | yes | yes | planned |
-| Local accounts, passkeys, recovery | no | yes | planned |
-| OIDC sign-in (Pocket ID or any provider) | no | yes | planned |
+| Local accounts, passkeys, recovery | yes | yes | planned |
+| Scoped API tokens for scripts and agents, replacing `ADMIN_TOKEN` | yes | yes | planned |
+| OIDC sign-in (Pocket ID or any provider) | yes | yes | planned |
 | Board view of the local inbox | yes | yes | planned |
 | Widget preview and theme tokens | yes | yes | planned |
 | MCP server with OAuth | yes | no | shipped (Cloudflare only) |
@@ -58,7 +61,7 @@ Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready)
 | MCP and OAuth on the standalone server | ADR-015 builds consent on Cloudflare Access | A separate ADR defines consent without Access |
 | User-owned GitHub Projects, GitLab, Jira, Trello | No fine-grained permission for user Projects, and demand is unproven | A demand checkpoint is reached |
 | TLS termination, reverse proxy, backups of the host | The operator's infrastructure | Never |
-| Hosted FeedbackKit offering | Operators host it themselves | A business decision, not a code change |
+| Hosted FeedbackKit offering | Operators host it themselves, on Cloudflare or on their own Linux host | A business decision, not a code change |
 | Docker image and Compose file | The roadmap made Docker demand-gated, it was never run on this branch, and the target operator runs an LXC | A defined number of external operators ask for it (the roadmap checkpoint names N but gives no value) |
 | npm registry package | A publish token and a package namespace add supply-chain surface that a checksummed tarball does not need | Operators ask for `npm i -g` |
 | Building on the server (Git, pnpm, compiler) | Operators install a finished bundle. Maintainers build in CI | Never for operators. `pnpm` stays the maintainers' tool |
@@ -92,17 +95,20 @@ Settled decisions:
 | S8 | The standalone server ships as a release tarball with a signed checksum. Operators do not build. Docker and an npm package are backlog | Owner, 2026-11-10 |
 | S9 | Standalone releases follow the channels of ADR-013: stable releases and dev pre-releases, default stable. Details in Step D of the plan | Owner, 2026-11-10 |
 | S10 | Releases are signed. `SHA256SUMS` carries an OpenSSH Ed25519 signature (`ssh-keygen -Y`). The stable key is a secret in the `production` environment of the release workflow. Dev pre-releases are signed with a separate dev key in the `dev` environment, and the update command accepts a dev key only on the dev channel. The public keys ship in every bundle and in the docs. The rotation procedure is written and rehearsed before the first signed release. Confirm `ssh-keygen -Y` on the target in Step 3 | Owner, 2026-11-10 (key custody, D-08). The separate dev key is my addition for the same decision |
+| S11 | `ADMIN_TOKEN` is replaced by accounts. Once the first owner exists it no longer grants access. Scripts and agents use scoped API tokens that an owner creates, so scoped tokens move from Step 4 into Gate 2 | Owner, 2026-11-10 (D-02) |
+| S12 | Local accounts exist on both runtimes (SQLite and D1) and one conformance suite covers them. Gate 2 gains a D1 design and a recovery path for Cloudflare | Owner, 2026-11-10 (D-03) |
+| S13 | Cloudflare is the managed path for operators who do not want to host anything. The Node runtime is the self-hosted path and runs on any Linux host, for example at Hetzner | Owner, 2026-11-10 |
 
 Open decisions. Each recommendation is mine and needs the owner's answer.
 
 | ID | Question | Recommendation |
 |---|---|---|
 | D-01 | Accept ADR-016, the standalone runtime? | Yes, with a conformance suite that runs the same tests on both runtimes and the single-node contract above |
-| D-02 | What happens to `ADMIN_TOKEN` once accounts exist? | Keep it as a recovery credential that can be switched off after the first owner exists. Add scoped API tokens for agents later |
-| D-03 | Do accounts exist on the Cloudflare runtime? | Standalone first. Cloudflare keeps Access. Check D1 constraints before promising parity |
 | D-04 | How does OIDC link to a person? | By `iss` and `sub`, bound to an invitation. Email equality grants nothing |
 | D-05 | Does the board need an "in progress" lane? | Not yet. Three states first. A fourth needs an expand-only schema plan and a fix in `queries.ts` |
 | D-06 | Which Node floor? | 24 LTS everywhere |
 | D-07 | Is masking enforced or optional per project? | Optional flag first, default on for new projects after the widget change has shipped for one release |
+| D-09 | How does the very first owner prove control now that the token is replaced? | A one-time link printed by a host command (on Cloudflare by a script run with the operator's Cloudflare credentials). It is the same mechanism as recovery, so no static secret remains. The alternative keeps `ADMIN_TOKEN` as a bootstrap-only secret until the first owner exists |
+| D-10 | Does Cloudflare Access stay an accepted admin identity on the Cloudflare runtime beside accounts? | Yes. ADR-015 builds MCP consent on Access, and Access stays optional for operators who already use it |
 
 Co-created by Michel with NORA (AI Agent)

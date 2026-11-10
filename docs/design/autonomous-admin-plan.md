@@ -4,14 +4,14 @@ Status: proposed, challenged on 2026-11-10. Product boundary and open decisions:
 
 ## Outcome
 
-An operator runs the complete feedback process on a Linux server or Proxmox LXC: local storage, local accounts with passkeys, optional OIDC and a local AI endpoint. Cloudflare, GitHub, remote AI and mail are optional. Humans and setup agents get install and configuration guides that state what was verified.
+An operator runs the complete feedback process on any Linux host (a home Proxmox LXC, a Hetzner server, any VPS): local storage, local accounts with passkeys, optional OIDC and a local AI endpoint. Cloudflare stays as the managed option for operators who do not want to host anything. GitHub, remote AI and mail are optional. Humans and setup agents get install and configuration guides that state what was verified.
 
 ## Product structure
 
 | Area | Target |
 |---|---|
 | Instance | First-run owner setup, public URL, storage and retention, shared AI and GitHub connections, health and update information |
-| People | Invitation-only accounts with passkeys, optional OIDC, two roles (owner, member), project access, session revocation, recovery on the host. No public sign-up, no mandatory mail |
+| People | Invitation-only accounts with passkeys on both runtimes, optional OIDC, two roles (owner, member), project access, session revocation, recovery with a one-time link, scoped API tokens that replace `ADMIN_TOKEN`. No public sign-up, no mandatory mail |
 | Projects and types | Any number of types, each with labels, guidance, fields and a destination. IDs stay fixed. Instance defaults can be overridden |
 | Inbox and log | Local reports have a board view over open, done and dismissed. GitHub deliveries are logged, linked and retried. Their ticket state is never mirrored |
 | Privacy | Images stay in the browser until the visitor confirms. Masks are burned into the pixels before upload, thumbnail and AI call. Private elements and password fields are not captured. No automatic detection is promised |
@@ -112,14 +112,14 @@ Each step is one reviewable PR (or a small series) with its own tests and docs. 
 ### Gate 2: local accounts and recovery (blocks the "autonomous" claim)
 
 - **Why:** without it the only credential is a shared static token that can be locked out by anyone.
-- **Capabilities:** sessions with CSRF protection, bootstrap proved by the recovery credential, one-time recovery link from a host command, passkeys through a maintained WebAuthn library, last-owner protection, revocation, admin images through the session, `ADMIN_TOKEN` as `full`, `recovery` or `off`, a threat model in `docs/SECURITY.md`.
-- **Constraints:** no hand-written protocol. Passkeys need HTTPS or localhost, and the relying party ID follows `FK_PUBLIC_URL`, which then cannot be changed in the UI. Decide D-02 and D-03 first.
+- **Capabilities:** sessions with CSRF protection, bootstrap and recovery by a one-time link from a host command (D-09), scoped API tokens for scripts and agents (created by an owner, hashed at rest, shown once, revocable), `ADMIN_TOKEN` ends once the first owner exists, a D1 design for the atomic owner claim and one-time tokens, a recovery path for Cloudflare (a script run with the operator's Cloudflare credentials), passkeys through a maintained WebAuthn library, last-owner protection, revocation, admin images through the session, a threat model in `docs/SECURITY.md`.
+- **Constraints:** no hand-written protocol. Passkeys need HTTPS or localhost, and the relying party ID follows `FK_PUBLIC_URL`, which then cannot be changed in the UI. D-02 and D-03 are decided (S11, S12). Decide D-09 and D-10 first.
 - **Non-goals:** roles beyond owner and member, OIDC, public sign-up.
-- **Success signals:** concurrent bootstrap yields one owner. A virtual authenticator completes enrollment and sign-in. A recovery drill works on a clean instance. A valid login is never blocked by other people's failed attempts, with and without a proxy.
+- **Success signals:** concurrent bootstrap yields one owner. A virtual authenticator completes enrollment and sign-in. A recovery drill works on a clean instance. A valid login is never blocked by other people's failed attempts, with and without a proxy. The old `ADMIN_TOKEN` is refused after bootstrap and a scoped token works for automation. One conformance suite runs bootstrap, sign-in and recovery on SQLite and on D1.
 
 ![First owner bootstrap](diagrams/gate2-bootstrap-sequence.png)
 
-[Open the bootstrap sequence](diagrams/gate2-bootstrap-sequence.html). The other Gate 2 flows are [sign-in](diagrams/gate2-signin-sequence.html), [recovery](diagrams/gate2-recovery-sequence.html) and [account states](diagrams/gate2-account-lifecycle.html). They are planned designs that assume D-02 and D-03 as recommended. Token lifetime, command name and cookie attributes are decided in the PR.
+[Open the bootstrap sequence](diagrams/gate2-bootstrap-sequence.html). The other Gate 2 flows are [sign-in](diagrams/gate2-signin-sequence.html), [recovery](diagrams/gate2-recovery-sequence.html), [scoped tokens](diagrams/gate2-token-sequence.html) and [account states](diagrams/gate2-account-lifecycle.html). They are planned designs. They follow the decisions S11 and S12 and assume D-09 as recommended. Token lifetime, command name and cookie attributes are decided in the PR.
 
 ### Step D: release tarball, version and updates
 
@@ -156,14 +156,14 @@ Release strategy for the tarball:
 ### Step 3: verification on a fresh host
 
 - **Why:** a build that passes on a laptop says little about an LXC.
-- **Capabilities:** run J1, J2, J12 and J14 from the release tarball on a clean LXC. Outbound traffic is allowed for the download and blocked until the first report. Include an update with data and a rollback. Update the status of each journey with the evidence.
+- **Capabilities:** run J1, J2, J12 and J14 from the release tarball on a clean Debian LXC and on a clean cloud VPS (for example at Hetzner). Outbound traffic is allowed for the download and blocked until the first report. Include an update with data and a rollback. Update the status of each journey with the evidence.
 - **Success signals:** transcripts and results are linked from the journeys. Only now may README and docs say the gateway runs without Cloudflare. Tag the release after this step.
 
 ### Steps 4 to 8, after the gates
 
 | Step | Content | Needs first |
 |---|---|---|
-| 4 | Member role, project access, authorization on assets and feedback by project, instance-level AI and GitHub connections referenced by ID, scoped API tokens for agents | Gate 2, D-02 |
+| 4 | Member role, project access, authorization on assets and feedback by project, instance-level AI and GitHub connections referenced by ID | Gate 2 |
 | 5 | Types navigation and board view over the three states | Approved mock, D-05 |
 | 6 | OIDC through a maintained library, binding by `iss` and `sub` | Gate 2, D-04, upstream docs read |
 | 7 | Widget preview and theme tokens (#57) | Approved mock, contrast rules |

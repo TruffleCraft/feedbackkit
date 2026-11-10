@@ -10,7 +10,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 
 | ID | Journey | Status today | Gate |
 |---|---|---|---|
-| J1 | Install on Linux or a Proxmox LXC | partly | autonomy |
+| J1 | Install on a Linux host (LXC, Hetzner, any VPS) | partly | autonomy |
 | J2 | Robin sees which release runs and that a newer one exists | gap | autonomy |
 | J3 | Bootstrap the first owner | planned | autonomy |
 | J4 | Create a project and receive a first report | partly | autonomy |
@@ -25,21 +25,22 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 | J13 | Reports expire | partly | privacy |
 | J14 | A setup agent installs and verifies | draft | autonomy |
 | J15 | Robin changes the widget look and previews it | partly | none |
+| J16 | Robin creates a scoped token for an agent or script | planned | autonomy |
 
 ## Diagrams
 
 ![Report and delivery lifecycle](diagrams/report-lifecycle.png)
 
-[Open the report lifecycle](diagrams/report-lifecycle.html) (J8, J9, J13, backed by code at commit `e712a01`). The planned install and update flow (J1, J2, J12) is in [release-update-sequence.html](diagrams/release-update-sequence.html). The planned Gate 2 flows (J3, J10, J11) are [bootstrap](diagrams/gate2-bootstrap-sequence.html), [sign-in](diagrams/gate2-signin-sequence.html), [recovery](diagrams/gate2-recovery-sequence.html) and [account states](diagrams/gate2-account-lifecycle.html).
+[Open the report lifecycle](diagrams/report-lifecycle.html) (J8, J9, J13, backed by code at commit `e712a01`). The planned install and update flow (J1, J2, J12) is in [release-update-sequence.html](diagrams/release-update-sequence.html). The planned Gate 2 flows (J3, J10, J11, J16) are [bootstrap](diagrams/gate2-bootstrap-sequence.html), [sign-in](diagrams/gate2-signin-sequence.html), [recovery](diagrams/gate2-recovery-sequence.html), [scoped tokens](diagrams/gate2-token-sequence.html) and [account states](diagrams/gate2-account-lifecycle.html).
 
-## J1 Install on Linux or a Proxmox LXC
+## J1 Install on a Linux host
 
-- **Goal:** Robin has a running gateway on an LXC from a finished release, without Git, pnpm, Docker or a Cloudflare account.
+- **Goal:** Robin has a running gateway on a Linux host (a home LXC, a Hetzner server or any VPS) from a finished release, without Git, pnpm, Docker or a Cloudflare account.
 - **Steps:** install Node.js 24 LTS, download the release tarball, `SHA256SUMS` and `SHA256SUMS.sig`, verify signature and checksum, extract to `/opt/feedbackkit`, install the systemd unit from the tarball, fill the environment file, start.
 - **Guarantees:** a failed signature or checksum stops the install. The service refuses to start with a weak admin token or a bad public URL. Migrations run once. The first sweep cannot keep the service from starting. `/diag` is green only when schema and capability match, and it shows the release.
 - **Failure paths:** two starts at once on one data directory (today at least one of the two fails, in 10 of 10 trials, both in 4), a failing start sweep (the process exits with code 1; systemd would retry under `Restart=on-failure` and give up after its start limit, which was not run), a Node release without `node:sqlite`.
-- **Evidence:** a fresh LXC with only Node, curl and tar installed. Installation from the docs to a green `/diag` that shows the release number, then reboot and restart tests. Outbound traffic is needed once for the download and blocked afterwards until the first report. A conformance suite runs on both runtimes.
-- **Today:** no tarball is built. The docs still describe a clone, `pnpm install` and a build on the server. The happy path works from a checkout on a Mac with Node 26. systemd and a real LXC were not run. The docs say "Node 24+", `engines` says `>=22.13`, CI runs 22 and 24.
+- **Evidence:** a fresh Debian LXC and a fresh cloud VPS, each with only Node, curl and tar installed. Installation from the docs to a green `/diag` that shows the release number, then reboot and restart tests. Outbound traffic is needed once for the download and blocked afterwards until the first report. A conformance suite runs on both runtimes.
+- **Today:** no tarball is built. The docs still describe a clone, `pnpm install` and a build on the server. The happy path works from a checkout on a Mac with Node 26. systemd, a real LXC and a VPS were not run. The docs say "Node 24+", `engines` says `>=22.13`, CI runs 22 and 24.
 - **Verified:** `live` start probes (10 concurrent first starts; a database without the `projects` table exits with `no such table: projects`). `doc` and `code`: `docs/SELF_HOSTING.md`, `package.json` engines, `.github/workflows/ci.yml`. Repeat: start `scripts/server.mjs` twice at once on an empty `FK_DATA_DIR`.
 
 ## J2 Robin sees which release runs and that a newer one exists
@@ -55,7 +56,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 ## J3 Bootstrap the first owner
 
 - **Goal:** the first person to reach a fresh instance can become owner only if they control the installation.
-- **Steps:** the operator proves control (the configured recovery credential), registers a passkey, the instance records exactly one owner.
+- **Steps:** the operator proves control with a one-time link from a host command (D-09), registers a passkey, the instance records exactly one owner. `ADMIN_TOKEN` grants nothing afterwards (S11).
 - **Guarantees:** two simultaneous attempts produce one owner. No public first-user route exists. The last owner cannot be removed or demoted.
 - **Failure paths:** a second browser races the first, the passkey ceremony fails halfway, the public URL changes after enrollment (passkeys bind to it).
 - **Evidence:** integration tests with concurrent requests, a Playwright virtual authenticator, a threat model section in `docs/SECURITY.md`.
@@ -135,8 +136,8 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 ## J11 Robin is locked out and recovers
 
 - **Goal:** Robin regains access without a vendor and without opening the instance to others.
-- **Steps:** run a recovery command on the host, receive a one-time link, set up a new passkey, old sessions are revoked.
-- **Guarantees:** recovery needs host access. A valid login is never blocked by the failed-login counter of other people.
+- **Steps:** run a recovery command on the host (on Cloudflare a script with the operator's Cloudflare credentials), receive a one-time link, set up a new passkey, old sessions are revoked.
+- **Guarantees:** recovery needs host access, or on Cloudflare the operator's Cloudflare credentials. A valid login is never blocked by the failed-login counter of other people.
 - **Failure paths:** all passkeys lost, the identity provider is down, a flood of wrong tokens from other visitors.
 - **Evidence:** a test with and without a reverse proxy that 25 wrong tokens do not block the right one. A recovery drill on a clean instance.
 - **Today:** 21 wrong tokens from one address make the correct token return 429 (reproduced). Behind a proxy that address is shared by everyone.
@@ -165,8 +166,8 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 ## J14 A setup agent installs and verifies
 
 - **Goal:** an agent leaves a working, verified installation and a clear handoff.
-- **Steps:** read the agent guide, pick the install path (release tarball on Linux or an LXC, or Cloudflare), verify and install the release, create the project, send one authorized test report, report evidence.
-- **Guarantees:** the guide names what it could not verify. Secrets never appear in output. The create response contains the snippet.
+- **Steps:** read the agent guide, pick the install path (release tarball on Linux or an LXC, or Cloudflare), verify and install the release, hand the operator the one-time bootstrap link, wait until the operator has registered and created a scoped token for the agent, create the project with that token, send one authorized test report, report evidence.
+- **Guarantees:** the guide names what it could not verify. Secrets never appear in output. An agent never completes a passkey ceremony or holds an owner's credentials. The create response contains the snippet.
 - **Failure paths:** a local AI endpoint that needs no key but the gateway insists on one, an agent that claims a planned feature.
 - **Evidence:** an agent run on a clean host with a transcript, each claim in the guide linked to a test or a step.
 - **Today:** the guide is a draft. It describes a placeholder key for local AI and a snippet the API does not return.
@@ -181,5 +182,15 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Evidence:** a widget test that reads the applied tokens, a contrast check, a preview that uses the widget's own bundle.
 - **Today:** theme, accent and heading exist. Only the accent variable is set, so the soft and text variants stay violet. No widget test reads them.
 - **Verified:** `code` `src/widget/index.ts` sets `--fk-accent` only, `src/widget/ui/styles.ts` defines the soft and text variants separately. `test` a search of `test` and `e2e` finds `appearance` only in `test/server-storage.test.mjs`, which checks the public config JSON.
+
+## J16 Robin creates a scoped token for an agent or script
+
+- **Goal:** automation works without a shared admin secret.
+- **Steps:** a signed-in owner creates a token (name, projects, read or write), the UI shows it once, Robin hands it to the agent or script, the owner can revoke it.
+- **Guarantees:** the token is hashed at rest and shown once. A request outside its scope is refused with 403. A revoked token gets 401. The old `ADMIN_TOKEN` is refused once the first owner exists.
+- **Failure paths:** a leaked token (revoke it), a token with too wide a scope, an agent that stores the token in a log.
+- **Evidence:** tests for scope, revocation and the refused `ADMIN_TOKEN` on both runtimes, and a setup-agent run that uses a scoped token (J14).
+- **Today:** not built. `ADMIN_TOKEN` is the only credential for scripts and agents.
+- **Verified:** `code` as J3: one token, no roles, no scopes.
 
 Co-created by Michel with NORA (AI Agent)
