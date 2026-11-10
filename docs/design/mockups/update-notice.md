@@ -2,7 +2,7 @@
 
 Status: mock for review. Nothing is built and `src/` is unchanged. Open [update-notice.html](update-notice.html) in a browser. It shows three placements in four states, on desktop and on a phone, with a light and a dark switch. One PNG per variant: [A](update-notice-a.png), [B](update-notice-b.png), [C](update-notice-c.png). All data is invented.
 
-`journeys.md` and `scope.md` live on pull request #131 and are not on this branch. The block under "Text for journeys.md" belongs in its J2 section once #131 lands.
+The short version of this note sits in the J2 section of [journeys.md](../journeys.md).
 
 ## What exists today
 
@@ -54,12 +54,5 @@ All three variants exceed the budget today. Either raise the admin budget by 0.2
 - **The bundle budget.** Raise it by 0.25 kB, or find the bytes elsewhere in the admin?
 - **Languages.** CONTRIBUTING and the plan ask for English and German keys for new strings. The admin has no string table and is English only. Is the notice the first German admin string, or does the rule cover the widget only?
 - **Skipping a version.** Only variant C needs it. Should a dismissal last for one release, as drawn, or until the operator brings the notice back?
-
-## Text for journeys.md
-
-For the J2 section after #131 lands. J2 stays `gap` until the notice is built.
-
-> - **Recommendation:** a card above Needs attention on the System page when a newer release waits, and the state in the Release row (up to date, check failed, update waiting). No banner and no dot. Mock: [update-notice.html](mockups/update-notice.html), variant A.
-> - **Open:** where the check runs and how it is switched off, how the server tells a tarball install from Cloudflare, the admin bundle budget (55 bytes left, variant A needs about 71), English and German strings in an English-only admin, and whether a version can be skipped. See [update-notice.md](mockups/update-notice.md).
 
 Co-created by Michel with NORA (AI Agent)
