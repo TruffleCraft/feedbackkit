@@ -2,11 +2,13 @@
 
 The standalone gateway runs on **Node.js 24 or newer**, with SQLite on a persistent disk. It supports the widget, admin UI, inbox, AI extraction, GitHub issue/Project delivery and attachment retention. It needs no Cloudflare account, D1 or R2.
 
+What is verified and what is not: the server and its tests run on a developer machine and in CI on Node 24 and 26, and the steps below ran on a clean, unprivileged Debian 13 LXC without nesting, including systemd, a crash and a reboot. The release tarball path ran there too, with fixture releases and throw-away keys: install, `--check`, update, rollback, update again, a release whose server does not start, and a reboot. No signed release has been published yet, it has not been tested on a cloud VPS, and a real GitHub delivery has not been run from it. [Claims and their proof](design/claims.md) lists each statement with its test.
+
 The Cloudflare installation additionally supports OAuth/MCP through its Worker OAuth provider. Those endpoints are explicitly unavailable in the standalone server; admin and widget operation do not depend on them.
 
 ## Node.js on a server or Proxmox LXC
 
-Use a Linux server or an unprivileged Proxmox LXC with Node.js 24+, Git and pnpm 11. A starting allocation is 1 vCPU, 1 GB RAM and persistent disk sized for your attachment retention.
+Use a Linux server or an unprivileged Proxmox LXC with Node.js 24 or newer, Git and pnpm 11. A starting allocation is 1 vCPU, 1 GB RAM and persistent disk sized for your attachment retention.
 
 Install Node.js from your distribution or the [official Node.js installation guide](https://nodejs.org/en/download). Clone the release you want under `/opt/feedbackkit`:
 
@@ -96,7 +98,9 @@ The database contains project settings, feedback, counters, asset metadata **and
 
 Back up before an upgrade. Stop the service, copy the entire data directory, then start it again. Do not copy only the main SQLite file while the process is writing: WAL files can contain committed data. Proxmox backups should include the LXC state directory; take them with the process stopped or using a consistent snapshot strategy.
 
-Fetch the chosen release, install with the lockfile, rebuild both bundles, then restart the service. Data migrations are expand-only; read release notes before rolling back. A release older than the data refuses to start when the data needs a newer delivery capability: start the newer release again or restore the backup.
+To update a checkout install, fetch the chosen release, install with the lockfile, rebuild both bundles, then restart the service. A tarball install updates and rolls back with `feedbackkit-update` ([Updating](RELEASES.md#updating)).
+
+To go back on a checkout install, stop the service, restore the backup you took before the update and start the older checkout. Do not start an older checkout on the data of a newer one: migrations only add, which is a rule of the repository and not something a test proves. A release older than the data refuses to start when the data needs a newer delivery capability, and says so. Start the newer release again or restore the backup.
 
 ## Verification and troubleshooting
 

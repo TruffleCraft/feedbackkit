@@ -106,6 +106,19 @@ an object from R2 does **not** guarantee GitHub's cached copy is gone. Therefore
    process** — the admin delete removes the source object; the issue edit removes
    the reference that camo re-fetches from.
 
+## Standalone server
+
+The standalone Node server (`scripts/server.mjs`) runs the same application as the Worker, so everything above applies. These points are specific to it. Each one has a test, listed in [claims and their proof](design/claims.md).
+
+- **Trust boundary.** TLS and the reverse proxy are the operator's. The server builds every request URL from `FK_PUBLIC_URL` and never from the `Host` header, and answers 400 to a path that starts with `//` or `/\`. The client address comes from the socket, or from `X-Forwarded-For` read from the right through `FK_TRUSTED_PROXY_HOPS` proxies. Without that setting every client behind a proxy shares one address and one failed-login limit, and the server logs a warning once.
+- **Admin credential.** `ADMIN_TOKEN` of at least 32 characters is the only credential. After 20 failed attempts per client address and hour the admin API answers 429 even to the right token. Cloudflare Access headers are discarded.
+- **Environment.** The application receives `ADMIN_TOKEN`, `LLM_API_KEY`, `GITHUB_PAT_*`, `TURNSTILE_SECRET_*` and `FK_RELEASE`, not the whole process environment. A project's settings can name only `GITHUB_PAT_<name>` secrets, so they cannot point at `ADMIN_TOKEN` or another variable.
+- **Attachments.** Only attachments of reports delivered as GitHub issues are served at `/attachments/<key>`, because an issue image needs a public URL. They carry `Content-Security-Policy: default-src 'none'; sandbox` and `nosniff`. Screenshots of inbox reports and Project drafts are served at `/admin/assets/<key>` and need the admin sign-in. The admin page fetches them with the `Authorization` header.
+- **Deletion.** The database runs with `secure_delete=ON` and `auto_vacuum=INCREMENTAL`. After attachments or reports are deleted the server hands the freed pages back and truncates the write-ahead log, so the deleted content is in neither the database file nor the log. This covers those files only. Snapshots of the disk or the LXC, backups and copies of the data directory keep what they held, and GitHub keeps issue text and may cache images (see camo above).
+- **Durability.** The database runs in WAL mode with `synchronous=NORMAL`. A crash of the process loses nothing that was confirmed. A power loss or kernel crash can lose the last few reports but does not corrupt the database.
+- **Files.** The server sets `umask 077`, so the data directory and the database are readable by its user only.
+- **Not built yet.** Accounts, passkeys and scoped API tokens (Gate 2), masking of screenshots before upload (Gate 1) and signed release artifacts (Step D). See the [plan](design/autonomous-admin-plan.md).
+
 ## Admin endpoints
 
 Admin routes (`/api/admin/*`, `/admin/assets/*`, and the `/diag?project=` deep
