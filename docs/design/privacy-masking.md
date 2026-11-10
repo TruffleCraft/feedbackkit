@@ -17,16 +17,21 @@ What the code does today (read on 2026-11-10 at `3f3caba`):
 | The AI endpoint receives the stored image as a base64 data URL | `src/worker/orchestrate.ts:185`, `:459-468` |
 | The page URL is cut to origin and path. Console capture is on by default and filtered by patterns for emails, tokens and long numbers | `index.ts:313`, `src/shared/contract.ts:154`, `src/widget/lib/pii-filter.ts` |
 
-## What can leak
+## What a report needs and what it risks
 
-| Surface | Who can see it | Concept |
-|---|---|---|
-| Page pixels: the visitor's data, other people's data on the page, form values | Issue readers, GitHub's image proxy, the AI provider | Mask known sensitive elements before rasterizing, let the visitor mask the rest, bake the result |
-| A picked image: photos, other windows | Same | Keep it in the browser until Send, mask it the same way, re-encode it to drop metadata |
-| Console text | Issue readers | Off in the strict profile. The pattern filter stays as a second layer |
-| Text the visitor types | Issue readers | A visible hint that the report may be public. No detection |
-| Context the host page passes in | Issue readers | Documented as public in the strict profile |
-| Page URL, device info | Issue readers | Unchanged: origin and path only, browser and viewport |
+Debugging needs structure, errors and identifiers. It rarely needs the content of a page. So the strict profile covers content and keeps structure.
+
+| Data | Helps debugging | Blast radius if public | strict | standard |
+|---|---|---|---|---|
+| Route (origin and path), app version, browser, viewport | high | low | sent | sent |
+| Console errors and warnings | high | medium: a message can carry a payload | sent, strings and `Error` name and message only, objects become `[object]` | sent, pattern-filtered |
+| Context the host page passes in (opaque IDs, versions, flags) | high | depends on what the host passes | sent, string values pattern-filtered like the console | sent |
+| Screenshot: layout, controls, colors, state of the UI | high for visual bugs | low | sent | sent |
+| Screenshot: text and images that are data (balances, transactions, names, messages, avatars, photos) | low to medium: the visitor's own words usually carry the point | high: personal, financial and third-party data | covered | visible |
+| Form values and password fields | low | high | masked | masked |
+| Elements marked `data-fk-private` | none by definition | high | blocked out | blocked out |
+| What the visitor types into the report | it is the point | medium: the visitor chooses | visible, with a public hint | visible |
+| A picked image | medium | high: photos, other windows | review required, metadata stripped | review offered, metadata stripped |
 
 ## Principles
 
@@ -46,13 +51,23 @@ What the code does today (read on 2026-11-10 at `3f3caba`):
 |---|---|---|
 | Form values and password fields in a capture | masked | masked |
 | Elements with `data-fk-private` | blocked out | blocked out |
+| Text and images in a capture (`capture.screenshot`) | `layout`: covered | `full`: visible |
 | Images stay in the browser until Send, then are re-encoded | yes | yes |
 | Review screen with the final image and a mask tool | required for every image | offered |
 | Server requires the widget marker on uploads | yes | no |
-| Console capture | off | as configured |
+| Console capture | errors and warnings, objects dropped | as configured |
 | Hint "this report may be public" | when the destination is public or unknown | never |
 
 New projects start strict. `standard` is allowed only for destinations that are private: the local inbox, and a GitHub repository or Project that the gateway has read as private. A public or unreadable destination forces strict, and the config check refuses `standard` with a clear error.
+
+### Screenshot modes
+
+`capture.screenshot` becomes `off`, `layout` or `full`. Today's `optional` stays and means `full`. Strict defaults to `layout`, standard to `full`. A strict project may set `full` on purpose, for example a docs site that shows nothing personal. The config check and `/diag` then say that page text is captured while the destination is public.
+
+- `layout` keeps boxes, colors and borders, and covers every text and image.
+- `data-fk-show` on an element keeps its text and images visible in `layout`, for error banners or navigation labels the host knows are safe.
+- Masks are computed from the live layout after the page is rasterized: the client rectangles of every text node, input, textarea, select, image, canvas, video, iframe and every marked element, painted as opaque rectangles onto the canvas. The host page is not changed, and the result does not depend on how the rasterizer clones the DOM.
+- Known gaps: closed shadow roots and text drawn by pseudo-elements. A canvas, video or iframe is covered as a whole. The sentinel test pins each of these.
 
 ### How the gateway knows a repository is public
 
@@ -65,7 +80,7 @@ With the project's token, the config check, the deep `/diag` and the test report
 [Open the explorable diagram](diagrams/privacy-image-path.html).
 
 1. The visitor adds a screenshot or picks an image. Nothing is uploaded.
-2. For a page capture, the widget clones the DOM, blocks out marked elements, masks form values and password fields, and rasterizes the clone. A picked image skips this step.
+2. For a page capture, the widget rasterizes the page and paints opaque masks over form values, password fields and marked elements, and in `layout` over all other text and images. A picked image skips this step.
 3. The review screen shows the final image. The visitor adds opaque rectangles over anything else, or removes the image.
 4. On Send the widget bakes the image: it re-encodes from a canvas, so metadata is gone and every mask is an opaque pixel.
 5. The widget uploads the baked bytes with a marker, then sends the report with the returned key.
@@ -99,20 +114,21 @@ One Chromium test intercepts every request body and decodes the images.
 
 | Test | Proves |
 |---|---|
-| A page with sentinel pixels, a sentinel in an input and in a marked element. The uploaded image has opaque fill in those regions and no sentinel. The same test with masking off fails | Masks are destroyed pixels, and the test can fail |
+| A page with sentinel pixels, a sentinel in an input, in a marked element and in plain text and an image. The uploaded image has opaque fill in those regions and no sentinel. An element with `data-fk-show` stays readable in `layout`. The same test with masking off fails | Masks are destroyed pixels, and the test can fail |
 | The same assertions for capture, pick, paste, drop and retry | Every input path is covered |
 | Zero upload requests before Send, one per image after | Staging works |
 | A JPEG with GPS metadata is picked. The uploaded bytes contain no metadata | Metadata is dropped |
 | A strict project refuses an upload without the marker (409) and one with metadata (400), and accepts a baked image | The server contract |
 | The bytes the AI endpoint receives hash equal to the stored bytes | One image, one truth |
+| In strict, a logged object becomes `[object]` and an email in a host context value is redacted | The console and context rules |
 | A mocked GitHub answers `private: false`, `true` and an error. The profile is forced, allowed, and forced | The visibility rule |
 
-Whether the current capture copies input values is not verified yet. The sentinel test answers it, and the fix is part of Gate 1.
+The capture library copies the value of every input and textarea into its clone (`html-to-image` 1.11.13, `es/clone-node.js:111-117`), so typed values can reach today's screenshots. The sentinel test shows what the pixels contain, and the fix is part of Gate 1.
 
 ## Rollout inside Gate 1
 
 1. Widget: staging, re-encode, review screen and mask tool. Mock before build. The mask tool loads on demand, because the widget budget has 0.2 kB gz left.
-2. Widget: automatic layer (form values, password fields, `data-fk-private`).
+2. Widget: automatic layer (form values, password fields, `data-fk-private`, and text and images in `layout`).
 3. Gateway: profile setting, visibility check, marker and metadata checks, error codes in `docs/ERRORS.md`.
 4. Tests and documentation, with the claim table of Step C updated.
 
@@ -120,6 +136,8 @@ Whether the current capture copies input values is not verified yet. The sentine
 
 - The marker's name and the new error codes.
 - Wording of the public hint and the review screen, with `en` and `de` keys.
-- Whether an operator may override the console default inside `standard`.
+- The name `data-fk-show` and whether `optional` is renamed to `full`.
+- Whether `role="alert"` banners stay visible in `layout` without a mark.
+- Whether an operator may tighten the console rule inside `standard`.
 
 Co-created by Michel with NORA (AI Agent)

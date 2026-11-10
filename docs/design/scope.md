@@ -105,10 +105,11 @@ Settled decisions:
 | S18 | OIDC (Step 6) links an identity to an account by `iss` and `sub`. The link is made through an invitation or from a signed-in session. Email equality grants nothing, so an unverified or recycled address cannot take over an account | Owner delegated the choice, 2026-11-10 (D-04) |
 | S19 | Node 24 is the floor. `engines` says `>=24`, CI runs Node 24 and, once a newer LTS line exists, that one too, and the docs name one version. Node 22 is unsupported | Owner delegated the choice, 2026-11-10 (D-06) |
 
-Open decision. The recommendation is mine and needs the owner's answer.
+Open decisions. Each recommendation is mine and needs the owner's answer.
 
 | ID | Question | Recommendation |
 |---|---|---|
-| D-07 | Is masking enforced or optional per project? | Neither switch. A `privacy.profile` of `strict` or `standard`: new projects start strict, and `standard` is allowed only for private destinations. A public or unreadable destination forces strict. The concept is in [privacy-masking.md](privacy-masking.md) |
+| D-07 | Is masking enforced or optional per project, and what does a capture keep? | Neither switch. A `privacy.profile` of `strict` or `standard`: new projects start strict, and `standard` is allowed only for private destinations. In strict a screenshot keeps layout and covers text and images (`layout`), because debugging needs structure, errors and identifiers, not page content. Concept: [privacy-masking.md](privacy-masking.md) |
+| D-11 | Do projects without GitHub get a board they can embed in their own UI, and do signed-in visitors get a view of their own reports? | Yes, in two steps after Gate 2 and Step 5, and only for local-delivery reports. First a team board in an iframe that opens with a short-lived signed link, which the host backend mints with a scoped token. Then an own-reports view whose identity is signed by the host backend, because `FeedbackKitContext` is unsigned client data and cannot authorize anything. A public board of other people's reports stays out. This meets the revisit trigger of the "second ticket tracker" row for projects without GitHub. Comments, assignees and SLAs stay out |
 
 Co-created by Michel with NORA (AI Agent)
