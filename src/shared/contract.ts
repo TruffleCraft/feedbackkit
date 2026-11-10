@@ -208,6 +208,19 @@ export function patSecretProblems(raw: unknown): string[] {
   return found.filter(([, name]) => typeof name === "string" && !PAT_SECRET_NAME.test(name)).map(([path, name]) => `${path}: "${String(name)}" is not a GITHUB_PAT_<name> secret`);
 }
 
+/** Unhandled reports are listed this many days before retention deletes them
+ * (decision of 2026-10-24: retention is strict and counts from submission). */
+export const RETENTION_NOTICE_DAYS = 7;
+
+/** A retention shorter than the notice would delete reports before anyone could
+ * be told. Written settings must pass; stored settings that fail keep working. */
+export function retentionProblems(raw: unknown): string[] {
+  const days = (raw as { storage?: { retentionDays?: unknown } | null } | null | undefined)?.storage?.retentionDays;
+  return typeof days === "number" && days < RETENTION_NOTICE_DAYS
+    ? [`storage.retentionDays: ${days} is shorter than the ${RETENTION_NOTICE_DAYS}-day notice for unhandled reports. Use ${RETENTION_NOTICE_DAYS} or more.`]
+    : [];
+}
+
 /** Capability a stored config needs (see DELIVERY_CAPABILITY). Works on the raw
  * JSON, so writers can check before or without parsing. Mirrored in
  * scripts/seed-config.mjs (a test keeps both in step). */

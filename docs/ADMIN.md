@@ -35,7 +35,7 @@ Delivery errors and uncertain results stay visible. **Retry** repeats a supporte
 
 Only reports delivered to the **FeedbackKit inbox** have a local Open/Done/Dismissed lifecycle. The **Inbox: open** and **Inbox: handled** filters refer to those reports. Older records whose destination is unknown appear under **Needs a decision**. Delivered GitHub reports do not acquire a competing local ticket status.
 
-Retention applies to log records, inbox reports and attachments whether handled or not. It is not an indefinite audit archive. Deleting a FeedbackKit record or attachment does not close or delete its GitHub ticket.
+Retention applies to log records, inbox reports and attachments whether handled or not. It is not an indefinite audit archive. Retention must be at least 7 days, the notice period for unhandled reports; the gateway refuses a shorter value when settings are written. When a review changes the retention, it states how many stored reports and attachments the next daily cleanup deletes, and you cannot publish before you have seen it. Deleting a FeedbackKit record or attachment does not close or delete its GitHub ticket.
 
 ## Credentials and hosting
 

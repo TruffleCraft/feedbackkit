@@ -904,6 +904,27 @@ function lineDiff(a: string, b: string): Array<[" " | "+" | "-", string]> {
   return out.filter((_, k) => keep[k]);
 }
 
+interface RetentionEffect {
+  days: number | null;
+  previousDays: number | null;
+  reports: number;
+  attachments: number;
+}
+/** What a changed retention deletes, shown before anyone can publish it. */
+function retentionNote(raw: unknown): HTMLElement | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as RetentionEffect;
+  const was = r.previousDays === null ? "no limit" : `${r.previousDays} days`;
+  const count = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+  const effect =
+    r.days === null
+      ? "Reports and attachments are kept until you delete them."
+      : r.reports === 0
+        ? `No stored report is older than ${r.days} days, so nothing is deleted now.`
+        : `At the next daily cleanup ${count(r.reports, "report")} and ${count(r.attachments, "attachment")} older than ${r.days} days are deleted, handled or not. This cannot be undone.`;
+  return el("div", { class: r.days !== null && r.reports > 0 ? "help err" : "help" }, el("h3", { class: "sm" }, "Retention"), el("p", null, `Retention changes from ${was} to ${r.days === null ? "no limit" : `${r.days} days`}. ${effect}`));
+}
+
 function initConfigEditor(id: string, base: string, onPublished: (version: number) => void) {
   const ta = $<HTMLTextAreaElement>("cfg-text");
   const formRoot = $("cfg-form");
@@ -990,6 +1011,7 @@ function initConfigEditor(id: string, base: string, onPublished: (version: numbe
     const deliveries = (r.json["deliveries"] as Array<{ type: string; delivery: Delivery }>) ?? [];
     out.append(
       el("div", { class: "tbl inset" }, el("table", null, el("thead", null, el("tr", null, el("th", { scope: "col" }, "Type"), el("th", { scope: "col" }, "Goes to"))), el("tbody", null, ...deliveries.map((d) => el("tr", null, el("td", { class: "mono" }, d.type), el("td", null, DELIVERY_WORD[d.delivery])))))),
+      ...[retentionNote(r.json["retention"])].filter((n): n is HTMLElement => n !== null),
       showDiff(pretty(cfg)),
     );
     if (ta.value !== text) {

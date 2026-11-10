@@ -130,3 +130,27 @@ test("IDs lock once they are published", async ({ page }) => {
   await expect.poll(() => writes.at(-1)?.method).toBe("PUT");
   await expect(settings.getByLabel("Type ID", { exact: true }).last()).toHaveAttribute("readonly", "");
 });
+
+test("the review says what a retention change deletes", async ({ page }) => {
+  await installAdminMocks(page); await signedIn(page);
+  await page.goto("/admin/projects/harborline#config");
+  const settings = page.locator("#cfg-form");
+  await settings.getByLabel("Add Attachments & retention setting").selectOption({ label: "Delete after (days)" });
+  await settings.getByLabel("Delete after (days)").fill("30");
+  await page.getByRole("button", { name: "Review changes", exact: true }).click();
+  const note = page.locator("#cfg-out").getByText("At the next daily cleanup");
+  await expect(note).toContainText("3 reports and 2 attachments older than 30 days are deleted, handled or not. This cannot be undone.");
+  await expect(page.locator("#cfg-out")).toContainText("Retention changes from no limit to 30 days.");
+  await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeEnabled();
+});
+
+test("a change that touches no retention shows no retention note", async ({ page }) => {
+  await installAdminMocks(page); await signedIn(page);
+  await page.goto("/admin/projects/harborline#config");
+  const settings = page.locator("#cfg-form");
+  await settings.getByRole("button", { name: "AI & follow-ups", exact: true }).click();
+  await settings.getByLabel("Model ID", { exact: true }).fill("other-model");
+  await page.getByRole("button", { name: "Review changes", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeEnabled();
+  await expect(page.locator("#cfg-out")).not.toContainText("Retention");
+});

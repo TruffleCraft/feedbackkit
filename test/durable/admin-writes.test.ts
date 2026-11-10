@@ -81,6 +81,32 @@ describe("config editor routes", () => {
     expect(await ok.json()).toMatchObject({ status: "valid", configVersion: 3, deliveries: [{ type: "bug", delivery: "issue" }, { type: "praise", delivery: "local" }] });
   });
 
+  it("refuses a retention shorter than the notice for unhandled reports, on validate and on publish", async () => {
+    const short = { ...config, storage: { kind: "r2", retentionDays: 3 } };
+    const bad = await call("POST", "/api/admin/projects/demo/config/validate", { config: short });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toMatchObject({ code: "FK_CONFIG_INVALID", issues: [expect.stringContaining("7-day notice")] });
+    expect((await call("PUT", "/api/admin/projects/demo/config", { config: short, expectedVersion: 3 })).status).toBe(400);
+    expect((await call("POST", "/api/admin/projects/demo/config/validate", { config: { ...config, storage: { kind: "r2", retentionDays: 7 } } })).status).toBe(200);
+  });
+
+  it("names what a retention change deletes: reports and attachments older than it", async () => {
+    // The seeded reports were all submitted long ago, one of them has a screenshot.
+    const ok = await call("POST", "/api/admin/projects/demo/config/validate", { config: { ...config, storage: { kind: "r2", retentionDays: 30 } } });
+    expect(await ok.json()).toMatchObject({ status: "valid", retention: { days: 30, previousDays: null, reports: 3, attachments: 1 } });
+    // Nothing changes, nothing to report.
+    expect(await (await call("POST", "/api/admin/projects/demo/config/validate", { config })).json()).not.toHaveProperty("retention");
+    // Reports newer than the retention stay out of the count.
+    await env.DB.prepare("UPDATE feedback SET created_at = ?1 WHERE id = 'issue-1'").bind(Date.now()).run();
+    expect(await (await call("POST", "/api/admin/projects/demo/config/validate", { config: { ...config, storage: { kind: "r2", retentionDays: 30 } } })).json()).toMatchObject({ retention: { reports: 2 } });
+  });
+
+  it("says so when a retention is removed", async () => {
+    await env.DB.prepare("UPDATE projects SET config = ?1 WHERE id = 'demo'").bind(JSON.stringify({ ...config, storage: { kind: "r2", retentionDays: 30 } })).run();
+    const res = await call("POST", "/api/admin/projects/demo/config/validate", { config });
+    expect(await res.json()).toMatchObject({ retention: { days: null, previousDays: 30, reports: 0, attachments: 0 } });
+  });
+
   it("locks projectId", async () => {
     const res = await call("POST", "/api/admin/projects/demo/config/validate", { config: { ...config, projectId: "other" } });
     expect(res.status).toBe(400);

@@ -265,7 +265,9 @@ export async function installAdminMocks(page: Page, opts: AdminMockOpts = {}) {
       if (p === "/api/admin/projects/harborline/config/validate") {
         const cfg = body?.["config"] as { templates?: Array<{ type: string; noIssue?: boolean }> } | undefined;
         if (!cfg?.templates?.length) return json(route, { v: 1, status: "error", code: "FK_CONFIG_INVALID", error: "config failed validation", issues: ["templates: Array must contain at least 1 element(s)"] }, 400);
-        return json(route, { v: 1, status: "valid", configVersion, deliveries: cfg.templates.map((t) => ({ type: t.type, delivery: t.noIssue ? "local" : "issue" })) });
+        const days = (cfg as { storage?: { retentionDays?: number } }).storage?.retentionDays;
+        // Like the gateway: a retention change says what it deletes (3 reports and 2 attachments are older than any retention here).
+        return json(route, { v: 1, status: "valid", configVersion, deliveries: cfg.templates.map((t) => ({ type: t.type, delivery: t.noIssue ? "local" : "issue" })), ...(days ? { retention: { days, previousDays: null, reports: 3, attachments: 2 } } : {}) });
       }
       if (p === "/api/admin/projects/harborline/config" && method === "PUT") {
         if (body?.["expectedVersion"] !== configVersion) return json(route, { v: 1, status: "error", code: "FK_CONFIG_STALE", error: `the config changed since you loaded it (now v${configVersion}); review the new diff and publish again`, configVersion, config: harborConfig }, 409);

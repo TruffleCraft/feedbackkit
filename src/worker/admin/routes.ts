@@ -9,7 +9,7 @@ import { deleteAssets } from "../storage/r2.js";
 import { forgetConfig } from "../config.js";
 import { checkConfigForWrite } from "./config-write.js";
 import { checkRepoAccess } from "../providers/github.js";
-import { retentionNotice } from "../storage/retention.js";
+import { retentionImpact, retentionNotice } from "../storage/retention.js";
 import { releaseOf, bindingsPresence, secretsPresence } from "../status.js";
 import { adminCheck, adminGate } from "./auth.js";
 import { DAY_MS, QueryError, exportConfig, getFunnel, listFeedback, listProjects, parseConfig, type ProjectRow } from "./queries.js";
@@ -207,7 +207,15 @@ export function registerAdminRoutes(app: AppT): void {
     if (cfg["projectId"] !== projectId) return err(c, 400, `projectId cannot change here (it is "${projectId}")`, "FK_CONFIG_INVALID", { issues: [`projectId: must stay "${projectId}"`] });
     const check = await checkConfigForWrite(c.env, cfg);
     if (!check.ok) return c.json(check.body, check.status);
-    return c.json({ v: WIRE_VERSION, status: "valid", deliveries: check.deliveries, configVersion: Number(stored.config_version) });
+    // A retention change deletes reports at the next cleanup: say how many, so the review can show it.
+    const before = parseConfig(stored.config)?.storage?.retentionDays ?? null;
+    const after = check.config.storage?.retentionDays ?? null;
+    let retention: { days: number | null; previousDays: number | null; reports: number; attachments: number } | undefined;
+    if (before !== after) {
+      const impact = after === null ? { reports: 0, attachments: 0 } : await retentionImpact(c.env, projectId, after);
+      retention = { days: after, previousDays: before, reports: impact.reports, attachments: impact.attachments };
+    }
+    return c.json({ v: WIRE_VERSION, status: "valid", deliveries: check.deliveries, configVersion: Number(stored.config_version), ...(retention ? { retention } : {}) });
   });
 
   app.put("/api/admin/projects/:id/config", async (c) => {
