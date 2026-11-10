@@ -56,7 +56,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 ## J3 Bootstrap the first owner
 
 - **Goal:** the first person to reach a fresh instance can become owner only if they control the installation.
-- **Steps:** the operator proves control with a one-time link from a host command (D-09), registers a passkey, the instance records exactly one owner. `ADMIN_TOKEN` grants nothing afterwards (S11).
+- **Steps:** the operator proves control with a one-time link from a host command (S14), registers a passkey, the instance records exactly one owner. `ADMIN_TOKEN` grants nothing afterwards (S11).
 - **Guarantees:** two simultaneous attempts produce one owner. No public first-user route exists. The last owner cannot be removed or demoted.
 - **Failure paths:** a second browser races the first, the passkey ceremony fails halfway, the public URL changes after enrollment (passkeys bind to it).
 - **Evidence:** integration tests with concurrent requests, a Playwright virtual authenticator, a threat model section in `docs/SECURITY.md`.

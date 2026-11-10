@@ -112,14 +112,14 @@ Each step is one reviewable PR (or a small series) with its own tests and docs. 
 ### Gate 2: local accounts and recovery (blocks the "autonomous" claim)
 
 - **Why:** without it the only credential is a shared static token that can be locked out by anyone.
-- **Capabilities:** sessions with CSRF protection, bootstrap and recovery by a one-time link from a host command (D-09), scoped API tokens for scripts and agents (created by an owner, hashed at rest, shown once, revocable), `ADMIN_TOKEN` ends once the first owner exists, a D1 design for the atomic owner claim and one-time tokens, a recovery path for Cloudflare (a script run with the operator's Cloudflare credentials), passkeys through a maintained WebAuthn library, last-owner protection, revocation, admin images through the session, a threat model in `docs/SECURITY.md`.
-- **Constraints:** no hand-written protocol. Passkeys need HTTPS or localhost, and the relying party ID follows `FK_PUBLIC_URL`, which then cannot be changed in the UI. D-02 and D-03 are decided (S11, S12). Decide D-09 and D-10 first.
+- **Capabilities:** sessions with CSRF protection, bootstrap and recovery by a one-time link from a host command (S14), `ADMIN_TOKEN` no longer needed to start, scoped API tokens for scripts and agents (created by an owner, hashed at rest, shown once, revocable), `ADMIN_TOKEN` ends once the first owner exists, a D1 design for the atomic owner claim and one-time tokens, a recovery path for Cloudflare (a script run with the operator's Cloudflare credentials), Cloudflare Access kept as an optional identity on that runtime (S15), passkeys through a maintained WebAuthn library, last-owner protection, revocation, admin images through the session, a threat model in `docs/SECURITY.md`.
+- **Constraints:** no hand-written protocol. Passkeys need HTTPS or localhost, and the relying party ID follows `FK_PUBLIC_URL`, which then cannot be changed in the UI. D-02, D-03, D-09 and D-10 are decided (S11, S12, S14, S15).
 - **Non-goals:** roles beyond owner and member, OIDC, public sign-up.
 - **Success signals:** concurrent bootstrap yields one owner. A virtual authenticator completes enrollment and sign-in. A recovery drill works on a clean instance. A valid login is never blocked by other people's failed attempts, with and without a proxy. The old `ADMIN_TOKEN` is refused after bootstrap and a scoped token works for automation. One conformance suite runs bootstrap, sign-in and recovery on SQLite and on D1.
 
 ![First owner bootstrap](diagrams/gate2-bootstrap-sequence.png)
 
-[Open the bootstrap sequence](diagrams/gate2-bootstrap-sequence.html). The other Gate 2 flows are [sign-in](diagrams/gate2-signin-sequence.html), [recovery](diagrams/gate2-recovery-sequence.html), [scoped tokens](diagrams/gate2-token-sequence.html) and [account states](diagrams/gate2-account-lifecycle.html). They are planned designs. They follow the decisions S11 and S12 and assume D-09 as recommended. Token lifetime, command name and cookie attributes are decided in the PR.
+[Open the bootstrap sequence](diagrams/gate2-bootstrap-sequence.html). The other Gate 2 flows are [sign-in](diagrams/gate2-signin-sequence.html), [recovery](diagrams/gate2-recovery-sequence.html), [scoped tokens](diagrams/gate2-token-sequence.html) and [account states](diagrams/gate2-account-lifecycle.html). They are planned designs. They follow the decisions S11, S12, S14 and S15. Token lifetime, command name and cookie attributes are decided in the PR.
 
 ### Step D: release tarball, version and updates
 

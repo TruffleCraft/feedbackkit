@@ -98,6 +98,8 @@ Settled decisions:
 | S11 | `ADMIN_TOKEN` is replaced by accounts. Once the first owner exists it no longer grants access. Scripts and agents use scoped API tokens that an owner creates, so scoped tokens move from Step 4 into Gate 2 | Owner, 2026-11-10 (D-02) |
 | S12 | Local accounts exist on both runtimes (SQLite and D1) and one conformance suite covers them. Gate 2 gains a D1 design and a recovery path for Cloudflare | Owner, 2026-11-10 (D-03) |
 | S13 | Cloudflare is the managed path for operators who do not want to host anything. The Node runtime is the self-hosted path and runs on any Linux host, for example at Hetzner | Owner, 2026-11-10 |
+| S14 | The first owner proves control with a one-time link printed by a host command. On Cloudflare a script run with the operator's Cloudflare credentials prints it. It is the same mechanism as recovery. No static bootstrap secret remains, and the server stops needing `ADMIN_TOKEN` to start once Gate 2 ships | Owner, 2026-11-10 (D-09) |
+| S15 | Cloudflare Access stays an accepted admin identity on the Cloudflare runtime beside accounts, and stays optional. ADR-015 keeps building MCP consent on it | Owner, 2026-11-10 (D-10) |
 
 Open decisions. Each recommendation is mine and needs the owner's answer.
 
@@ -108,7 +110,5 @@ Open decisions. Each recommendation is mine and needs the owner's answer.
 | D-05 | Does the board need an "in progress" lane? | Not yet. Three states first. A fourth needs an expand-only schema plan and a fix in `queries.ts` |
 | D-06 | Which Node floor? | 24 LTS everywhere |
 | D-07 | Is masking enforced or optional per project? | Optional flag first, default on for new projects after the widget change has shipped for one release |
-| D-09 | How does the very first owner prove control now that the token is replaced? | A one-time link printed by a host command (on Cloudflare by a script run with the operator's Cloudflare credentials). It is the same mechanism as recovery, so no static secret remains. The alternative keeps `ADMIN_TOKEN` as a bootstrap-only secret until the first owner exists |
-| D-10 | Does Cloudflare Access stay an accepted admin identity on the Cloudflare runtime beside accounts? | Yes. ADR-015 builds MCP consent on Access, and Access stays optional for operators who already use it |
 
 Co-created by Michel with NORA (AI Agent)
