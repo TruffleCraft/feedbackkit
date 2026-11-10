@@ -4,7 +4,7 @@ Read [README.md](README.md), then [docs/AGENT_SETUP.md](docs/AGENT_SETUP.md) bef
 
 ## Runtime choices
 
-- Node.js 24+ directly on Linux or Proxmox LXC: persistent SQLite, no Cloudflare account needed.
+- Node.js 24 or newer directly on Linux or Proxmox LXC: persistent SQLite, no Cloudflare account needed.
 - Cloudflare Worker: D1/R2, optional Cloudflare Access and OAuth/MCP.
 
 The standalone runtime supports the widget, admin and delivery APIs. Cloudflare OAuth/MCP is not implemented there. Do not promise feature parity beyond the [hosting guide](docs/SELF_HOSTING.md).

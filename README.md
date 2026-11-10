@@ -10,12 +10,12 @@ FeedbackKit adds a small feedback widget to any website. Visitors describe a pro
 
 | What you want | Start with | What you need |
 |---|---|---|
-| Run on your own server or a Proxmox LXC | [Server installation](docs/SELF_HOSTING.md#nodejs-on-a-server-or-proxmox-lxc) | Linux, Node.js 24+, persistent disk |
+| Run on your own server or a Proxmox LXC | [Server installation](docs/SELF_HOSTING.md#nodejs-on-a-server-or-proxmox-lxc) | Linux, Node.js 24 or newer, persistent disk |
 | Deploy on Cloudflare | [Cloudflare installation](docs/QUICKSTART.md) | Workers, D1 and R2 in your account |
 | Add an already running gateway to a site | [Create a project and install the widget](docs/GETTING_STARTED.md) | Access to the gateway admin and your website |
 | Change settings or understand the delivery log | [Admin guide](docs/ADMIN.md) | Admin access |
 
-For the server installation, **no Cloudflare account is required**. The gateway runs on Node.js and stores project settings, reports and attachments in SQLite on your persistent disk. Cloudflare deployments use D1 and R2 instead. Both use the same widget, feedback processing and admin UI. OAuth/MCP connections are currently available on the Cloudflare installation; the standalone server returns an explicit unsupported response for those routes.
+Status of the server installation: it runs from a checkout and its tests pass, and the documented install was run on a clean Debian 13 LXC, including systemd, a crash and a reboot. The release tarball and its update command ran there too, with fixture releases. No signed release has been published yet, and it was not tested on a cloud VPS. [Claims and their proof](docs/design/claims.md) lists what is verified. For the server installation, **no Cloudflare account is required**. The gateway runs on Node.js and stores project settings, reports and attachments in SQLite on your persistent disk. Cloudflare deployments use D1 and R2 instead. Both use the same widget, feedback processing and admin UI. OAuth/MCP connections are currently available on the Cloudflare installation; the standalone server returns an explicit unsupported response for those routes.
 
 ## First run on a Linux server
 
@@ -44,7 +44,7 @@ Open `http://localhost:8787/admin`, sign in with that token, and choose **New pr
 3. The gateway delivers it as a **GitHub issue**, a **GitHub Project draft**, or a **report in the FeedbackKit inbox**.
 4. The admin **delivery log** records delivery success, failure or an uncertain result. Retry is available where the saved delivery can be retried.
 
-GitHub owns the lifecycle of GitHub tickets. FeedbackKit does not mirror open/closed status or comments. A log entry saying an issue was created remains true after that issue closes. Use its destination link for the current status. FeedbackKit's own Open/Done/Discarded state applies to inbox reports.
+GitHub owns the lifecycle of GitHub tickets. FeedbackKit does not mirror open/closed status or comments. A log entry saying an issue was created remains true after that issue closes. Use its destination link for the current status. FeedbackKit's own Open/Done/Dismissed state applies to inbox reports.
 
 ## AI is optional
 

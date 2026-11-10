@@ -68,6 +68,10 @@ stays, the next promotion moves on. Dev: re-run `Release (dev channel)` on an ol
 wait for the next merge. D1 migrations are not rolled back; expand/contract keeps the previous
 code working on the newer schema.
 
+The standalone server installed from a release tarball goes back with `feedbackkit-update --rollback`
+(see [Updating](#updating)). A checkout install has no rollback command: restore the backup taken before
+the update (see [SELF_HOSTING.md](SELF_HOSTING.md#data-backups-and-updates)).
+
 ## Server tarball
 
 The standalone server ships as a tarball, so an operator installs a finished release without Git, pnpm or a compiler. Every dev build and every stable release carries three files on its GitHub release: `feedbackkit-vX.Y.Z.tar.gz`, `SHA256SUMS` and `SHA256SUMS.sig`. They are published only when the signing key of the channel is configured (see Release keys). An unsigned tarball is never attached.
