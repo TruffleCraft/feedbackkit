@@ -1,6 +1,6 @@
 # Masking and public-repo safety
 
-Status: proposed concept for Gate 1, drafted 2026-11-10 (decision D-07 in [scope.md](scope.md)). It answers one question: how does a report with an image stay safe when its destination is a public GitHub repository, without making the widget hard to use?
+Status: accepted by the owner on 2026-11-10 for Gate 1 (S20 in [scope.md](scope.md)). It answers one question: how does a report with an image stay safe when its destination is a public GitHub repository, without making the widget hard to use?
 
 ## The problem
 

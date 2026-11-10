@@ -26,6 +26,8 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 | J14 | A setup agent installs and verifies | draft | autonomy |
 | J15 | Robin changes the widget look and previews it | partly | none |
 | J16 | Robin creates a scoped token for an agent or script | planned | autonomy |
+| J17 | Robin embeds the team board in the product's own admin UI | planned | autonomy |
+| J18 | Sam follows their own reports | planned | autonomy |
 
 ## Diagrams
 
@@ -87,7 +89,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 
 - **Goal:** Sam describes a problem, answers one follow-up, sends. The report reaches its destination and nothing sensitive leaves the page unmasked.
 - **Steps:** open the widget, type, review the captured screenshot and mask areas, answer the follow-up, confirm.
-- **Guarantees:** the report is confirmed only after it is stored. The screenshot Sam reviewed is the screenshot uploaded and the one the AI sees. Form values and password fields are masked and elements marked `data-fk-private` are blocked out before the capture is rasterized. A project whose destination is public or unreadable always uses the strict profile ([concept](privacy-masking.md)).
+- **Guarantees:** the report is confirmed only after it is stored. The screenshot Sam reviewed is the screenshot uploaded and the one the AI sees. Form values and password fields are masked and elements marked `data-fk-private` are blocked out before the capture is rasterized. A project whose destination is public or unreadable always uses the strict profile, where text and images in the capture are covered unless an element is marked `data-fk-show` ([concept](privacy-masking.md)).
 - **Failure paths:** AI error (the report goes out unenriched), storage error (retryable 503), tracker error (kept, retry in admin), network loss (the text survives a retry).
 - **Evidence:** exists for loss paths. New: a Chromium test that decodes the request bodies and shows masked pixels differ from the original, plus a negative control. The full list is in the [acceptance table](privacy-masking.md#acceptance).
 - **Today:** loss handling works. There is no mask tool (the rectangle is a frame), no exclusion of private elements, and the AI receives whatever the capture produced.
@@ -192,5 +194,25 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Evidence:** tests for scope, revocation and the refused `ADMIN_TOKEN` on both runtimes, and a setup-agent run that uses a scoped token (J14).
 - **Today:** not built. `ADMIN_TOKEN` is the only credential for scripts and agents.
 - **Verified:** `code` as J3: one token, no roles, no scopes.
+
+## J17 Robin embeds the team board in the product's own admin UI
+
+- **Goal:** a team without GitHub triages local reports inside the product it already uses, without a second login.
+- **Steps:** Robin creates a scoped token for the host backend, the backend asks the gateway for a short-lived board link, the admin page puts it in an iframe, the team works the board, the link expires.
+- **Guarantees:** the iframe loads only on origins the project allows (`frame-ancestors`). A link works once and for minutes, not days. The token never reaches the browser. The board shows only the projects the token covers.
+- **Failure paths:** an expired link (the page asks the backend for a new one), a token with too wide a scope, an origin that is not allowed (the browser refuses the frame).
+- **Evidence:** a test that an unlisted origin cannot frame the route, a test that an expired or reused link is refused, and a run in the example host app (S21).
+- **Today:** not built. Admin pages send `frame-ancestors 'none'`, so nothing can be framed, and the board itself is Step 5.
+- **Verified:** `code` `src/worker/admin/pages.ts:28` sets `frame-ancestors 'none'`, and a search of `src/worker` finds no signed-link mechanism. The embed route needs its own explicit policy.
+
+## J18 Sam follows their own reports
+
+- **Goal:** a signed-in visitor of a host product sees what happened to the reports they sent, without asking the team.
+- **Steps:** the host backend signs the visitor's identity, the component asks the gateway for the visitor's reports, Sam sees title, status and their own text.
+- **Guarantees:** a visitor sees only reports stored with their verified identity, never internal notes, labels or other people's reports. Status comes from the gateway and exists only for local-delivery reports. Reports delivered to GitHub show a link out, as today. The stored reporter ID follows the retention rules and can be deleted by identity.
+- **Failure paths:** an unsigned or expired identity (empty list), a visitor who changes the context object in the browser (no effect on what is shown), a report that expired.
+- **Evidence:** a test that a forged `FeedbackKitContext` shows nothing, a test that two visitors never see each other's reports, a deletion by identity (S21).
+- **Today:** not built. The widget passes `FeedbackKitContext` as plain, unsigned values, and no public route lists reports.
+- **Verified:** `code` `src/widget/lib/host-context.ts` copies the host's object as is, `src/worker/admin/queries.ts:366` documents the context as "never verified by the gateway", and the public routes in `src/worker/app.ts` (`/diag`, `/api/config`, `/api/upload`, `/api/feedback`, `/api/events`, `/api/test-preview`, `/t/:key`, `/`) return no report list.
 
 Co-created by Michel with NORA (AI Agent)

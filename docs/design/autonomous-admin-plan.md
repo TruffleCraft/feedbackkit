@@ -100,7 +100,7 @@ Each step is one reviewable PR (or a small series) with its own tests and docs. 
 ### Gate 1: masked capture and upload contract (blocks the "private by design" claim)
 
 - **Why:** an original image that reaches the server cannot be called masked, whatever the screen shows afterwards.
-- **Concept:** [privacy-masking.md](privacy-masking.md), with the [image path](diagrams/privacy-image-path.html). Pending the owner's answer on D-07.
+- **Concept:** [privacy-masking.md](privacy-masking.md), with the [image path](diagrams/privacy-image-path.html). Accepted by the owner on 2026-11-10 (S20).
 - **Capabilities:**
   - A solid mask tool, rasterized into the pixels. Mask, thumbnail, upload and AI input come from the same bytes.
   - Images stay in memory until the visitor confirms. Removing one leaves no server copy. EXIF is stripped.
@@ -160,7 +160,7 @@ Release strategy for the tarball:
 - **Capabilities:** run J1, J2, J12 and J14 from the release tarball on a clean Debian LXC and on a clean cloud VPS (for example at Hetzner). Outbound traffic is allowed for the download and blocked until the first report. Include an update with data and a rollback. Update the status of each journey with the evidence.
 - **Success signals:** transcripts and results are linked from the journeys. Only now may README and docs say the gateway runs without Cloudflare. Tag the release after this step.
 
-### Steps 4 to 8, after the gates
+### Steps 4 to 10, after the gates
 
 | Step | Content | Needs first |
 |---|---|---|
@@ -169,6 +169,8 @@ Release strategy for the tarball:
 | 6 | OIDC through a maintained library, binding by `iss` and `sub` (S18) | Gate 2, upstream docs read |
 | 7 | Widget preview and theme tokens (#57) | Approved mock, contrast rules |
 | 8 | Signed webhook (#58) | None, optional |
+| 9 | Team board embed: an iframe route that opens with a short-lived signed link, `frame-ancestors` from the project's allowed origins, a read-only board API for scoped tokens (S21) | Gate 2, Step 5, approved mock |
+| 10 | Own-reports view: identity signed by the host backend, a stored reporter ID on local reports, a separate lazy-loaded bundle (S21) | Step 9, retention rules of S2 applied to the reporter ID |
 
 ## Release gates
 

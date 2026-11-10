@@ -45,6 +45,8 @@ Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready)
 | Scoped API tokens for scripts and agents, replacing `ADMIN_TOKEN` | yes | yes | planned |
 | OIDC sign-in (Pocket ID or any provider) | yes | yes | planned |
 | Board view of the local inbox | yes | yes | planned |
+| Team board embedded in the host's own UI, opened with a signed link (S21) | yes | yes | planned |
+| Visitors follow their own local reports, identity signed by the host (S21) | yes | yes | planned |
 | Widget preview and theme tokens | yes | yes | planned |
 | MCP server with OAuth | yes | no | shipped (Cloudflare only) |
 
@@ -54,6 +56,7 @@ Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready)
 |---|---|---|
 | Session replay, click journeys, video | A separate privacy and product decision | The owner asks for it and writes the privacy position first |
 | Automatic PII detection | It cannot be promised. The product offers manual masks and excludes marked elements and password fields | A detector with a measured miss rate exists |
+| A public board of other people's reports | It exposes reports, which contradicts the privacy goal | A publish flag that carries a neutral summary is designed and accepted |
 | Mirror of GitHub status, comments or assignees | GitHub owns the ticket | Never. Link out instead |
 | A second ticket tracker (comments, assignees, custom lanes, SLAs) | The inbox is not the product's edge (CEO review 2026-10-24) | A paying use case without GitHub appears |
 | Public sign-up, mandatory mail provider, mandatory external identity | Autonomy is the point | Never as a requirement |
@@ -104,12 +107,9 @@ Settled decisions:
 | S17 | The board keeps three lanes and gets no "in progress" lane. GitHub owns ticket state (S1). A fourth lane would need an expand-only schema plan and a fix in `queries.ts` | Owner, 2026-11-10 (D-05) |
 | S18 | OIDC (Step 6) links an identity to an account by `iss` and `sub`. The link is made through an invitation or from a signed-in session. Email equality grants nothing, so an unverified or recycled address cannot take over an account | Owner delegated the choice, 2026-11-10 (D-04) |
 | S19 | Node 24 is the floor. `engines` says `>=24`, CI runs Node 24 and, once a newer LTS line exists, that one too, and the docs name one version. Node 22 is unsupported | Owner delegated the choice, 2026-11-10 (D-06) |
+| S20 | Masking follows the concept in [privacy-masking.md](privacy-masking.md). A project has a `privacy.profile` of `strict` or `standard`. New projects start strict, and a public or unreadable destination forces strict. In strict a screenshot keeps layout and covers text and images, console capture keeps errors and warnings with objects dropped, and host context values are filtered | Owner, 2026-11-10 (D-07) |
+| S21 | Projects without GitHub get two embeds, both after Gate 2 and Step 5 and both for local-delivery reports only. First a team board in an iframe that opens with a short-lived signed link, minted by the host backend with a scoped token. Then an own-reports view whose identity is signed by the host backend. A public board of other people's reports stays out. Comments, assignees and SLAs stay out | Owner, 2026-11-10 (D-11) |
 
-Open decisions. Each recommendation is mine and needs the owner's answer.
-
-| ID | Question | Recommendation |
-|---|---|---|
-| D-07 | Is masking enforced or optional per project, and what does a capture keep? | Neither switch. A `privacy.profile` of `strict` or `standard`: new projects start strict, and `standard` is allowed only for private destinations. In strict a screenshot keeps layout and covers text and images (`layout`), because debugging needs structure, errors and identifiers, not page content. Concept: [privacy-masking.md](privacy-masking.md) |
-| D-11 | Do projects without GitHub get a board they can embed in their own UI, and do signed-in visitors get a view of their own reports? | Yes, in two steps after Gate 2 and Step 5, and only for local-delivery reports. First a team board in an iframe that opens with a short-lived signed link, which the host backend mints with a scoped token. Then an own-reports view whose identity is signed by the host backend, because `FeedbackKitContext` is unsigned client data and cannot authorize anything. A public board of other people's reports stays out. This meets the revisit trigger of the "second ticket tracker" row for projects without GitHub. Comments, assignees and SLAs stay out |
+No decision is open. The open points that belong to single pull requests are listed at the end of [privacy-masking.md](privacy-masking.md).
 
 Co-created by Michel with NORA (AI Agent)
