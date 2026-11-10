@@ -1,4 +1,4 @@
-import { FeedbackConfig } from "../shared/contract.js";
+import { FeedbackConfig, patSecretProblems } from "../shared/contract.js";
 import { ConfigError } from "./errors.js";
 import type { Env } from "./env.js";
 
@@ -33,6 +33,16 @@ function cacheSet(key: string, entry: CacheEntry): void {
   cache.set(key, entry);
 }
 
+const warnedSecrets = new Set<string>();
+
+/** Stored settings from before the GITHUB_PAT_<name> rule keep working. Say so once per project and process. */
+export function warnLegacySecretNames(publicKey: string, raw: unknown, warn: (message: string) => void = console.warn): void {
+  const problems = patSecretProblems(raw);
+  if (problems.length === 0 || warnedSecrets.has(publicKey)) return;
+  warnedSecrets.add(publicKey);
+  warn(`[feedbackkit] project ${publicKey}: ${problems.join("; ")}. It still works, but publishing the settings again is refused until the secret is renamed to GITHUB_PAT_<name>.`);
+}
+
 /** Load a project's config by its public key. Returns null if unknown. */
 export async function loadProject(
   env: Env,
@@ -61,6 +71,7 @@ export async function loadProject(
   } catch {
     throw new ConfigError(`project ${publicKey}: config is not valid JSON`);
   }
+  warnLegacySecretNames(publicKey, parsed);
   const validated = FeedbackConfig.safeParse(parsed);
   if (!validated.success) {
     throw new ConfigError(`project ${publicKey}: config failed validation: ${validated.error.message}`);

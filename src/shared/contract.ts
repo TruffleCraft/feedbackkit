@@ -196,6 +196,18 @@ export function resolveDelivery(
   return config.tracker ? "issue" : "local";
 }
 
+/** The secret names a project's settings may point at. A wider name could name
+ * ADMIN_TOKEN or another binding, and its value would be sent to GitHub. */
+export const PAT_SECRET_NAME = /^GITHUB_PAT_[A-Za-z0-9_]+$/;
+
+/** Settings paths whose secret name does not follow GITHUB_PAT_<name>. Written
+ * settings must pass; stored settings that fail keep working and are warned about. */
+export function patSecretProblems(raw: unknown): string[] {
+  const tracker = (raw as { tracker?: { patSecret?: unknown; project?: { patSecret?: unknown } | null } | null } | null | undefined)?.tracker;
+  const found: Array<[string, unknown]> = [["tracker.patSecret", tracker?.patSecret], ["tracker.project.patSecret", tracker?.project?.patSecret]];
+  return found.filter(([, name]) => typeof name === "string" && !PAT_SECRET_NAME.test(name)).map(([path, name]) => `${path}: "${String(name)}" is not a GITHUB_PAT_<name> secret`);
+}
+
 /** Capability a stored config needs (see DELIVERY_CAPABILITY). Works on the raw
  * JSON, so writers can check before or without parsing. Mirrored in
  * scripts/seed-config.mjs (a test keeps both in step). */

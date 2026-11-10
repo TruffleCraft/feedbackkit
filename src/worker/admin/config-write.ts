@@ -1,4 +1,4 @@
-import { DELIVERY_CAPABILITY, FeedbackConfig, WIRE_VERSION, requiredDeliveryCapability, resolveDelivery, type Delivery } from "../../shared/contract.js";
+import { DELIVERY_CAPABILITY, FeedbackConfig, WIRE_VERSION, patSecretProblems, requiredDeliveryCapability, resolveDelivery, type Delivery } from "../../shared/contract.js";
 import { storedDeliveryCapability } from "../db.js";
 import type { Env } from "../env.js";
 
@@ -16,6 +16,10 @@ export async function checkConfigForWrite(env: Env, raw: unknown): Promise<Confi
     // Admin-authed, so detailed Zod paths are safe — and save a debugging loop.
     const issues = validated.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`);
     return { ok: false, status: 400, body: { v: WIRE_VERSION, status: "error", code: "FK_CONFIG_INVALID", error: "config failed validation", issues } };
+  }
+  const secretProblems = patSecretProblems(validated.data);
+  if (secretProblems.length > 0) {
+    return { ok: false, status: 400, body: { v: WIRE_VERSION, status: "error", code: "FK_CONFIG_INVALID", error: "config failed validation", issues: secretProblems } };
   }
   // Compatibility gate: stable reads the same D1, so a shape it cannot handle yet
   // would break the project there. Accepted only once the promote workflow

@@ -8,6 +8,7 @@ import { sweepExpiredAssets } from "../dist-server/r2.mjs";
 import { pruneExpiredRecords } from "../dist-server/retention.mjs";
 import { codeDeliveryCapability } from "./delivery-capability.mjs";
 import { canonicalUrl, clientAddress, readTrustedHops } from "./server-http.mjs";
+import { appEnvironment } from "./server-env.mjs";
 
 process.umask(0o077);
 const trustedHops = readTrustedHops(process.env);
@@ -37,7 +38,7 @@ async function asset(path) {
     return new Response(data, { headers: { "Content-Type": file[1], "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff", "Access-Control-Allow-Origin": "*" } });
   } catch { return new Response("Assets not built", { status: 503 }); }
 }
-const env = { ...process.env, DB: storage.DB, UPLOADS: storage.UPLOADS, ASSETS: { fetch: (r) => asset(new URL(typeof r === 'string' ? r : r.url).pathname) }, FK_ENV: "production", FK_CHANNEL: "local", WIDGET_VERSION: (await readFile(join(root,"dist/widget.ver"),"utf8")).trim() };
+const env = { ...appEnvironment(process.env), DB: storage.DB, UPLOADS: storage.UPLOADS, ASSETS: { fetch: (r) => asset(new URL(typeof r === 'string' ? r : r.url).pathname) }, FK_ENV: "production", FK_CHANNEL: "local", WIDGET_VERSION: (await readFile(join(root,"dist/widget.ver"),"utf8")).trim() };
 // Cloudflare Access and OAuth are deployment-specific; never trust headers or
 // bind accidental process-environment strings as runtime objects.
 delete env.OAUTH_KV; delete env.OAUTH_PROVIDER; delete env.FK_ACCESS_TEAM_DOMAIN; delete env.FK_ACCESS_AUD;
