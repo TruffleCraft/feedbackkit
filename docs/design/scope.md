@@ -87,6 +87,7 @@ Settled decisions:
 | S7 | Most backend settings are managed through UI controls, with JSON as the escape hatch | Owner, 2026-11-09 |
 | S8 | The standalone server ships as a release tarball with a signed checksum. Operators do not build. Docker and an npm package are backlog | Owner, 2026-11-10 |
 | S9 | Standalone releases follow the channels of ADR-013: stable releases and dev pre-releases, default stable. Details in Step D of the plan | Owner, 2026-11-10 |
+| S10 | Releases are signed. `SHA256SUMS` carries an OpenSSH Ed25519 signature (`ssh-keygen -Y`). The stable key is a secret in the `production` environment of the release workflow. Dev pre-releases are signed with a separate dev key in the `dev` environment, and the update command accepts a dev key only on the dev channel. The public keys ship in every bundle and in the docs. The rotation procedure is written and rehearsed before the first signed release. Confirm `ssh-keygen -Y` on the target in Step 3 | Owner, 2026-11-10 (key custody, D-08). The separate dev key is my addition for the same decision |
 
 Open decisions. Each recommendation is mine and needs the owner's answer.
 
@@ -99,6 +100,5 @@ Open decisions. Each recommendation is mine and needs the owner's answer.
 | D-05 | Does the board need an "in progress" lane? | Not yet. Three states first. A fourth needs an expand-only schema plan and a fix in `queries.ts` |
 | D-06 | Which Node floor? | 24 LTS everywhere |
 | D-07 | Is masking enforced or optional per project? | Optional flag first, default on for new projects after the widget change has shipped for one release |
-| D-08 | Who holds the release signing key, and how is it rotated? | An Ed25519 key in the `production` environment secret of the release workflow. The signature is an OpenSSH signature (`ssh-keygen -Y`): the tool exists wherever OpenSSH does and verified a signature and rejected a tampered file in a local test, while `openssl` Ed25519 verification needs OpenSSL 3 and macOS ships LibreSSL. The public key ships in every bundle and in the docs. Confirm on the target in Step 3 and write the rotation procedure before the first signed release |
 
 Co-created by Michel with NORA (AI Agent)

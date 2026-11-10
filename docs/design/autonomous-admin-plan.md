@@ -125,7 +125,7 @@ Each step is one reviewable PR (or a small series) with its own tests and docs. 
   - `docs/SELF_HOSTING.md` describes install and update from the tarball. The clone-and-build path moves to `CONTRIBUTING.md` as the developer path.
 - **Constraints:** the target needs Node.js 24 and the standard tools curl, tar, sha256sum and ssh-keygen, nothing else. Everything the repo ships is English: release notes, command output, docs and `bundle.json`. The admin notice has `en` and `de` keys, as `CONTRIBUTING.md` requires for user-facing strings. Nothing updates without an operator command. The update check is one plain request to the GitHub Releases API and sends nothing about the installation. One bundle serves every Linux target. The update script is POSIX shell and CI tests it on fixtures.
 - **Non-goals:** a Docker image, an npm registry package, an auto-update daemon, delta updates, init systems other than systemd.
-- **Success signals:** the workflow produces tarball, checksums and signature from a dev tag (a dry run before the first stable tag). A fresh LXC installs it with only Node and the standard tools. An update from one release to the next keeps the data. A corrupted tarball, a tampered checksum file and a bad bundle each stop the update and restore the previous state. `/diag` shows release and channel.
+- **Success signals:** the workflow produces tarball, checksums and signature from a dev tag (a dry run before the first stable tag). A fresh LXC installs it with only Node and the standard tools. An update from one release to the next keeps the data. A corrupted tarball, a tampered checksum file, a dev-signed stable release and a bad bundle each stop the update and restore the previous state. A key rotation has been rehearsed before the first signed release. `/diag` shows release and channel.
 
 Release strategy for the tarball:
 
@@ -135,7 +135,7 @@ Release strategy for the tarball:
 | Channels | `stable` (`vX.Y.Z`, the GitHub release marked latest) and `dev` (`vX.Y.Z-dev.N`, marked pre-release). The default is stable. `feedbackkit-update --channel dev` opts in. No `rc` tag: a tested dev build is promoted by hand |
 | Build | Every merge builds a dev tarball. Promotion rebuilds the same commit under the stable version (ADR-013). CI checks that the dev and stable bundles of one commit are byte-identical except `bundle.json`, so what was tested is what ships |
 | Retention | GitHub keeps the newest three dev pre-releases (ADR-013). Stable releases stay |
-| Integrity | `SHA256SUMS` is signed with the release key (D-08) and checked with `ssh-keygen -Y verify`. The public key ships in every bundle and in the docs. A checksum next to the tarball detects corruption only. The signature detects tampering |
+| Integrity | `SHA256SUMS` is signed with the release key of its channel (S10) and checked with `ssh-keygen -Y verify`. The public key ships in every bundle and in the docs. A checksum next to the tarball detects corruption only. The signature detects tampering |
 | Update notice | Uses GitHub's latest-release endpoint, which skips pre-releases (on this repo it returns `v0.1.18` while `v0.1.19-dev.1` exists). On the dev channel it also offers newer dev builds |
 | Skipping releases | `bundle.json` names the oldest release a data directory can update from. The update command walks through intermediate releases when needed |
 | Rollback | The two newest releases stay on disk. Migrations only add, so one release back works on the newer schema. Beyond that the update command restores the data copy |
