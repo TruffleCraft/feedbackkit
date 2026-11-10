@@ -7,7 +7,7 @@ import { createTestReport } from "../orchestrate.js";
 import { checkProject } from "../project-check.js";
 import { deleteAssets } from "../storage/r2.js";
 import { forgetConfig } from "../config.js";
-import { checkConfigForWrite } from "./config-write.js";
+import { checkConfigForWrite, parseStoredConfig } from "./config-write.js";
 import { checkRepoAccess } from "../providers/github.js";
 import { retentionImpact, retentionNotice } from "../storage/retention.js";
 import { releaseOf, bindingsPresence, secretsPresence } from "../status.js";
@@ -205,7 +205,7 @@ export function registerAdminRoutes(app: AppT): void {
     const cfg = stripColumns(body?.config);
     if (!cfg) return err(c, 400, "config must be a JSON object", "FK_CONFIG_INVALID");
     if (cfg["projectId"] !== projectId) return err(c, 400, `projectId cannot change here (it is "${projectId}")`, "FK_CONFIG_INVALID", { issues: [`projectId: must stay "${projectId}"`] });
-    const check = await checkConfigForWrite(c.env, cfg);
+    const check = await checkConfigForWrite(c.env, cfg, parseStoredConfig(stored.config));
     if (!check.ok) return c.json(check.body, check.status);
     // A retention change deletes reports at the next cleanup: say how many, so the review can show it.
     const before = parseConfig(stored.config)?.storage?.retentionDays ?? null;
@@ -227,7 +227,8 @@ export function registerAdminRoutes(app: AppT): void {
     if (!cfg) return err(c, 400, "config must be a JSON object", "FK_CONFIG_INVALID");
     if (!Number.isInteger(body?.expectedVersion)) return err(c, 400, "expectedVersion (the config version you edited) is required", "FK_CONFIG_INVALID");
     if (cfg["projectId"] !== projectId) return err(c, 400, `projectId cannot change here (it is "${projectId}")`, "FK_CONFIG_INVALID", { issues: [`projectId: must stay "${projectId}"`] });
-    const check = await checkConfigForWrite(c.env, cfg);
+    const before = await c.env.DB.prepare("SELECT config FROM projects WHERE id = ?1").bind(projectId).first<{ config: string }>();
+    const check = await checkConfigForWrite(c.env, cfg, parseStoredConfig(before?.config));
     if (!check.ok) return c.json(check.body, check.status);
     const now = Date.now();
     // Stored exactly as written (no defaults filled in), so seed files round-trip.

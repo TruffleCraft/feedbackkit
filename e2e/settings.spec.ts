@@ -154,3 +154,30 @@ test("a change that touches no retention shows no retention note", async ({ page
   await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeEnabled();
   await expect(page.locator("#cfg-out")).not.toContainText("Retention");
 });
+
+test("removing a published type archives it, removing a new type deletes it", async ({ page }) => {
+  await installAdminMocks(page); await signedIn(page);
+  await page.goto("/admin/projects/harborline#config");
+  const settings = page.locator("#cfg-form");
+  const types = async () => (JSON.parse(await page.getByLabel("Config JSON").inputValue()) as { templates: Array<{ type: string; archived?: boolean }> }).templates;
+  await settings.getByRole("button", { name: "Types & delivery", exact: true }).click();
+  const items = settings.locator(".settings-content > .settings-field").first().locator(":scope > .settings-item");
+  const before = await types();
+
+  // A published type offers Archive. The type stays in the settings, flagged.
+  page.once("dialog", (dialog) => void dialog.accept());
+  await items.first().getByRole("button", { name: "Archive", exact: true }).click();
+  const archived = await types();
+  expect(archived).toHaveLength(before.length);
+  expect(archived[0]).toMatchObject({ type: before[0]!.type, archived: true });
+  await expect(items.first().getByRole("button", { name: "Unarchive", exact: true })).toBeVisible();
+  await items.first().getByRole("button", { name: "Unarchive", exact: true }).click();
+  expect((await types())[0]).not.toHaveProperty("archived");
+
+  // A type that was never published is removed for real.
+  await settings.getByRole("button", { name: "Add feedback type", exact: true }).click();
+  expect(await types()).toHaveLength(before.length + 1);
+  page.once("dialog", (dialog) => void dialog.accept());
+  await items.last().getByRole("button", { name: "Remove", exact: true }).click();
+  expect(await types()).toHaveLength(before.length);
+});

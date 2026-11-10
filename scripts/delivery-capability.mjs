@@ -17,6 +17,7 @@ export function codeDeliveryCapability() {
 export function requiredDeliveryCapability(raw) {
   if (!raw || typeof raw !== "object") return 0;
   const templates = Array.isArray(raw.templates) ? raw.templates : [];
+  if (templates.some((t) => t?.archived)) return 3;
   const deliveries = [raw.delivery, ...templates.map((t) => t?.delivery)].filter((d) => d !== undefined);
   if (deliveries.includes("project") || raw.tracker?.project !== undefined) return 2;
   if (deliveries.length > 0 || !raw.tracker) return 1;

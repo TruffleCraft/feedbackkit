@@ -31,6 +31,7 @@ interface FieldSpec {
 }
 interface Template {
   type: string;
+  archived?: boolean;
   label: Label;
   fields?: FieldSpec[];
   tracker?: { repo?: string; labels?: string[]; type?: string; issueFields?: { fieldId: number }[] };
@@ -787,7 +788,7 @@ function renderTypes(cfg: ProjectConfig) {
       const labels = t.tracker?.labels ?? [];
       const delivery = deliveryOf(cfg, t);
       const project = cfg.tracker?.project;
-      const meta = delivery !== "issue"
+      const metaBase = delivery !== "issue"
         ? `${fields.length === 0 ? "No fields" : `${fields.length} fields`} · ${delivery === "project" && project ? `GitHub Project ${project.org} #${project.number}` : "saved without an issue"}`
         : [
             fields.length === 1 ? "1 field" : `${fields.length} fields`,
@@ -799,6 +800,7 @@ function renderTypes(cfg: ProjectConfig) {
           ]
             .filter(Boolean)
             .join(" · ");
+      const meta = t.archived ? `Archived · ${metaBase}` : metaBase;
       const inner = el("div", { class: "inner" });
       if (required > 3) {
         inner.append(el("p", { class: "note" }, `${required} required fields. Each extra one makes the follow-up longer for the person reporting. Consider making one optional.`));

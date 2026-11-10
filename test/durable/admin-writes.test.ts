@@ -118,7 +118,8 @@ describe("config editor routes", () => {
     const stored = await env.DB.prepare("SELECT config FROM projects WHERE id = 'demo'").first<{ config: string }>();
     expect(JSON.parse(stored!.config)).toEqual(edited); // no defaults, no publicKey/configVersion
 
-    const stale = await call("PUT", "/api/admin/projects/demo/config", { config: config, expectedVersion: 3 });
+    // A stale write that keeps the published types, so the version check is what refuses it.
+    const stale = await call("PUT", "/api/admin/projects/demo/config", { config: { ...edited, privacyUrl: "https://acme.example/privacy" }, expectedVersion: 3 });
     expect(stale.status).toBe(409);
     expect(await stale.json()).toMatchObject({ code: "FK_CONFIG_STALE", configVersion: 4, config: edited });
   });
@@ -127,6 +128,43 @@ describe("config editor routes", () => {
     const res = await call("PUT", "/api/admin/projects/demo/config", { config: { ...config, delivery: "local" }, expectedVersion: 3 });
     expect(res.status).toBe(422);
     expect(await res.json()).toMatchObject({ code: "FK_CONFIG_SHAPE_UNSUPPORTED" });
+  });
+});
+
+describe("published type IDs", () => {
+  const two = { ...config, templates: [{ type: "bug", label: "Bug" }, { type: "idea", label: "Idea" }] };
+  beforeEach(async () => {
+    await seed();
+    await env.DB.prepare("UPDATE projects SET config = ?1 WHERE id = 'demo'").bind(JSON.stringify(two)).run();
+  });
+
+  it("refuses to drop or rename a published type, on validate and on publish, and says to archive it", async () => {
+    for (const templates of [[{ type: "bug", label: "Bug" }], [{ type: "bug", label: "Bug" }, { type: "thought", label: "Idea" }]]) {
+      const check = await call("POST", "/api/admin/projects/demo/config/validate", { config: { ...config, templates } });
+      expect(check.status).toBe(400);
+      expect(await check.json()).toMatchObject({ code: "FK_CONFIG_INVALID", issues: [expect.stringContaining('type "idea" was published')] });
+      expect((await call("PUT", "/api/admin/projects/demo/config", { config: { ...config, templates }, expectedVersion: 3 })).status).toBe(400);
+    }
+    const stored = await env.DB.prepare("SELECT config FROM projects WHERE id = 'demo'").first<{ config: string }>();
+    expect(JSON.parse(stored!.config)).toEqual(two);
+  });
+
+  it("refuses an ID that is used twice", async () => {
+    const res = await call("POST", "/api/admin/projects/demo/config/validate", { config: { ...config, templates: [{ type: "bug", label: "Bug" }, { type: "bug", label: "Again" }] } });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ issues: expect.arrayContaining([expect.stringContaining("used by more than one type")]) });
+  });
+
+  it("publishes an archived type once the stored capability covers it", async () => {
+    const archived = { ...two, templates: [{ type: "bug", label: "Bug" }, { type: "idea", label: "Idea", archived: true }] };
+    const early = await call("PUT", "/api/admin/projects/demo/config", { config: archived, expectedVersion: 3 });
+    expect(early.status).toBe(422);
+    expect(await early.json()).toMatchObject({ code: "FK_CONFIG_SHAPE_UNSUPPORTED", required: 3 });
+    await env.DB.prepare("INSERT INTO meta (key, value) VALUES ('delivery_capability', '3') ON CONFLICT(key) DO UPDATE SET value = '3'").run();
+    const ok = await call("PUT", "/api/admin/projects/demo/config", { config: archived, expectedVersion: 3 });
+    expect(await ok.json()).toMatchObject({ status: "published", configVersion: 4 });
+    const stored = await env.DB.prepare("SELECT config FROM projects WHERE id = 'demo'").first<{ config: string }>();
+    expect(JSON.parse(stored!.config).templates[1]).toMatchObject({ type: "idea", archived: true });
   });
 });
 

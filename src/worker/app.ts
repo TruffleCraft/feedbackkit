@@ -17,7 +17,7 @@ import { checkProject, type ProjectCheck } from "./project-check.js";
 import { VERSION, releaseOf, bindingsPresence, secretsPresence } from "./status.js";
 import { adminAuthed, adminGate } from "./admin/auth.js";
 import { registerAdminRoutes } from "./admin/routes.js";
-import { checkConfigForWrite } from "./admin/config-write.js";
+import { checkConfigForWrite, parseStoredConfig } from "./admin/config-write.js";
 import { registerAdminPages } from "./admin/pages.js";
 import type { Env } from "./env.js";
 
@@ -362,7 +362,9 @@ app.post("/api/admin/config/import", async (c) => {
     return c.json({ v: WIRE_VERSION, status: "error", error: "publicKey must be 8-64 chars of [A-Za-z0-9_-]" }, 400);
   }
 
-  const check = await checkConfigForWrite(c.env, cfg);
+  // Importing over an existing project is a settings write too: its published types stay.
+  const existing = typeof cfg["projectId"] === "string" ? await c.env.DB.prepare("SELECT config FROM projects WHERE id = ?1").bind(cfg["projectId"]).first<{ config: string }>().catch(() => null) : null;
+  const check = await checkConfigForWrite(c.env, cfg, parseStoredConfig(existing?.config));
   if (!check.ok) return c.json(check.body, check.status);
 
   // Store the raw blob (minus publicKey), like `pnpm seed`: loadProject re-runs

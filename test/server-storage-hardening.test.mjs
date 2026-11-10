@@ -8,6 +8,7 @@ import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { DatabaseSync } from 'node:sqlite';
 import { openStorage } from '../scripts/server-storage.mjs';
+import { codeDeliveryCapability } from '../scripts/delivery-capability.mjs';
 
 const temporary = () => mkdtempSync(join(tmpdir(), 'fk-store-'));
 const bytesOf = (file) => (existsSync(file) ? readFileSync(file) : Buffer.alloc(0));
@@ -130,13 +131,13 @@ test('the delivery capability never goes down, and a release behind the data ref
     assert.ok(await server.ready, server.output());
   } finally { await server.stop(); }
   store = openStorage(join(dir, 'feedbackkit.sqlite'), 'migrations');
-  assert.equal(store.sqlite.prepare("SELECT value FROM meta WHERE key='delivery_capability'").get().value, '2', 'raised to what this release provides');
+  assert.equal(store.sqlite.prepare("SELECT value FROM meta WHERE key='delivery_capability'").get().value, String(codeDeliveryCapability()), 'raised to what this release provides');
   store.sqlite.exec("UPDATE meta SET value='99' WHERE key='delivery_capability'");
   store.close();
   server = await launch(dir);
   try {
     assert.equal(await Promise.race([server.exited, new Promise((r) => setTimeout(() => r('still running'), 10_000))]), 1);
-    assert.match(server.output(), /needs delivery capability 99 and this release provides 2/);
+    assert.match(server.output(), new RegExp(`needs delivery capability 99 and this release provides ${codeDeliveryCapability()}`));
     store = openStorage(join(dir, 'feedbackkit.sqlite'), 'migrations');
     assert.equal(store.sqlite.prepare("SELECT value FROM meta WHERE key='delivery_capability'").get().value, '99', 'not lowered');
     store.close();

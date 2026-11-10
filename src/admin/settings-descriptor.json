@@ -258,6 +258,10 @@
               "local"
             ],
             "opt": true
+          },
+          "archived": {
+            "k": "boolean",
+            "opt": true
           }
         }
       }

@@ -65,7 +65,7 @@ answered as `issue_failed`, as before.
 
 | Code | HTTP | Where | Meaning |
 |---|---|---|---|
-| `FK_CONFIG_INVALID` | 400 | config import, validate, publish | The config failed validation (`issues` lists each JSON path), `projectId` differs from the project, a secret name is not `GITHUB_PAT_<name>`, `storage.retentionDays` is below 7, or `expectedVersion` is missing. |
+| `FK_CONFIG_INVALID` | 400 | config import, validate, publish | The config failed validation (`issues` lists each JSON path), `projectId` differs from the project, a secret name is not `GITHUB_PAT_<name>`, `storage.retentionDays` is below 7, a type ID or field key is used twice, a published type is dropped or renamed (archive it instead), every type is archived, or `expectedVersion` is missing. |
 | `FK_CONFIG_STALE` | 409 | `PUT /api/admin/projects/:id/config` | Someone published since you loaded it. The answer carries the current `configVersion` and `config`; review the diff and publish again. |
 | `FK_NOT_LOCAL` | 409 | `PATCH /api/admin/feedback/:id` | The report was delivered to GitHub; triage it there. |
 | `FK_DELETE_INCOMPLETE` | 502 | `DELETE /api/admin/feedback/:id` | Some attachments could not be deleted (`failedKeys`). The report is kept; try again. |

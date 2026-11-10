@@ -26,7 +26,7 @@ const LABELS: Record<string, string> = {
   llm: "AI configuration", provider: "Provider", model: "Model ID", baseUrl: "API base URL", dailyBudget: "Maximum AI calls per day", structuredOutput: "Request structured JSON output",
   templates: "Feedback types", type: "Type ID", label: "Label", guidance: "Guidance for visitors", fields: "Fields", key: "Field ID", required: "Required", askIfMissing: "Ask when missing", extractionHint: "AI extraction hint", options: "Choices", value: "Value", body: "Issue body sections", heading: "Heading", template: "Body template",
   tracker: "GitHub destination", repo: "Repository override", labels: "GitHub labels", noIssue: "Store in inbox only (legacy)", delivery: "Delivery", defaultRepo: "Default repository", patSecret: "Token environment variable name", project: "GitHub Project", org: "Organization", number: "Project number", typeOptions: "Feedback type options", status: "Initial status", page: "Page field", source: "Source field", boardItemType: "Board item type", issueFields: "Organization issue fields", fieldId: "GitHub field ID",
-  appearance: "Widget appearance", theme: "Color scheme", accent: "Accent color",
+  appearance: "Widget appearance", theme: "Color scheme", accent: "Accent color", archived: "Archived (hidden from visitors)",
 };
 const HELP: Record<string, string> = {
   projectId: "Existing project IDs stay fixed so snippets and stored feedback keep working.",
@@ -124,7 +124,14 @@ export function settingsEditor(root: HTMLElement, changed: (draft: ObjectValue) 
         const item=node("div");item.className="settings-item";
         item.append(field(t.el!,v,`${title} ${i+1}`,[...path,String(i)],(next)=>{values[i]=next;assign(values)}));
         for(const [label,delta] of [["Move up",-1],["Move down",1]] as const){const b=node("button",label);b.type="button";b.className="b ghost sm";b.disabled=i+delta<0||i+delta>=values.length;b.onclick=()=>{[values[i],values[i+delta]]=[values[i+delta],values[i]];assign(values);render()};item.append(b)}
-        const remove=node("button","Remove");remove.type="button";remove.className="b ghost sm";remove.onclick=()=>{if(!window.confirm(`Remove this ${title} entry from the draft?`))return;values.splice(i,1);assign(values);render()};item.append(remove);box.append(item);
+        // A published type is archived, never deleted: reports carry its ID.
+        const published=path.length===1&&path[0]==="templates"&&publishedType(v);
+        const archived=published&&(v as ObjectValue)["archived"]===true;
+        const remove=node("button",published?(archived?"Unarchive":"Archive"):"Remove");remove.type="button";remove.className="b ghost sm";
+        remove.onclick=()=>{
+          if(published){if(!archived&&!window.confirm("Archive this type? Visitors no longer see it and the AI no longer picks it. Existing reports keep it."))return;if(archived)delete (v as ObjectValue)["archived"];else (v as ObjectValue)["archived"]=true;assign(values);render();return}
+          if(!window.confirm(`Remove this ${title} entry from the draft?`))return;values.splice(i,1);assign(values);render()};
+        item.append(remove);box.append(item);
       });
       const add=node("button",`Add ${title === "Feedback types" ? "feedback type" : "entry"}`);add.type="button";add.className="b ghost sm";add.onclick=()=>{values.push(initial(t.el!));assign(values);render()};box.append(add);
     } else {
@@ -145,6 +152,10 @@ export function settingsEditor(root: HTMLElement, changed: (draft: ObjectValue) 
       const unset=node("button","Use default / remove setting");unset.type="button";unset.className="settings-unset";unset.onclick=()=>{assign(undefined);render()};box.append(unset);
     }
     return box;
+  }
+  function publishedType(item:unknown):boolean{
+    const type=(item as ObjectValue|null)?.["type"];
+    return Array.isArray(saved["templates"])&&(saved["templates"] as ObjectValue[]).some((t)=>t["type"]===type);
   }
   function existingId(path:string[],value:unknown):boolean{
     if(!path.includes("templates"))return false;

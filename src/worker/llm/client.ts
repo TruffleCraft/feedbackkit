@@ -1,4 +1,4 @@
-import type { ConsoleEntryT, DeviceInfoT, FeedbackConfig, TemplateDefinition } from "../../shared/contract.js";
+import { activeTemplates, type ConsoleEntryT, type DeviceInfoT, type FeedbackConfig, type TemplateDefinition } from "../../shared/contract.js";
 
 // One OpenAI-compatible client covers OpenRouter (default), LiteLLM, Ollama, vLLM,
 // local models (ADR-007). Structured output is requested best-effort; the HARD gate
@@ -134,8 +134,10 @@ function renderContext(opts: ClassifyOpts): string {
 
 export async function classifyAndExtract(opts: ClassifyOpts): Promise<ExtractionResult> {
   const { config, template, message, screenshotDataUrl, apiKey, chat } = opts;
-  const allTypes = config.templates.map((t) => t.type);
-  const candidates = opts.autoType ? config.templates : [template];
+  // Archived types are not offered to the model, whatever the visitor sees.
+  const active = activeTemplates(config.templates);
+  const allTypes = active.map((t) => t.type);
+  const candidates = opts.autoType ? active : [template];
   const fields = unionFields(candidates);
 
   const fieldLines = fields
@@ -229,7 +231,7 @@ export async function classifyAndExtract(opts: ClassifyOpts): Promise<Extraction
   const obj = parsed as Record<string, unknown>;
   const typeVal = typeof obj["type"] === "string" && allTypes.includes(obj["type"] as string) ? (obj["type"] as string) : undefined;
   // Fixed type: the given template. Auto: the model's pick, else the fallback.
-  const chosen = (opts.autoType && config.templates.find((t) => t.type === typeVal)) || template;
+  const chosen = (opts.autoType && active.find((t) => t.type === typeVal)) || template;
 
   const extracted: Record<string, string> = {};
   for (const f of chosen.fields) {

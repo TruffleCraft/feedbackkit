@@ -8,7 +8,7 @@ Open `/admin` on your gateway. The project list, project settings and delivery l
 |---|---|
 | General | Origins, language, accepting/pausing feedback, rate limit, capture, privacy, retention and bot protection |
 | AI & follow-ups | Provider, exact model ID, API base URL, structured output and maximum calls per day |
-| Types & delivery | Types, labels, guidance, fields, choice options, required fields, issue body and GitHub destinations |
+| Types & delivery | Types, labels, guidance, fields, choice options, required fields, issue body and GitHub destinations. A type ID and a field key are unique, and a published type ID never changes: **Archive** hides a type from visitors and from the AI while its reports keep their label and destination (`"archived": true`), and the gateway refuses settings that drop or rename a published type |
 | Appearance | Automatic/light/dark theme, accent color and widget heading |
 | Advanced JSON | The same draft in JSON, for automation or bulk edits |
 
