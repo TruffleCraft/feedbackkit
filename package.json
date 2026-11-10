@@ -12,6 +12,7 @@
   "scripts": {
     "materialize": "node scripts/materialize-wrangler.mjs",
     "build:widget": "node scripts/build-widget.mjs",
+    "gen:settings": "node scripts/gen-settings-descriptor.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.widget.json && tsc --noEmit -p tsconfig.admin.json",
     "test": "vitest run && vitest run -c vitest.workers.config.ts && vitest run -c vitest.conformance.config.ts",
     "e2e": "pnpm build:widget && playwright test",

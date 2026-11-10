@@ -13,7 +13,13 @@ test("form edits preserve the full config and require review before each publica
   await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Review changes", exact: true }).click();
   await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeEnabled();
-  expect(writes.at(-1)).toMatchObject({ method: "POST", body: { config: { ...harborConfig, publicKey: undefined, configVersion: undefined, llm: { ...harborConfig.llm, model: "local-test-model" } } } });
+  // The editor sends the stored settings without the two fields the gateway adds itself.
+  const { publicKey, configVersion, ...stored } = harborConfig;
+  expect(writes.at(-1)).toMatchObject({ method: "POST", body: { config: { ...stored, llm: { ...harborConfig.llm, model: "local-test-model" } } } });
+  const sent = (writes.at(-1)?.body as { config: Record<string, unknown> }).config;
+  expect(sent).not.toHaveProperty("publicKey");
+  expect(sent).not.toHaveProperty("configVersion");
+  void publicKey; void configVersion;
   await settings.getByLabel("Maximum AI calls per day", { exact: true }).fill("20");
   await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Review changes", exact: true }).click();
@@ -34,4 +40,38 @@ test("type and field IDs stay fixed; types can be reordered without losing label
   const draft = JSON.parse(await page.getByLabel("Config JSON").inputValue());
   expect(draft.templates.map((t: {type: string}) => t.type)).toEqual(["idea", "bug", "improvement", "praise"]);
   expect(draft.templates[1].fields).toEqual(harborConfig.templates[0].fields);
+});
+
+test("a setting without a default starts empty, and emptying an optional setting removes it", async ({ page }) => {
+  await installAdminMocks(page); await signedIn(page);
+  await page.goto("/admin/projects/harborline#config");
+  const settings = page.locator("#cfg-form");
+  const draft = async () => JSON.parse(await page.getByLabel("Config JSON").inputValue()) as Record<string, Record<string, unknown>>;
+
+  // Adding the retention starts with an empty field, not with 1 day, which would delete reports.
+  await settings.getByLabel("Add Attachments & retention setting").selectOption({ label: "Delete after (days)" });
+  const days = settings.getByLabel("Delete after (days)");
+  await expect(days).toHaveValue("");
+  expect((await draft())["storage"]).not.toHaveProperty("retentionDays");
+  await days.fill("30");
+  expect((await draft())["storage"]!["retentionDays"]).toBe(30);
+  // Clearing it again removes the setting instead of saving null or 0.
+  await days.fill("");
+  expect((await draft())["storage"]).not.toHaveProperty("retentionDays");
+
+  // A text setting that is emptied is removed too, and typing again brings it back without losing the field.
+  const url = settings.getByLabel("Public attachment URL");
+  await url.fill("");
+  expect((await draft())["storage"]).not.toHaveProperty("publicBaseUrl");
+  await url.fill("https://r2.harborline.test/");
+  expect((await draft())["storage"]!["publicBaseUrl"]).toBe("https://r2.harborline.test/");
+
+  // A choice without a default is not preselected either.
+  await settings.getByRole("button", { name: "Types & delivery", exact: true }).click();
+  await settings.getByRole("button", { name: "Configure Delivery" }).click();
+  const delivery = settings.getByLabel("Delivery", { exact: true });
+  await expect(delivery).toHaveValue("");
+  expect(await draft()).not.toHaveProperty("delivery");
+  await delivery.selectOption("local");
+  expect((await draft())["delivery"]).toBe("local");
 });
