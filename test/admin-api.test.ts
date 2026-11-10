@@ -486,6 +486,43 @@ describe("GET /api/admin/system", () => {
   });
 });
 
+describe("GET /api/admin/system, the notice for a newer release (J2)", () => {
+  const status = { state: "available", latest: "0.3.1", url: "https://github.com/TruffleCraft/feedbackkit/releases/tag/v0.3.1", checkedAt: 1_780_000_000_000 };
+
+  it("carries `update` when the runtime provides the check, and only then", async () => {
+    const s = store();
+    const withCheck = await getJson<Record<string, unknown>>(env(s, { UPDATE_CHECK: async () => status }), "/api/admin/system");
+    expect(withCheck.status).toBe(200);
+    expect(withCheck.body["update"]).toEqual(status);
+    // Cloudflare and a checkout provide none: the field is absent, not null.
+    const without = await getJson<Record<string, unknown>>(env(s), "/api/admin/system");
+    expect(without.status).toBe(200);
+    expect("update" in without.body).toBe(false);
+  });
+
+  it("passes a failed check through with its reason", async () => {
+    const failed = { state: "failed", latest: null, url: null, checkedAt: 1, reason: "GitHub answered 403" };
+    const { body } = await getJson<Record<string, unknown>>(env(store(), { UPDATE_CHECK: async () => failed }), "/api/admin/system");
+    expect(body["update"]).toEqual(failed);
+  });
+
+  it("never lets a broken check take the page down", async () => {
+    for (const broken of [async () => { throw new Error("boom with internal detail 10.0.0.7"); }, () => { throw new Error("sync boom 10.0.0.7"); }]) {
+      const { status, body, text } = await getJson<Record<string, unknown>>(env(store(), { UPDATE_CHECK: broken }), "/api/admin/system");
+      expect(status).toBe(200);
+      expect("update" in body).toBe(false);
+      expect(body["schema"]).toMatchObject({ ok: true });
+      expect(text).not.toContain("10.0.0.7");
+    }
+  });
+
+  it("does not offer the field without a sign-in", async () => {
+    const { status, text } = await getJson<unknown>(env(store(), { UPDATE_CHECK: async () => status }), "/api/admin/system", null);
+    expect(status).toBe(401);
+    expect(text).not.toContain("0.3.1");
+  });
+});
+
 describe("parsePatExpiry", () => {
   it("parses GitHub's header formats and computes days left", () => {
     const now = Date.parse("2026-10-08T00:00:00Z");
