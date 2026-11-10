@@ -50,6 +50,31 @@ sudo systemctl status feedbackkit
 
 systemd creates `/var/lib/feedbackkit` for persistent data. The service user needs read access to the built checkout; it writes only to its state directory. The service uses an hourly retention sweep, and also sweeps on startup.
 
+## Install from a release tarball
+
+A release tarball needs no Git, pnpm or build on the server, and `feedbackkit-update` updates and rolls it back. The first signed release does not exist yet, so until it does, use the checkout install above. The steps below are the ones that apply from then on ([release keys](RELEASES.md#release-keys)).
+
+You need Node.js 24 or newer, curl, tar, sha256sum and ssh-keygen. Create the system user as in the systemd section, then:
+
+```sh
+version=X.Y.Z                      # the newest stable release
+base=https://github.com/TruffleCraft/feedbackkit/releases/download/v$version
+cd /tmp
+curl -fsSLO "$base/feedbackkit-v$version.tar.gz" -O "$base/SHA256SUMS" -O "$base/SHA256SUMS.sig"
+# allowed_signers holds one line: release-stable namespaces="feedbackkit-release" ssh-ed25519 <the stable key from RELEASES.md>
+ssh-keygen -Y verify -f allowed_signers -I release-stable -n feedbackkit-release -s SHA256SUMS.sig < SHA256SUMS
+sha256sum -c --ignore-missing SHA256SUMS
+sudo mkdir -p /opt/feedbackkit/releases
+sudo tar -xzf "feedbackkit-v$version.tar.gz" -C /opt/feedbackkit/releases
+sudo mv "/opt/feedbackkit/releases/feedbackkit-v$version" "/opt/feedbackkit/releases/$version"
+sudo ln -s "releases/$version" /opt/feedbackkit/current
+sudo install -m 600 -o root -g root .env /etc/feedbackkit.env      # as in the checkout install
+sudo install -m 644 /opt/feedbackkit/current/deploy/feedbackkit.service /etc/systemd/system/feedbackkit.service
+sudo systemctl daemon-reload && sudo systemctl enable --now feedbackkit
+```
+
+Both checks must pass before you extract anything. The unit expects Node at `/usr/bin/node`; change `ExecStart` if yours is elsewhere. `/diag` shows the release and channel. To update, run `/opt/feedbackkit/current/feedbackkit-update --check`, then without `--check`. [Updating](RELEASES.md#updating) lists the commands.
+
 ## Configuration
 
 | Variable | Purpose |

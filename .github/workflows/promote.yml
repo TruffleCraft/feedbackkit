@@ -32,6 +32,7 @@ jobs:
       FK_OAUTH_KV_ID: ${{ vars.FK_OAUTH_KV_ID }} # optional: binds OAUTH_KV, turns on /mcp (ADR-015)
       DEV_TAG: ${{ inputs.dev_tag }}
       GH_TOKEN: ${{ github.token }}
+      FK_RELEASE_SIGNING_KEY: ${{ secrets.FK_RELEASE_SIGNING_KEY }} # the stable key (docs/RELEASES.md, Release keys)
     steps:
       - uses: actions/checkout@v4
         with:
@@ -65,6 +66,25 @@ jobs:
           FK_RELEASE: ${{ steps.v.outputs.version }}
           FK_CHANNEL: stable
 
+      # Before anything is deployed: the server tarball of this commit is built and signed, and
+      # it must equal the dev tarball that was tested (ADR-013), or the promotion stops here.
+      - name: Build, check and sign the server tarball
+        if: env.FK_RELEASE_SIGNING_KEY != ''
+        env:
+          FK_RELEASE: ${{ steps.v.outputs.version }}
+        run: |
+          pnpm build:server
+          node scripts/build-bundle.mjs
+          if gh release download "$DEV_TAG" --pattern 'feedbackkit-v*.tar.gz' --dir dist-dev 2>/dev/null; then
+            node scripts/compare-bundles.mjs dist-dev/feedbackkit-v*.tar.gz dist-bundle/feedbackkit-v*.tar.gz
+          else
+            echo "::warning::$DEV_TAG has no server tarball, so the stable tarball was not compared with a tested build."
+          fi
+          sh scripts/sign-release.sh dist-bundle/SHA256SUMS
+      - name: No signing key
+        if: env.FK_RELEASE_SIGNING_KEY == ''
+        run: echo "::warning::FK_RELEASE_SIGNING_KEY is not set in the production environment, so no server tarball is published (docs/RELEASES.md, Release keys)."
+
       - name: Apply D1 migrations
         run: pnpm exec wrangler d1 migrations apply feedbackkit --remote
 
@@ -91,6 +111,12 @@ jobs:
           PREVIOUS: ${{ steps.v.outputs.previous }}
         run: |
           gh release create "$TAG" dist/widget.js --latest --target "$SHA" --title "$TAG" --generate-notes ${PREVIOUS:+--notes-start-tag "$PREVIOUS"}
+
+      - name: Attach the server tarball
+        if: env.FK_RELEASE_SIGNING_KEY != ''
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+        run: gh release upload "$TAG" dist-bundle/feedbackkit-v*.tar.gz dist-bundle/SHA256SUMS dist-bundle/SHA256SUMS.sig
 
       # Fast-forward only: promoting an older commit than the current stable fails here.
       - name: Move the stable branch
