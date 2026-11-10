@@ -6,7 +6,7 @@ The Cloudflare installation additionally supports OAuth/MCP through its Worker O
 
 ## Node.js on a server or Proxmox LXC
 
-Use a Linux server or an unprivileged Proxmox LXC with Node.js 24+, Git and pnpm 11. A starting allocation is 1 vCPU, 1 GB RAM and persistent disk sized for your attachment retention. **Docker nesting is not required** for this direct installation. No container is provisioned automatically.
+Use a Linux server or an unprivileged Proxmox LXC with Node.js 24+, Git and pnpm 11. A starting allocation is 1 vCPU, 1 GB RAM and persistent disk sized for your attachment retention.
 
 Install Node.js from your distribution or the [official Node.js installation guide](https://nodejs.org/en/download). Clone the release you want under `/opt/feedbackkit`:
 
@@ -50,33 +50,18 @@ sudo systemctl status feedbackkit
 
 systemd creates `/var/lib/feedbackkit` for persistent data. The service user needs read access to the built checkout; it writes only to its state directory. The service uses an hourly retention sweep, and also sweeps on startup.
 
-## Docker Compose
-
-Clone the repo, copy `.env.example` to `.env`, set `ADMIN_TOKEN` and `FK_PUBLIC_URL`, then:
-
-```sh
-docker compose up -d --build
-docker compose logs --tail=50 feedbackkit
-```
-
-The container runs as a non-root user. The named volume `feedbackkit-data` stores the SQLite database and attachments under `/data`; rebuilding/restarting the image keeps it. Compose exposes `127.0.0.1:8787` on the Docker host. Connect an HTTPS reverse proxy for public access; if it runs on another host, bind to a private interface and restrict access with a firewall.
-
-You can also run this Compose deployment inside a Proxmox LXC whose Docker nesting is configured by its operator. The direct Node installation above avoids that requirement.
-
-The Dockerfile builds from this checkout; the repository does not require a pre-published registry image. Check out the intended release tag before building.
-
 ## Configuration
 
 | Variable | Purpose |
 |---|---|
 | `ADMIN_TOKEN` | Random secret, at least 32 characters; used only for admin access |
 | `FK_PUBLIC_URL` | External origin including https scheme and optional port; used in snippets and same-origin checks |
-| `FK_DATA_DIR` | Directory for `feedbackkit.sqlite`; default `./data`, Docker `/data`, systemd `/var/lib/feedbackkit` |
-| `HOST`, `PORT` | Listen interface and port; defaults `127.0.0.1`, `8787` (Docker listens inside the container on `0.0.0.0`) |
+| `FK_DATA_DIR` | Directory for `feedbackkit.sqlite`; default `./data`, systemd `/var/lib/feedbackkit` |
+| `HOST`, `PORT` | Listen interface and port; defaults `127.0.0.1`, `8787` |
 | `LLM_API_KEY`, `GITHUB_PAT_<name>`, `TURNSTILE_SECRET_<name>` | Optional integration secrets; project settings reference the variable names |
-| `FK_TRUST_PROXY` | Default false. Set true only when all access comes through your trusted private proxy; then its `X-Forwarded-For` supplies the visitor IP for rate limits |
+| `FK_TRUSTED_PROXY_HOPS` | Default 0. The number of reverse proxies in front of this server, for example 1 for one nginx or Caddy. The visitor address for rate limits and the failed-login limit is then read from `X-Forwarded-For` through that many proxies, counted from the right. With 0 every client behind a proxy shares the proxy's address, and the server logs a warning once |
 
-Never expose a plain HTTP admin endpoint to the internet. Use HTTPS through your own reverse proxy and preserve the external Host/Origin. Incoming Cloudflare Access assertion headers are discarded by the standalone server; login uses the admin token. `FK_TRUST_PROXY` is a network trust decision, not an automatic detector.
+Never expose a plain HTTP admin endpoint to the internet. Use HTTPS through your own reverse proxy and preserve the external Host/Origin. Incoming Cloudflare Access assertion headers are discarded by the standalone server; login uses the admin token. `FK_TRUSTED_PROXY_HOPS` is a network trust decision, not an automatic detector: set it to the real number of proxies, or a client can pick its own address. The earlier `FK_TRUST_PROXY=true` is refused at start. Request paths that start with two slashes are answered with 400, and the server builds every request URL from `FK_PUBLIC_URL`, never from the `Host` header.
 
 For issue screenshots, set the project's public attachment base to `https://<gateway>/attachments`. Only attachments of persisted issue deliveries are served there. Inbox and GitHub Project attachments remain behind the authenticated admin asset route.
 
@@ -84,14 +69,14 @@ For issue screenshots, set the project's public attachment base to `https://<gat
 
 The database contains project settings, feedback, counters, asset metadata **and attachment bytes**. SQLite migrations apply automatically at startup. Use persistent local storage; run one server process per database. This is a single-node installation, not shared storage for multiple replicas.
 
-Back up before an upgrade. Stop the service/container, copy the entire data directory/volume, then start it again. Do not copy only the main SQLite file while the process is writing: WAL files can contain committed data. Proxmox backups should include the LXC state directory; take them with the process stopped or using a consistent snapshot strategy.
+Back up before an upgrade. Stop the service, copy the entire data directory, then start it again. Do not copy only the main SQLite file while the process is writing: WAL files can contain committed data. Proxmox backups should include the LXC state directory; take them with the process stopped or using a consistent snapshot strategy.
 
-For a Node installation: fetch the chosen release, install with the lockfile, rebuild both bundles, then restart the service. For Docker: check out the release, then run `docker compose up -d --build`. Data migrations are expand-only; read release notes before rolling back. Do not use `docker compose down -v` unless you intend to delete the data volume.
+Fetch the chosen release, install with the lockfile, rebuild both bundles, then restart the service. Data migrations are expand-only; read release notes before rolling back. A release older than the data refuses to start when the data needs a newer delivery capability: start the newer release again or restore the backup.
 
 ## Verification and troubleshooting
 
 `GET /diag` checks the database schema and runtime bindings. A healthy gateway with no projects is ready for project creation. A deep check with the admin token can verify configured integrations. A successful health check does not prove real GitHub delivery: use a neutral test report and inspect its destination.
 
-If startup refuses `ADMIN_TOKEN`, generate a secret of at least 32 characters. For permission errors, check that the service user owns its data directory. For rejected admin writes behind a proxy, check `FK_PUBLIC_URL` against the browser's actual origin. Read process output with `journalctl -u feedbackkit` or `docker compose logs`.
+If startup refuses `ADMIN_TOKEN`, generate a secret of at least 32 characters. For permission errors, check that the service user owns its data directory. For rejected admin writes behind a proxy, check `FK_PUBLIC_URL` against the browser's actual origin. Read process output with `journalctl -u feedbackkit`.
 
 Co-created by Michel with NORA (AI Agent)

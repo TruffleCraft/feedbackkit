@@ -1,3 +1,4 @@
+import { RETENTION_NOTICE_DAYS } from "../../shared/contract.js";
 import type { Env } from "../env.js";
 import { hourWindow } from "../security/ratelimit.js";
 import { deleteAssets } from "./r2.js";
@@ -14,7 +15,7 @@ const DAY_MS = 86_400_000;
 // dedup rows only guard client retries of one submission; a week is ample.
 export const DEDUP_TTL_MS = 7 * DAY_MS;
 /** Unhandled reports are listed this many days before retention deletes them. */
-export const NOTICE_DAYS = 7;
+export const NOTICE_DAYS = RETENTION_NOTICE_DAYS;
 // Rows per project per run; a backlog drains over the following days.
 const PRUNE_BATCH = 500;
 const NOTICE_LIMIT = 20;
@@ -81,6 +82,30 @@ export async function retentionNotice(env: Env, projectId: string, days: number 
     dueSoon: Number(count?.n ?? 0),
     items: (rows.results ?? []).map((r) => ({ id: r.id, type: r.type, outcome: r.outcome, createdAt: Number(r.created_at), deletesAt: Number(r.created_at) + days * DAY_MS })),
   };
+}
+
+export interface RetentionImpact {
+  days: number;
+  /** Reports the next daily cleanup deletes if the project used this retention. */
+  reports: number;
+  /** Attachments that go with those reports. */
+  attachments: number;
+}
+
+/** What a retention of `days` would delete from the project's stored reports and
+ * attachments, for the review step. Reads only; the cleanup itself deletes in
+ * batches over the following days. */
+export async function retentionImpact(env: Env, projectId: string, days: number, now = Date.now()): Promise<RetentionImpact> {
+  const cutoff = now - days * DAY_MS;
+  const [reports, attachments] = await Promise.all([
+    env.DB.prepare("SELECT COUNT(*) AS n FROM feedback WHERE project_id = ?1 AND created_at < ?2").bind(projectId, cutoff).first<{ n: number }>(),
+    env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM assets a JOIN feedback f ON f.project_id = a.project_id AND f.client_feedback_id = a.feedback_id WHERE a.project_id = ?1 AND a.deleted = 0 AND f.created_at < ?2",
+    )
+      .bind(projectId, cutoff)
+      .first<{ n: number }>(),
+  ]);
+  return { days, reports: Number(reports?.n ?? 0), attachments: Number(attachments?.n ?? 0) };
 }
 
 /** storage.retentionDays from the raw config blob (a broken blob = keep). */

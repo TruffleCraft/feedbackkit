@@ -1,4 +1,4 @@
-import { WIRE_VERSION, FeedbackPayload, resolveDelivery, type Delivery, type FeedbackConfig, type FeedbackResponse, type TemplateDefinition } from "../shared/contract.js";
+import { WIRE_VERSION, FeedbackPayload, activeTemplates, resolveDelivery, type Delivery, type FeedbackConfig, type FeedbackResponse, type TemplateDefinition } from "../shared/contract.js";
 import { classifyAndExtract, type ChatFn, type ExtractionResult } from "./llm/client.js";
 import { createIssue, TrackerError, type FetchFn, type IssueFieldValue } from "./providers/github.js";
 import { deriveTitle, renderIssueBody, type RenderContext } from "../shared/render.js";
@@ -82,10 +82,12 @@ export function dryRunPreview(config: FeedbackConfig, input: PreviewInput): { ti
   return { title: deriveTitle(template, ctx), body: renderIssueBody(template, ctx, config.locale) };
 }
 
-/** type → template. A provided-but-unknown type is an error; absent → first. */
+/** type → template. A provided-but-unknown type is an error; absent → the first
+ * active type. An archived type still resolves, for reports sent by a widget that
+ * was loaded before it was archived. */
 function resolveTemplate(config: FeedbackConfig, type?: string): TemplateDefinition | null {
   if (type) return config.templates.find((t) => t.type === type) ?? null;
-  return config.templates[0] ?? null;
+  return activeTemplates(config.templates)[0] ?? config.templates[0] ?? null;
 }
 
 /** Links for uploaded attachment keys. Public issues use the public R2 URL (none

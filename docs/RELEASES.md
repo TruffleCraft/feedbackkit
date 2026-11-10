@@ -52,7 +52,7 @@ account settings read, user details and memberships read); variables `CLOUDFLARE
 **Delivery capability** (#109): after the smoke check, the promote workflow writes the
 release's `DELIVERY_CAPABILITY` (`src/shared/contract.ts`) to `meta.delivery_capability`.
 Config writers accept new delivery shapes only up to that level, because stable reads the
-same configs. A rollback with `wrangler rollback` does not lower the value: before rolling
+same configs. Level 3 covers archived types (`templates[].archived`). A rollback with `wrangler rollback` does not lower the value: before rolling
 back past a release that raised it, check that no stored config needs the higher level
 (`noIssue: true` next to `delivery` keeps older releases from opening issues).
 
@@ -68,13 +68,13 @@ stays, the next promotion moves on. Dev: re-run `Release (dev channel)` on an ol
 wait for the next merge. D1 migrations are not rolled back; expand/contract keeps the previous
 code working on the newer schema.
 
-## Server, Docker and Proxmox LXC updates
+## Server and Proxmox LXC updates
 
-The standalone runtime is built from a chosen git release tag with `pnpm build:widget && pnpm build:server`. Docker builds the same checkout. Keep the persistent data directory/volume, back it up before upgrading and restart on the new build. [SELF_HOSTING.md](SELF_HOSTING.md#data-backups-and-updates) covers the exact workflow. It does not depend on Workers Builds or a Cloudflare account.
+The standalone runtime is built from a chosen git release tag with `pnpm build:widget && pnpm build:server`. Keep the persistent data directory, back it up before upgrading and restart on the new build. [SELF_HOSTING.md](SELF_HOSTING.md#data-backups-and-updates) covers the exact workflow. It does not depend on Workers Builds or a Cloudflare account.
 
 ## Cloudflare self-hosting updates
 
 Fork the repository and connect it to Cloudflare Workers Builds with production branch
-**`stable`** and build command `pnpm deploy` (it builds, applies migrations, deploys). To
+**`stable`** and build command `pnpm deploy` (it builds, applies migrations, deploys and records the delivery capability). To
 update, sync the `stable` branch of your fork with upstream; Workers Builds deploys it. Read the
 release notes of every version you skip.

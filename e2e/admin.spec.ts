@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { TOKEN, SHOT_URL, installAdminMocks, signedIn, feedbackItems, inboxItems, harborConfig } from "./admin-fixtures";
+import { TOKEN, SHOT_URL, PRIVATE_SHOT_URL, installAdminMocks, signedIn, feedbackItems, inboxItems, harborConfig } from "./admin-fixtures";
 
 // Admin UI, read-only (P2, step 3): the real shells from src/worker/admin/pages.ts
 // under their production CSP, with /api/admin/* mocked. Runs in both projects
@@ -299,6 +299,37 @@ test.describe("project detail", () => {
     expect(retries.map((w) => w.body)).toEqual([{}, { createAnyway: true }]);
   });
 
+  test("a local report's screenshot loads with the admin token and opens full size", async ({ page }) => {
+    const { assetAuth } = await installAdminMocks(page, { items: inboxItems() });
+    await signedIn(page);
+    await page.goto("/admin/projects/harborline");
+    const thumb = page.locator("#rows .hrow").first().locator("a.thumb");
+    await expect.poll(() => thumb.locator("img").evaluate((i: HTMLImageElement) => i.naturalWidth)).toBeGreaterThan(0);
+    await expect(thumb).toHaveAttribute("href", /^blob:/);
+    await expect(thumb.locator("img")).toHaveAttribute("src", /^blob:/);
+    // Every request for the screenshot carried the token. A bare image request would have been a counted 401.
+    expect(assetAuth.length).toBeGreaterThan(0);
+    expect(new Set(assetAuth)).toEqual(new Set([`Bearer ${TOKEN}`]));
+    expect(PRIVATE_SHOT_URL.startsWith("/admin/assets/")).toBe(true);
+    // Clicking the thumbnail opens the full image in a new tab.
+    const [opened] = await Promise.all([page.context().waitForEvent("page"), thumb.click()]);
+    await opened.waitForLoadState();
+    expect(opened.url()).toMatch(/^blob:/);
+    // The fixture serves an SVG, so the new tab is an SVG document, not an <img> page.
+    expect(await opened.evaluate(() => document.contentType)).toBe("image/svg+xml");
+  });
+
+  test("a screenshot that cannot be loaded falls back to the placeholder", async ({ page }) => {
+    await installAdminMocks(page, { items: inboxItems() });
+    await page.route("**/admin/assets/**", (r) => r.fulfill({ status: 404, contentType: "application/json", body: "{}" }));
+    await signedIn(page);
+    allowStatus.push(404);
+    await page.goto("/admin/projects/harborline");
+    const first = page.locator("#rows .hrow").first();
+    await expect(first.locator(".thumb img")).toHaveCount(0);
+    await expect(first.locator(".thumb svg")).toBeVisible();
+  });
+
   test("local inbox: done, note, copy as Markdown, delete; views Open, Done, Needs a decision", async ({ page, context, browserName }) => {
     const { writes, requests } = await installAdminMocks(page, { items: inboxItems() });
     if (browserName === "chromium") await context.grantPermissions(["clipboard-read", "clipboard-write"]);
@@ -455,5 +486,53 @@ test.describe("phone layout", () => {
       );
       expect(small, path).toEqual([]);
     }
+  });
+});
+
+test.describe("New project dialog", () => {
+  test("creates a local-inbox project and opens its setup", async ({ page }) => {
+    const { writes } = await installAdminMocks(page);
+    allowStatus.push(404); // the mock knows only the harborline project, so the new one's page answers 404
+    await signedIn(page);
+    await page.goto("/admin");
+    await page.getByRole("button", { name: "New project", exact: true }).click();
+    const dialog = page.locator("#new-project-dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel("Project ID").fill("newsite");
+    await dialog.getByLabel("Website origin").fill("https://newsite.example");
+    await dialog.getByLabel("Issue language").selectOption("de");
+    await dialog.getByRole("button", { name: "Create project", exact: true }).click();
+    await page.waitForURL(/\/admin\/projects\/newsite#setup$/);
+    const sent = writes.find((w) => w.method === "POST" && w.path === "/api/admin/projects");
+    expect(sent?.body).toMatchObject({ config: { projectId: "newsite", locale: "de", delivery: "local", auth: { origins: ["https://newsite.example"] } } });
+  });
+
+  test("an origin with a path is refused before anything is sent", async ({ page }) => {
+    const { writes } = await installAdminMocks(page);
+    await signedIn(page);
+    await page.goto("/admin");
+    await page.getByRole("button", { name: "New project", exact: true }).click();
+    const dialog = page.locator("#new-project-dialog");
+    await dialog.getByLabel("Project ID").fill("newsite");
+    await dialog.getByLabel("Website origin").fill("https://newsite.example/blog");
+    await dialog.getByRole("button", { name: "Create project", exact: true }).click();
+    await expect(dialog.locator("#new-project-msg")).toContainText("http(s) origin");
+    expect(writes.filter((w) => w.path === "/api/admin/projects")).toEqual([]);
+    await expect(dialog).toBeVisible();
+  });
+
+  test("a project that exists shows the gateway's answer and keeps the entries", async ({ page }) => {
+    await installAdminMocks(page, { create: { status: 409, body: { v: 1, status: "error", code: "FK_PROJECT_EXISTS", error: "A project with this ID already exists. Choose another ID; its settings were not changed." } } });
+    allowStatus.push(409);
+    await signedIn(page);
+    await page.goto("/admin");
+    await page.getByRole("button", { name: "New project", exact: true }).click();
+    const dialog = page.locator("#new-project-dialog");
+    await dialog.getByLabel("Project ID").fill("harborline");
+    await dialog.getByLabel("Website origin").fill("https://harborline.app");
+    await dialog.getByRole("button", { name: "Create project", exact: true }).click();
+    await expect(dialog.locator("#new-project-msg")).toContainText("already exists");
+    await expect(dialog.getByLabel("Project ID")).toHaveValue("harborline");
+    await expect(dialog.getByRole("button", { name: "Create project", exact: true })).toBeEnabled();
   });
 });

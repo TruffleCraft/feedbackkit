@@ -1,4 +1,4 @@
-import { DELIVERY_CAPABILITY, FeedbackConfig, WIRE_VERSION, requiredDeliveryCapability, resolveDelivery, type Delivery } from "../../shared/contract.js";
+import { DELIVERY_CAPABILITY, FeedbackConfig, WIRE_VERSION, patSecretProblems, requiredDeliveryCapability, resolveDelivery, retentionProblems, templateProblems, type Delivery } from "../../shared/contract.js";
 import { storedDeliveryCapability } from "../db.js";
 import type { Env } from "../env.js";
 
@@ -9,13 +9,27 @@ export type ConfigCheck =
   | { ok: true; config: FeedbackConfig; deliveries: Array<{ type: string; delivery: Delivery }> }
   | { ok: false; status: 400 | 422 | 503; body: Record<string, unknown> };
 
-/** Zod validation plus the delivery shape gate (#109). */
-export async function checkConfigForWrite(env: Env, raw: unknown): Promise<ConfigCheck> {
+/** The settings stored for a project, as parsed JSON, or undefined when there are none or they are broken. */
+export function parseStoredConfig(text: string | null | undefined): unknown {
+  try {
+    return text ? JSON.parse(text) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Zod validation, the secret, retention and ID rules, plus the delivery shape gate (#109).
+ * `previous` are the settings stored now, for the rules about published IDs. */
+export async function checkConfigForWrite(env: Env, raw: unknown, previous?: unknown): Promise<ConfigCheck> {
   const validated = FeedbackConfig.safeParse(raw);
   if (!validated.success) {
     // Admin-authed, so detailed Zod paths are safe — and save a debugging loop.
     const issues = validated.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`);
     return { ok: false, status: 400, body: { v: WIRE_VERSION, status: "error", code: "FK_CONFIG_INVALID", error: "config failed validation", issues } };
+  }
+  const problems = [...patSecretProblems(validated.data), ...retentionProblems(validated.data), ...templateProblems(validated.data, previous)];
+  if (problems.length > 0) {
+    return { ok: false, status: 400, body: { v: WIRE_VERSION, status: "error", code: "FK_CONFIG_INVALID", error: "config failed validation", issues: problems } };
   }
   // Compatibility gate: stable reads the same D1, so a shape it cannot handle yet
   // would break the project there. Accepted only once the promote workflow
@@ -37,7 +51,7 @@ export async function checkConfigForWrite(env: Env, raw: unknown): Promise<Confi
           v: WIRE_VERSION,
           status: "error",
           code: "FK_CONFIG_SHAPE_UNSUPPORTED",
-          error: `this config uses delivery settings (delivery, tracker.project or no tracker) that need delivery capability ${needed}; the live stable release provides ${stored}. Promote a release that supports them first, or keep tracker and noIssue.`,
+          error: `this config uses delivery settings (delivery, tracker.project, no tracker or archived types) that need delivery capability ${needed}; the live stable release provides ${stored}. Promote a release that supports them first, or keep tracker and noIssue.`,
           required: needed,
           available: stored,
         },

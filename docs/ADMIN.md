@@ -8,7 +8,7 @@ Open `/admin` on your gateway. The project list, project settings and delivery l
 |---|---|
 | General | Origins, language, accepting/pausing feedback, rate limit, capture, privacy, retention and bot protection |
 | AI & follow-ups | Provider, exact model ID, API base URL, structured output and maximum calls per day |
-| Types & delivery | Types, labels, guidance, fields, choice options, required fields, issue body and GitHub destinations |
+| Types & delivery | Types, labels, guidance, fields, choice options, required fields, issue body and GitHub destinations. A type ID and a field key are unique, and a published type ID never changes: **Archive** hides a type from visitors and from the AI while its reports keep their label and destination (`"archived": true`), and the gateway refuses settings that drop or rename a published type |
 | Appearance | Automatic/light/dark theme, accent color and widget heading |
 | Advanced JSON | The same draft in JSON, for automation or bulk edits |
 
@@ -35,11 +35,11 @@ Delivery errors and uncertain results stay visible. **Retry** repeats a supporte
 
 Only reports delivered to the **FeedbackKit inbox** have a local Open/Done/Dismissed lifecycle. The **Inbox: open** and **Inbox: handled** filters refer to those reports. Older records whose destination is unknown appear under **Needs a decision**. Delivered GitHub reports do not acquire a competing local ticket status.
 
-Retention applies to log records, inbox reports and attachments whether handled or not. It is not an indefinite audit archive. Deleting a FeedbackKit record or attachment does not close or delete its GitHub ticket.
+Retention applies to log records, inbox reports and attachments whether handled or not. It is not an indefinite audit archive. Retention must be at least 7 days, the notice period for unhandled reports; the gateway refuses a shorter value when settings are written. When a review changes the retention, it states how many stored reports and attachments the next daily cleanup deletes, and you cannot publish before you have seen it. Deleting a FeedbackKit record or attachment does not close or delete its GitHub ticket.
 
 ## Credentials and hosting
 
-On Cloudflare, use Worker secrets. On a server or LXC, use the protected environment file used by the service; with Docker Compose, use `.env`. Restart the standalone service/container after changing credentials. Project settings can be edited and published without restarting.
+On Cloudflare, use Worker secrets. On a server or LXC, use the protected environment file used by the service; for a foreground run use `.env`. Restart the standalone service after changing credentials. Project settings can be edited and published without restarting.
 
 A GitHub token needs access to the configured repository or organization Project. Inbox-only operation needs none. AI needs `LLM_API_KEY`; switching the provider off keeps required-field forms available. Prefer restricted credentials for each gateway.
 

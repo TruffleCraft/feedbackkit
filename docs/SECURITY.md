@@ -176,9 +176,9 @@ in, it skips the token form, shows the email and links **Sign out** to
 `/cdn-cgi/access/logout`. Otherwise it uses the token from `sessionStorage`.
 Fetches go out with `credentials: "same-origin"` so Access gets its cookie; the
 gateway itself never reads a cookie. API values are rendered as text only,
-never as HTML; links and image sources must be `http(s)` URLs. The shells are served
+never as HTML; links and image sources must be `http(s)` URLs. Screenshots of local reports and Project drafts sit behind the admin sign-in, so the page fetches them with the `Authorization` header and shows them from `blob:` object URLs, which it releases when the list is rebuilt. The shells are served
 with a per-response nonce CSP (`default-src 'none'; script-src 'self'
-'nonce-…'; style-src 'nonce-…'; font-src 'self'; img-src 'self' data: https:;
+'nonce-…'; style-src 'nonce-…'; font-src 'self'; img-src 'self' blob: data: https:;
 connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action
 'self'`), `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`
 and `Cache-Control: no-store` (ADR-014).

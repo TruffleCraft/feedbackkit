@@ -14,7 +14,8 @@ export const SCHEMA_VERSION = 4 as const;
 //   0  issue delivery and noIssue only (≤ 0.1.13)
 //   1  reads delivery / tracker.project / absent tracker; delivers issue and local
 //   2  also delivers to a GitHub Project
-export const DELIVERY_CAPABILITY = 2 as const;
+//   3  also reads archived types (templates[].archived): hidden from visitors, kept for reports
+export const DELIVERY_CAPABILITY = 3 as const;
 
 // ── Template schema (per ADR-002/005) ────────────────────────────────────────
 export const FieldKind = z.enum(["text", "longtext", "select", "url"]);
@@ -73,8 +74,16 @@ export const TemplateDefinition = z.object({
   noIssue: z.boolean().default(false), // praise → persist only (read as delivery "local")
   // Where reports of this type go; see resolveDelivery for the order.
   delivery: z.enum(["issue", "project", "local"]).optional(),
+  // Removing a published type archives it: visitors no longer see it and the AI no
+  // longer picks it, but reports that carry its ID keep their label and delivery.
+  archived: z.boolean().optional(),
 });
 export type TemplateDefinition = z.infer<typeof TemplateDefinition>;
+
+/** The types visitors can choose and the AI may pick. */
+export function activeTemplates<T extends { archived?: boolean | undefined }>(templates: readonly T[]): T[] {
+  return templates.filter((t) => !t.archived);
+}
 
 export const Delivery = z.enum(["issue", "project", "local"]);
 export type Delivery = z.infer<typeof Delivery>;
@@ -196,13 +205,75 @@ export function resolveDelivery(
   return config.tracker ? "issue" : "local";
 }
 
+/** The secret names a project's settings may point at. A wider name could name
+ * ADMIN_TOKEN or another binding, and its value would be sent to GitHub. */
+export const PAT_SECRET_NAME = /^GITHUB_PAT_[A-Za-z0-9_]+$/;
+
+/** Settings paths whose secret name does not follow GITHUB_PAT_<name>. Written
+ * settings must pass; stored settings that fail keep working and are warned about. */
+export function patSecretProblems(raw: unknown): string[] {
+  const tracker = (raw as { tracker?: { patSecret?: unknown; project?: { patSecret?: unknown } | null } | null } | null | undefined)?.tracker;
+  const found: Array<[string, unknown]> = [["tracker.patSecret", tracker?.patSecret], ["tracker.project.patSecret", tracker?.project?.patSecret]];
+  return found.filter(([, name]) => typeof name === "string" && !PAT_SECRET_NAME.test(name)).map(([path, name]) => `${path}: "${String(name)}" is not a GITHUB_PAT_<name> secret`);
+}
+
+/** Unhandled reports are listed this many days before retention deletes them
+ * (decision of 2026-10-24: retention is strict and counts from submission). */
+export const RETENTION_NOTICE_DAYS = 7;
+
+/** A retention shorter than the notice would delete reports before anyone could
+ * be told. Written settings must pass; stored settings that fail keep working. */
+export function retentionProblems(raw: unknown): string[] {
+  const days = (raw as { storage?: { retentionDays?: unknown } | null } | null | undefined)?.storage?.retentionDays;
+  return typeof days === "number" && days < RETENTION_NOTICE_DAYS
+    ? [`storage.retentionDays: ${days} is shorter than the ${RETENTION_NOTICE_DAYS}-day notice for unhandled reports. Use ${RETENTION_NOTICE_DAYS} or more.`]
+    : [];
+}
+
+type RawType = { type?: unknown; archived?: unknown; fields?: unknown };
+const typesOf = (raw: unknown): RawType[] => {
+  const templates = (raw as { templates?: unknown } | null | undefined)?.templates;
+  return Array.isArray(templates) ? (templates.filter((t) => t && typeof t === "object") as RawType[]) : [];
+};
+
+/**
+ * What a settings write may not do to type and field IDs. IDs are unique, at least
+ * one type stays active, and a type that was published (it is in `previous`, the
+ * settings stored now) cannot disappear or be renamed: reports carry its ID, and
+ * a report that waits for delivery needs its type. Set `archived` instead.
+ */
+export function templateProblems(next: unknown, previous?: unknown): string[] {
+  const problems: string[] = [];
+  const types = typesOf(next);
+  const seen = new Set<string>();
+  types.forEach((t, i) => {
+    if (typeof t.type !== "string") return;
+    if (seen.has(t.type)) problems.push(`templates.${i}.type: "${t.type}" is used by more than one type`);
+    seen.add(t.type);
+    const keys = new Set<string>();
+    (Array.isArray(t.fields) ? (t.fields as Array<{ key?: unknown } | null>) : []).forEach((f, j) => {
+      if (typeof f?.key !== "string") return;
+      if (keys.has(f.key)) problems.push(`templates.${i}.fields.${j}.key: "${f.key}" is used twice in type "${t.type}"`);
+      keys.add(f.key);
+    });
+  });
+  if (types.length > 0 && types.every((t) => t.archived)) problems.push("templates: at least one type must stay active");
+  for (const old of typesOf(previous)) {
+    if (typeof old.type === "string" && !seen.has(old.type)) {
+      problems.push(`templates: type "${old.type}" was published and cannot be removed or renamed. Set "archived": true on it instead`);
+    }
+  }
+  return problems;
+}
+
 /** Capability a stored config needs (see DELIVERY_CAPABILITY). Works on the raw
  * JSON, so writers can check before or without parsing. Mirrored in
  * scripts/seed-config.mjs (a test keeps both in step). */
 export function requiredDeliveryCapability(raw: unknown): number {
   if (!raw || typeof raw !== "object") return 0;
   const cfg = raw as { delivery?: unknown; tracker?: { project?: unknown } | null; templates?: unknown };
-  const templates = Array.isArray(cfg.templates) ? (cfg.templates as Array<{ delivery?: unknown } | null>) : [];
+  const templates = Array.isArray(cfg.templates) ? (cfg.templates as Array<{ delivery?: unknown; archived?: unknown } | null>) : [];
+  if (templates.some((t) => t?.archived)) return 3;
   const deliveries = [cfg.delivery, ...templates.map((t) => t?.delivery)].filter((d) => d !== undefined);
   if (deliveries.includes("project") || cfg.tracker?.project !== undefined) return 2;
   if (deliveries.length > 0 || !cfg.tracker) return 1;

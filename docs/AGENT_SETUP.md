@@ -8,7 +8,7 @@ Read [the README](../README.md) and the selected [hosting guide](SELF_HOSTING.md
 
 | Required decision | What to establish |
 |---|---|
-| Installation | Existing gateway, Linux/Proxmox LXC, Docker Compose, or Cloudflare; who may change it |
+| Installation | Existing gateway, Linux/Proxmox LXC, or Cloudflare; who may change it |
 | Addresses | Actual gateway origin and website origins; TLS/reverse-proxy arrangement |
 | Persistence | Data directory/volume, service user, backup owner and storage capacity |
 | Delivery | Inbox, GitHub issue or GitHub Project; defaults and overrides for each feedback type |
@@ -20,7 +20,7 @@ Inspect the current version, service and stored configuration before changing an
 
 ## 2. Install and start
 
-For direct Linux/LXC, install Node.js 24+, clone the chosen release, run `pnpm install --frozen-lockfile`, `pnpm build:widget` and `pnpm build:server`. Follow [the systemd instructions](SELF_HOSTING.md#keep-it-running-with-systemd) for persistent operation. Docker Compose uses the same source build and the named data volume. Cloudflare uses its own resource and migration workflow.
+For direct Linux/LXC, install Node.js 24+, clone the chosen release, run `pnpm install --frozen-lockfile`, `pnpm build:widget` and `pnpm build:server`. Follow [the systemd instructions](SELF_HOSTING.md#keep-it-running-with-systemd) for persistent operation. Cloudflare uses its own resource and migration workflow.
 
 Generate a random `ADMIN_TOKEN` in the target's approved secret/environment store. Never print it, put it in an issue, or ask the operator to paste it into chat. The standalone service refuses tokens shorter than 32 characters. Set `FK_PUBLIC_URL` to the actual external origin, and verify data-directory permissions before startup.
 
@@ -46,7 +46,7 @@ Install the returned snippet on the confirmed website. Use only the **public pro
 
 ## 4. Configure integrations and verify the actual path
 
-For local AI, establish the endpoint's reachability **from the gateway process/container**, its supported vision model ID and authentication requirements. `localhost` inside a container refers to that container, not the Docker host or another LXC. Set `llm.provider` to `custom`, its actual `baseUrl` including `/v1`, and its exact model ID. `LLM_API_KEY` stays in the gateway's secret environment. A plain-model health response does not prove image input or structured extraction; test with fictional feedback and an artificial screenshot.
+For local AI, establish the endpoint's reachability **from the gateway process**, its supported vision model ID and authentication requirements. `localhost` inside an LXC refers to that LXC, not the host or another LXC. Set `llm.provider` to `custom`, its actual `baseUrl` including `/v1`, and its exact model ID. `LLM_API_KEY` stays in the gateway's secret environment. A plain-model health response does not prove image input or structured extraction; test with fictional feedback and an artificial screenshot.
 
 For a local endpoint that does not require authentication, the current gateway still expects `LLM_API_KEY` to be present. Configure a non-secret placeholder such as `local-only` only after verifying the local endpoint accepts that header. Do not send this placeholder to a remote service or describe it as a real credential.
 

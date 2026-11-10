@@ -1,6 +1,6 @@
 # From installation to your first report
 
-Choose an installation first: [Linux / Proxmox LXC / Docker](SELF_HOSTING.md) or [Cloudflare](QUICKSTART.md). After the gateway is running, the project setup is the same.
+Choose an installation first: [Linux / Proxmox LXC](SELF_HOSTING.md) or [Cloudflare](QUICKSTART.md). After the gateway is running, the project setup is the same.
 
 ## 1. Sign in
 

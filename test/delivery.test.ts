@@ -81,10 +81,11 @@ describe("delivery capability gate", () => {
     base({ delivery: "project", tracker: { ...tracker, project: { org: "a", number: 1 } } }),
     base({ tracker: { ...tracker, project: { org: "a", number: 1 } } }),
     null,
+    base({ templates: [{ type: "bug", label: "Bug" }, { type: "old", label: "Old", archived: true }] }),
   ];
 
-  it("levels: 0 for today's shapes, 1 for delivery or no tracker, 2 for a GitHub Project", () => {
-    expect(cases.map(requiredDeliveryCapability)).toEqual([0, 0, 1, 1, 1, 2, 2, 0]);
+  it("levels: 0 for today's shapes, 1 for delivery or no tracker, 2 for a GitHub Project, 3 for an archived type", () => {
+    expect(cases.map(requiredDeliveryCapability)).toEqual([0, 0, 1, 1, 1, 2, 2, 0, 3]);
   });
 
   it("pnpm seed's copy agrees with the contract", () => {

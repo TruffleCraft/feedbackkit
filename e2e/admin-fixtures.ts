@@ -9,6 +9,8 @@ const HOUR = 3_600_000;
 
 const R2 = "https://r2.harborline.test";
 export const SHOT_URL = `${R2}/fk/harborline/2026/10/shot-1.webp`;
+/** Where the gateway links the screenshot of a local report or a Project draft (privateAssetUrl). */
+export const PRIVATE_SHOT_URL = "/admin/assets/fk/harborline/2026/10/shot-1.webp";
 
 // A small stand-in "screenshot": an app window with a few blocks.
 export const SHOT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200" viewBox="0 0 320 200">
@@ -83,7 +85,7 @@ export function feedbackItems(now = Date.now()): Item[] {
 export function inboxItems(now = Date.now()): Item[] {
   const all = feedbackItems(now);
   return [
-    { ...all[6]!, id: "loc-1", createdAt: now - HOUR, message: "Love the new berth map ```not a fence``` really", summary: null },
+    { ...all[6]!, id: "loc-1", createdAt: now - HOUR, message: "Love the new berth map ```not a fence``` really", summary: null, attachments: [{ key: "fk/harborline/2026/10/shot-1.webp", kind: "screenshot", url: PRIVATE_SHOT_URL }] },
     { ...all[1]!, id: "prj-1", createdAt: now - 2 * HOUR, issueUrl: null, delivery: "project", deliveryState: "delivered", projectUrl: "https://github.com/orgs/harborline/projects/3", warnings: ['field "Page" not found'] },
     { ...all[2]!, id: "old-1", createdAt: now - 3 * HOUR, issueUrl: null, delivery: null, deliveryState: null, type: "question", summary: "Old report from before the delivery model" },
     { ...all[0]!, id: "unk-1", createdAt: now - 4 * HOUR, delivery: "project", deliveryState: "unknown", retryable: true, summary: "Draft that may exist already" },
@@ -195,6 +197,8 @@ export interface AdminMockOpts {
   pageSize?: number;
   /** Signed in through Cloudflare Access as this email: /api/admin/me says so and no token is needed. */
   access?: string;
+  /** The answer of POST /api/admin/projects (default: created). */
+  create?: { status: number; body: Record<string, unknown> };
   /** Scripted answers of POST …/retry, in order (default: delivered). */
   retry?: Array<{ status: number; body: Record<string, unknown> }>;
 }
@@ -209,11 +213,20 @@ export async function installAdminMocks(page: Page, opts: AdminMockOpts = {}) {
   let configVersion = harborConfig.configVersion;
   /** The Authorization header of every admin call ("" when none was sent). */
   const authHeaders: string[] = [];
+  /** The Authorization header of every request for a private screenshot ("" when none was sent). */
+  const assetAuth: string[] = [];
   const items = opts.items ?? feedbackItems();
   const pageSize = opts.pageSize ?? 7;
   const json = (route: Route, body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 
   await page.route(`${R2}/**`, (r) => r.fulfill({ status: 200, contentType: "image/svg+xml", body: SHOT_SVG }));
+  // Like the gateway: a private screenshot needs the admin credentials, which a bare image request does not carry.
+  await page.route("**/admin/assets/**", (route) => {
+    const auth = route.request().headers()["authorization"] ?? "";
+    assetAuth.push(auth);
+    if (!opts.access && auth !== `Bearer ${TOKEN}`) return route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ v: 1, status: "error", error: "unauthorized" }) });
+    return route.fulfill({ status: 200, contentType: "image/svg+xml", body: SHOT_SVG });
+  });
   await page.route("**/api/admin/**", (route) => {
     const req = route.request();
     const url = new URL(req.url());
@@ -230,12 +243,17 @@ export async function installAdminMocks(page: Page, opts: AdminMockOpts = {}) {
     const p = url.pathname;
     if (p === "/api/admin/me") return json(route, { v: 1, via: "token" });
 
-    if (p === "/api/admin/projects") return json(route, { v: 1, projects: opts.emptyProjects ? [] : projects() });
+    if (p === "/api/admin/projects" && req.method() === "GET") return json(route, { v: 1, projects: opts.emptyProjects ? [] : projects() });
     if (p === "/api/admin/system") return json(route, system());
     const method = req.method();
     if (method !== "GET") {
       const body = req.postData() ? (JSON.parse(req.postData()!) as Record<string, unknown>) : undefined;
       writes.push({ method, path: p, body });
+      if (p === "/api/admin/projects" && method === "POST") {
+        const id = (body?.["config"] as { projectId?: string } | undefined)?.projectId ?? "";
+        const answer = opts.create ?? { status: 201, body: { v: 1, status: "created", projectId: id, publicKey: "fk_pub_0123456789abcdef", configVersion: 1, snippet: `<script src="https://gateway.test/widget.js?v=x" data-project="fk_pub_0123456789abcdef"></script>`, testPage: "https://gateway.test/t/fk_pub_0123456789abcdef" } };
+        return json(route, answer.body, answer.status);
+      }
       const fb = /^\/api\/admin\/feedback\/([^/]+)(\/retry)?$/.exec(p);
       if (fb && fb[2]) {
         const next = opts.retry?.shift() ?? { status: 200, body: { v: 1, status: "delivered", feedbackId: fb[1], projectUrl: "https://github.com/orgs/harborline/projects/3", warnings: [] } };
@@ -254,7 +272,9 @@ export async function installAdminMocks(page: Page, opts: AdminMockOpts = {}) {
       if (p === "/api/admin/projects/harborline/config/validate") {
         const cfg = body?.["config"] as { templates?: Array<{ type: string; noIssue?: boolean }> } | undefined;
         if (!cfg?.templates?.length) return json(route, { v: 1, status: "error", code: "FK_CONFIG_INVALID", error: "config failed validation", issues: ["templates: Array must contain at least 1 element(s)"] }, 400);
-        return json(route, { v: 1, status: "valid", configVersion, deliveries: cfg.templates.map((t) => ({ type: t.type, delivery: t.noIssue ? "local" : "issue" })) });
+        const days = (cfg as { storage?: { retentionDays?: number } }).storage?.retentionDays;
+        // Like the gateway: a retention change says what it deletes (3 reports and 2 attachments are older than any retention here).
+        return json(route, { v: 1, status: "valid", configVersion, deliveries: cfg.templates.map((t) => ({ type: t.type, delivery: t.noIssue ? "local" : "issue" })), ...(days ? { retention: { days, previousDays: null, reports: 3, attachments: 2 } } : {}) });
       }
       if (p === "/api/admin/projects/harborline/config" && method === "PUT") {
         if (body?.["expectedVersion"] !== configVersion) return json(route, { v: 1, status: "error", code: "FK_CONFIG_STALE", error: `the config changed since you loaded it (now v${configVersion}); review the new diff and publish again`, configVersion, config: harborConfig }, 409);
@@ -287,7 +307,7 @@ export async function installAdminMocks(page: Page, opts: AdminMockOpts = {}) {
     if (p.startsWith("/api/admin/projects/")) return json(route, { v: 1, status: "error", error: "unknown project" }, 404);
     return json(route, { v: 1, status: "error", error: "not found" }, 404);
   });
-  return { requests, authHeaders, writes };
+  return { requests, authHeaders, writes, assetAuth };
 }
 
 /** Starts the page signed in (the token the login would have stored). */
