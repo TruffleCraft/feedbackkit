@@ -27,6 +27,7 @@ Measured at `3f3caba` on 2026-11-10 (static review, seven specialist passes, an 
 | Create-only project API | Works. Incomplete | No Worker test, no error codes, no snippet in the response |
 | Accounts, OIDC, roles | Not built | The only credential is `ADMIN_TOKEN` |
 | Board, masks, previews | Not built | Not started |
+| Step A, runtime hardening | Implemented, not merged, no pull request yet | Branch `feat/standalone-runtime-hardening` (six commits on top of `3f3caba`). R1 to R9 closed except R16. `pnpm test` runs the 32 durability tests on workerd and on SQLite, plus 366 unit tests. 17 Node server tests and the admin e2e specs pass. One settings e2e still fails, as it does at `3f3caba` (Step B) |
 
 ## Findings that change the plan
 
@@ -65,7 +66,7 @@ Each step is one reviewable PR (or a small series) with its own tests and docs. 
 - **Why:** the first runtime layer can lock out the operator, trust the wrong origin and lose or keep data wrongly.
 - **Capabilities:**
   - Build request URLs by appending to the canonical origin. Reject paths that start with `//`.
-  - Check the token first. Count only wrong credentials. Take the client address at a configured trusted-hop position from the right and validate it.
+  - Take the client address at a configured trusted-hop position from the right and validate it, so one client's failed logins no longer lock out another. The lockout stays ahead of the token check: it is the only throttle on guessing, and the Worker suite pins it (a client over the limit gets 429 even with the right token). Plan text before 2026-11-10 asked to check the token first; implementation found that this would remove the throttle.
   - Guard the start sweep, set `busy_timeout` first, check migrations inside the transaction, use `synchronous=NORMAL`, `secure_delete=ON`, `auto_vacuum=INCREMENTAL`.
   - Pass an allowlist of environment variables to the application. Keep `delivery_capability` at the maximum. Refuse to serve settings that need a newer release.
   - Load admin images with the Authorization header and show them from object URLs.
