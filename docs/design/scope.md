@@ -13,6 +13,7 @@ Each premise of the sprint plan was checked against the code (branch `codex/admi
 | Premise | Verdict | Why |
 |---|---|---|
 | Operators need full autonomy from Cloudflare | Keep, as a second runtime with a written single-node contract | The roadmap lists the Node/SQLite runtime as backlog with a Docker checkpoint (`docs/ROADMAP.md`, Backlog). That is a changed invariant, so it needs [ADR-016](../DECISIONS.md). The first standalone layer had five blocking defects in about 110 lines, so the second runtime must pass the same tests as the Worker. |
+| Operators install and update the standalone server | A release tarball with a checksum. Operators do not build on the server. Docker and an npm package are backlog | Today an install needs Git, pnpm 11 and a build on the target (about 540 MB of dependencies). `/diag` reports `0.0.0` and `local`, releases carry only `widget.js`, and nothing tells an operator that a newer release exists. Owner decision 2026-11-10. |
 | Local accounts with passkeys, invitations, roles and OIDC | Keep, but narrow and sequence it | Identity is a product of its own. The gateway has to know who may change settings. It does not have to be an identity provider. Break-glass token first, then sessions with bootstrap and recovery, then passkeys, then OIDC through a library. Two roles at first: owner and member. |
 | A simple Kanban for local reports | Keep as a view over the three existing states | Owner decision 2026-10-24: triage lives in GitHub, the local inbox stays minimal. A fourth state breaks old readers (`queries.ts` counts every value except `open` as handled). |
 | PII masking has the highest priority | Keep, as a release gate with a testable design | Upload only after the visitor confirms the final review. Masks are burned into the pixels. Thumbnail, upload and AI call receive the same masked bytes. The server cannot verify a mask, so a project can require a marker that old widgets lack. |
@@ -32,7 +33,8 @@ Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready)
 | Delivery to a GitHub issue or GitHub Project draft, with retry | yes | yes | shipped |
 | Local inbox: open, done, dismissed, note, delete | yes | yes | shipped |
 | Settings revisions, publish with conflict detection | yes | yes | shipped |
-| Run on Linux, Proxmox LXC or Docker with SQLite | n/a | yes | branch |
+| Run on Linux or a Proxmox LXC with SQLite | n/a | yes | branch |
+| Install from a release tarball, update with one command, release shown in `/diag`, notice for a newer release | n/a | yes | planned |
 | Settings form for types, fields, AI, appearance | yes | yes | branch |
 | Create-only project API and New project dialog | yes | yes | branch |
 | Local AI endpoint without a placeholder key | yes | yes | planned |
@@ -57,13 +59,16 @@ Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready)
 | User-owned GitHub Projects, GitLab, Jira, Trello | No fine-grained permission for user Projects, and demand is unproven | A demand checkpoint is reached |
 | TLS termination, reverse proxy, backups of the host | The operator's infrastructure | Never |
 | Hosted FeedbackKit offering | Operators host it themselves | A business decision, not a code change |
+| Docker image and Compose file | The roadmap made Docker demand-gated, it was never run on this branch, and the target operator runs an LXC | A defined number of external operators ask for it (the roadmap checkpoint names N but gives no value) |
+| npm registry package | A publish token and a package namespace add supply-chain surface that a checksummed tarball does not need | Operators ask for `npm i -g` |
+| Building on the server (Git, pnpm, compiler) | Operators install a finished bundle. Maintainers build in CI | Never for operators. `pnpm` stays the maintainers' tool |
 
 ## Runtime contract for the standalone server
 
 1. One node, one process per database. SQLite in WAL mode on a persistent local disk.
 2. The same Hono application and the same behavior tests as the Worker. A difference between the runtimes is a bug or an entry in the parity table of `docs/SELF_HOSTING.md`.
-3. Node.js 24 LTS. The Node documentation labels `node:sqlite` in v24 "Stability: 1.2, release candidate" (nodejs.org, checked 2026-11-10). One version number appears in `engines`, CI, the Dockerfile and the docs.
-4. No Docker nesting for the direct installation. Docker Compose is an additional path.
+3. Node.js 24 LTS. The Node documentation labels `node:sqlite` in v24 "Stability: 1.2, release candidate" (nodejs.org, checked 2026-11-10). One version number appears in `engines`, CI and the docs.
+4. Delivered as a release tarball that CI builds from a tag, with a checksum and a build attestation. The target needs Node.js 24, curl, tar and a checksum tool. It needs no Git, no pnpm, no build and no container. The tarball holds a single-file server, the widget and admin assets, the migrations, the systemd unit and a file that records release, delivery capability and schema version.
 5. `/diag` reports schema, capability and whether stored settings need a newer release than the one running.
 6. Secrets come from environment variables or the service's environment file. The process hands the application an allowlist of them, not its whole environment.
 
@@ -80,6 +85,7 @@ Settled decisions:
 | S5 | The LLM client is OpenAI-compatible and optional | ADR-007, ROADMAP invariant 3 |
 | S6 | Appearance is themed per host through tokens on a neutral base | Owner, 2026-10-07 |
 | S7 | Most backend settings are managed through UI controls, with JSON as the escape hatch | Owner, 2026-11-09 |
+| S8 | The standalone server ships as a release tarball with a checksum. Operators do not build. Docker and an npm package are backlog | Owner, 2026-11-10 |
 
 Open decisions. Each recommendation is mine and needs the owner's answer.
 

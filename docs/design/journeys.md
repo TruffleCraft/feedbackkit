@@ -9,7 +9,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 | ID | Journey | Status today | Gate |
 |---|---|---|---|
 | J1 | Install on Linux or a Proxmox LXC | partly | autonomy |
-| J2 | Install with Docker Compose | partly | autonomy |
+| J2 | Robin sees which release runs and that a newer one exists | gap | autonomy |
 | J3 | Bootstrap the first owner | planned | autonomy |
 | J4 | Create a project and receive a first report | partly | autonomy |
 | J5 | Define feedback types, fields and destinations | partly | none |
@@ -26,21 +26,21 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 
 ## J1 Install on Linux or a Proxmox LXC
 
-- **Goal:** Robin has a running gateway on an LXC without Docker nesting and without a Cloudflare account.
-- **Steps:** install Node.js 24 LTS, clone a release tag, `pnpm install --frozen-lockfile`, `pnpm build:widget && pnpm build:server`, install the systemd unit, start it.
-- **Guarantees:** the service refuses to start with a weak admin token or a bad public URL. Migrations run once. The first sweep cannot keep the service from starting. `/diag` is green only when schema and capability match.
+- **Goal:** Robin has a running gateway on an LXC from a finished release, without Git, pnpm, Docker or a Cloudflare account.
+- **Steps:** install Node.js 24 LTS, download the release tarball and `SHA256SUMS`, verify the checksum, extract to `/opt/feedbackkit`, install the systemd unit from the tarball, fill the environment file, start.
+- **Guarantees:** a checksum mismatch stops the install. The service refuses to start with a weak admin token or a bad public URL. Migrations run once. The first sweep cannot keep the service from starting. `/diag` is green only when schema and capability match, and it shows the release.
 - **Failure paths:** two starts at once on one data directory (today both fail 6 of 6 times in the probe), a failing sweep (crash loop under `Restart=on-failure`), a Node release without `node:sqlite`.
-- **Evidence:** fresh LXC with outbound traffic blocked, installation from the README to a green `/diag`, then reboot and restart tests. A conformance suite runs on both runtimes.
-- **Today:** the happy path works on a Mac with Node 26. Docker, systemd and a real LXC were not run. The docs say "Node 24+", `engines` says `>=22.13`, CI runs 22 and 24.
+- **Evidence:** a fresh LXC with only Node, curl and tar installed. Installation from the docs to a green `/diag` that shows the release number, then reboot and restart tests. Outbound traffic is needed once for the download and blocked afterwards until the first report. A conformance suite runs on both runtimes.
+- **Today:** no tarball is built. The docs still describe a clone, `pnpm install` and a build on the server. The happy path works from a checkout on a Mac with Node 26. systemd and a real LXC were not run. The docs say "Node 24+", `engines` says `>=22.13`, CI runs 22 and 24.
 
-## J2 Install with Docker Compose
+## J2 Robin sees which release runs and that a newer one exists
 
-- **Goal:** same result with `docker compose up -d --build`.
-- **Steps:** copy `.env.example`, set `ADMIN_TOKEN` and `FK_PUBLIC_URL`, start, open `/admin`.
-- **Guarantees:** the data volume survives rebuilds. The health check follows `PORT`. The image holds runtime files only, and the runtime user cannot rewrite the code.
-- **Failure paths:** a custom `PORT` marks the container unhealthy, a bind-mounted data directory with wrong ownership, a reverse proxy that collapses all visitors to one address.
-- **Evidence:** CI builds the image and polls `/diag` (exists). Add a restart-with-data test and a non-default port.
-- **Today:** the CI job exists. The image copies about 540 MB of development dependencies. The health check hardcodes port 8787.
+- **Goal:** Robin can tell which release is installed and whether a newer stable one is out.
+- **Steps:** open the System page or `/diag`, read release and channel, see a notice when a newer stable release exists, open its release notes.
+- **Guarantees:** the release comes from the record inside the bundle. The notice comes from one plain request to the GitHub Releases API, can be switched off, and its failure never affects the gateway. No data about the installation is sent. Pre-releases are never offered.
+- **Failure paths:** no outbound access (no notice and no error), a newer release that needs a newer Node, a rate-limited API.
+- **Evidence:** unit tests for version comparison and for the switch, and an e2e that shows the notice from a mocked releases response.
+- **Today:** the standalone server reports `0.0.0` and channel `local` because the build records no release. `src/admin` and `src/worker` contain no check for newer releases.
 
 ## J3 Bootstrap the first owner
 
@@ -125,12 +125,12 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 
 ## J12 Upgrade and roll back
 
-- **Goal:** Robin updates safely and can go back.
-- **Steps:** stop the service, copy the data directory, check out the new tag, rebuild, start, check `/diag`. To go back: stop, restore the copy, check out the old tag.
-- **Guarantees:** migrations only add. `/diag` goes red when stored settings need a newer release. A rollback does not lower the recorded delivery capability.
-- **Failure paths:** an old release on a newer schema, a copy taken while the process writes, an interrupted migration.
-- **Evidence:** an upgrade and rollback test on a data directory with real rows, and a documented, tested backup that includes the write-ahead log.
-- **Today:** the standalone server overwrites the capability on every start. `docs/RELEASES.md` promises the opposite for the Cloudflare path.
+- **Goal:** Robin updates with one command and can go back.
+- **Steps:** run `feedbackkit-update`. It reads the installed release, fetches the latest stable release and `SHA256SUMS`, verifies the tarball, stops the service, copies the data directory, switches to the new release directory, starts the service and checks `/diag`. `--check` only reports what it would do. `--rollback` restores the previous release and the copy.
+- **Guarantees:** a checksum mismatch or a failed health check restores the previous release and the data copy by itself. Migrations only add. The command refuses a release whose schema or delivery capability is lower than what the data holds. The recorded delivery capability never drops.
+- **Failure paths:** an interrupted download, a service that does not come up, a disk that is full, a copy taken while the process writes (the service is stopped first).
+- **Evidence:** an upgrade and rollback test on a data directory with real rows, with a bad bundle (health check fails) and a corrupted tarball (checksum fails), plus a backup test that includes the write-ahead log.
+- **Today:** no update command exists. The docs describe stop, copy, check out, rebuild. The standalone server overwrites the capability on every start. `docs/RELEASES.md` promises the opposite for the Cloudflare path.
 
 ## J13 Reports expire
 
@@ -144,7 +144,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 ## J14 A setup agent installs and verifies
 
 - **Goal:** an agent leaves a working, verified installation and a clear handoff.
-- **Steps:** read the agent guide, choose the runtime, install, create the project, send one authorized test report, report evidence.
+- **Steps:** read the agent guide, pick the install path (release tarball on Linux or an LXC, or Cloudflare), verify and install the release, create the project, send one authorized test report, report evidence.
 - **Guarantees:** the guide names what it could not verify. Secrets never appear in output. The create response contains the snippet.
 - **Failure paths:** a local AI endpoint that needs no key but the gateway insists on one, an agent that claims a planned feature.
 - **Evidence:** an agent run on a clean host with a transcript, each claim in the guide linked to a test or a step.

@@ -129,7 +129,7 @@ The upfront spike was deliberately skipped. Validating the core thesis ("LLM fol
 
 ### Backlog (deliberately unphased)
 
-React wrapper package · session recordings · Slack/email notifications · **Node/SQLite runtime** (proposed as [ADR-016](DECISIONS.md#adr-016--2026-11-10--standalone-node-runtime-beside-the-worker-proposed); scope and steps in [design/scope.md](design/scope.md) and [design/autonomous-admin-plan.md](design/autonomous-admin-plan.md)) · Gitea · hosted offering · multi-turn chat follow-ups (only if extract-then-form data shows demand) · signed R2 URLs / private bucket.
+React wrapper package · session recordings · Slack/email notifications · **Node/SQLite runtime** (proposed as [ADR-016](DECISIONS.md#adr-016--2026-11-10--standalone-node-runtime-beside-the-worker-proposed); scope and steps in [design/scope.md](design/scope.md) and [design/autonomous-admin-plan.md](design/autonomous-admin-plan.md)) · **Docker image** (Docker checkpoint: if ≥ N externals ask for Docker → pull it forward) · npm registry package (only if operators ask) · Gitea · hosted offering · multi-turn chat follow-ups (only if extract-then-form data shows demand) · signed R2 URLs / private bucket.
 
 **Total:** P1–P2 committed ≈ 31–42 PT (AI: ~3–4 weeks; P0 skipped) · P3–P5 gated ≈ +27–39 PT.
 

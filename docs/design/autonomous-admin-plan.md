@@ -22,7 +22,7 @@ Measured at `3f3caba` on 2026-11-10 (static review, seven specialist passes, an 
 
 | Area | State | Evidence |
 |---|---|---|
-| Standalone runtime | Works on a developer machine. Not release-ready | Two server tests pass. Docker, systemd, LXC and a real GitHub delivery were not run |
+| Standalone runtime | Works on a developer machine. Not release-ready | Two server tests pass. systemd, an LXC and a real GitHub delivery were not run. No release artifact exists |
 | Settings form | Works for edits. Unsafe to ship | `pnpm check:bundle` fails (admin 28.4 kB gz, budget 15 kB). Two e2e runs fail |
 | Create-only project API | Works. Incomplete | No Worker test, no error codes, no snippet in the response |
 | Accounts, OIDC, roles | Not built | The only credential is `ADMIN_TOKEN` |
@@ -42,7 +42,7 @@ Each finding is assigned to a step. IDs are stable so later reviews can refer to
 | R6 | `delivery_capability` is overwritten on every start. No guard against newer schema or settings | A |
 | R7 | The whole process environment is visible to settings that name secrets. `llm.baseUrl` receives the AI key | A, then Step 4 |
 | R8 | Deleted attachments stay in the database file. Blobs never shrink the file | A |
-| R9 | Docker image carries development dependencies, code is writable, health check ignores `PORT` | A |
+| R9 | Dockerfile, Compose file and the CI image job were never run and carry development dependencies. Docker is now backlog | A (removal) |
 | R10 | Admin bundle over budget. Numbers seed as `1` (retention would delete after one day). Optional strings save as empty | B |
 | R11 | IDs are immutable only in the browser. Review can be published after the text changed. JSON and form drafts diverge | B |
 | R12 | Create route: no tests, no codes, no snippet. Fresh Cloudflare deploy cannot create local projects | B |
@@ -50,6 +50,7 @@ Each finding is assigned to a step. IDs are stable so later reviews can refer to
 | R14 | Docs: Node version, rollback claim, broken anchor, `Discarded` against `Dismissed`, missing standalone threat model | C |
 | R15 | Picked images upload at once and the remove button keeps the object. Private elements are not excluded. Rectangle is a frame | Gate 1 |
 | R16 | Uploads without a report never expire when no retention is set. No quota | Gate 1, A |
+| R17 | The standalone server has no release artifact: installs build on the target, `/diag` reports `0.0.0` and `local`, releases carry only `widget.js`, there is no update command and no notice of a newer release | D |
 
 ## Steps
 
@@ -64,10 +65,10 @@ Each step is one reviewable PR (or a small series) with its own tests and docs. 
   - Guard the start sweep, set `busy_timeout` first, check migrations inside the transaction, use `synchronous=NORMAL`, `secure_delete=ON`, `auto_vacuum=INCREMENTAL`.
   - Pass an allowlist of environment variables to the application. Keep `delivery_capability` at the maximum. Refuse to serve settings that need a newer release.
   - Load admin images with the Authorization header and show them from object URLs.
-  - Ship runtime files only in the image, read-only for the runtime user, health check on `PORT`. One Node floor (24 LTS).
+  - Remove `Dockerfile`, `compose.yaml`, `.dockerignore`, the CI image job and the Docker section of the README. One Node floor (24 LTS).
 - **Constraints:** same Hono app, no new runtime dependency, Worker behavior unchanged and proven by the existing suite. A stricter `patSecret` rule warns on load and rejects on write, so stored settings keep working.
 - **Non-goals:** accounts, masks, new screens.
-- **Success signals:** every reproduced probe of the review is a test (R1 to R3, R5, R6). One conformance suite passes on both runtimes. The Docker image builds smaller and passes the health check on a custom port.
+- **Success signals:** every reproduced probe of the review is a test (R1 to R3, R5, R6). One conformance suite passes on both runtimes. No Docker file remains on the branch.
 
 ### Step B: settings that are safe by construction
 
@@ -112,10 +113,24 @@ Each step is one reviewable PR (or a small series) with its own tests and docs. 
 - **Non-goals:** roles beyond owner and member, OIDC, public sign-up.
 - **Success signals:** concurrent bootstrap yields one owner. A virtual authenticator completes enrollment and sign-in. A recovery drill works on a clean instance. A valid login is never blocked by other people's failed attempts, with and without a proxy.
 
+### Step D: release tarball, version and updates
+
+- **Why:** operators should install and update a finished release, without Git, pnpm or a compiler on the server (R17).
+- **Needs first:** Step A (capability guard, start sweep, conformance suite).
+- **Capabilities:**
+  - A CI workflow builds the bundle from each stable tag and attaches `feedbackkit-vX.Y.Z.tar.gz`, `SHA256SUMS` and a build attestation to the GitHub release. Dev prereleases may carry it for testing.
+  - The tarball holds a single-file server without `node_modules`, widget and admin assets, migrations, the systemd unit, `feedbackkit-update` and `bundle.json` with release, channel, schema version and delivery capability. The server reads these from the bundle and no longer reads `src/shared/contract.ts` at runtime.
+  - `/diag` and the System page show the release from `bundle.json`.
+  - `feedbackkit-update` with `--check` and `--rollback`, as described in J12. The admin shows a notice for a newer stable release (J2) with an off switch.
+  - `docs/SELF_HOSTING.md` describes install and update from the tarball. The clone-and-build path moves to `CONTRIBUTING.md` as the developer path.
+- **Constraints:** the target needs Node.js 24, curl, tar and a checksum tool, nothing else. Nothing updates without an operator command. The update check is one plain request to the GitHub Releases API and sends nothing about the installation. One bundle serves every Linux target. The update script is POSIX shell and CI tests it on fixtures.
+- **Non-goals:** a Docker image, an npm registry package, an auto-update daemon, delta updates, init systems other than systemd.
+- **Success signals:** the workflow produces tarball, checksums and attestation from a dev tag (a dry run before the first stable tag). A fresh LXC installs it with only Node, curl and tar. An update from one release to the next keeps the data. A corrupted tarball and a bad bundle each trigger the automatic restore. `/diag` shows the release.
+
 ### Step 3: verification on a fresh host
 
 - **Why:** a build that passes on a laptop says little about an LXC.
-- **Capabilities:** run J1, J2, J12 and J14 on a clean LXC and a clean Docker host with outbound traffic blocked until the first report, including upgrade with data and rollback. Update the status of each journey with the evidence.
+- **Capabilities:** run J1, J2, J12 and J14 from the release tarball on a clean LXC. Outbound traffic is allowed for the download and blocked until the first report. Include an update with data and a rollback. Update the status of each journey with the evidence.
 - **Success signals:** transcripts and results are linked from the journeys. Only now may README and docs say the gateway runs without Cloudflare. Tag the release after this step.
 
 ### Steps 4 to 8, after the gates
@@ -132,7 +147,7 @@ Each step is one reviewable PR (or a small series) with its own tests and docs. 
 
 | Gate | Condition |
 |---|---|
-| Autonomy | Steps A, B, Gate 2 and Step 3 are done. Until then no document claims independence from Cloudflare |
+| Autonomy | Steps A, B, D, Gate 2 and Step 3 are done. Until then no document claims independence from Cloudflare |
 | Privacy | Gate 1 is done. Until then no document claims masked or private screenshots |
 | Honesty | Step C is done and every claim in the claim table has a proof |
 
@@ -150,7 +165,7 @@ Each step is one reviewable PR (or a small series) with its own tests and docs. 
 |---|---|---|
 | Admin, types and first run | #55, #59, #6 | B, 5 |
 | Theme and preview | #57 | 7 |
-| Independent operation and docs | #60, local part of #3, #69, #72 | A, C, 3 |
+| Independent operation and docs | #60, local part of #3, #69, #72 | A, C, D, 3 |
 | Privacy and screenshot reliability | PII part of #127, #128, #129 | Gate 1 |
 | Optional delivery integrations | #58, webhook part of #127 | 8 |
 
