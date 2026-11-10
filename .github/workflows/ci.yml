@@ -62,3 +62,4 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:widget && pnpm build:server && pnpm test:server
+      - run: pnpm build:bundle && ls -l dist-bundle && cat dist-bundle/SHA256SUMS

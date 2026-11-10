@@ -57,9 +57,9 @@ async function harness() {
   const h = { dir, stable, dev, releases };
 
   /** Build release `version` with its checksum and signature; `bad` can break one part. */
-  h.publish = async (version, { key = version.includes('-dev.') ? dev : stable, prerelease = version.includes('-dev.'), mutate, tamper } = {}) => {
+  h.publish = async (version, { key = version.includes('-dev.') ? dev : stable, prerelease = version.includes('-dev.'), mutate, tamper, keysDir = trust } = {}) => {
     const out = join(assets, version); mkdirSync(out);
-    const built = await buildBundle({ root, outDir: out, release: version, commit: 'abc', epoch: 1_800_000_000, keysDir: trust });
+    const built = await buildBundle({ root, outDir: out, release: version, commit: 'abc', epoch: 1_800_000_000, keysDir });
     let tarball = join(out, built.name);
     if (mutate) { writeFileSync(tarball, repack(tarball, mutate)); writeFileSync(join(out, 'SHA256SUMS'), `${sha(readFileSync(tarball))}  ${built.name}\n`); }
     sign(join(out, 'SHA256SUMS'), key);
@@ -233,5 +233,33 @@ test('on the dev channel a stable release signed with the dev key is refused too
     assert.notEqual(r.status, 0, r.stdout);
     assert.match(r.stderr, /signed with the dev key, which stable releases must not use/);
     assert.equal(h.current(), '1.0.0-dev.1');
+  } finally { await h.close(); }
+});
+
+test('a key rotation: a release signed with the old key brings the new key list, then only the new key counts', async () => {
+  const h = await harness();
+  try {
+    await h.install('1.0.0');
+    // The new stable key pair, and the key list that releases from now on carry.
+    const next = join(h.dir, 'next'); mkdirSync(next);
+    const newKey = keypair(next, 'stable');
+    const trustNext = join(h.dir, 'trust-next'); mkdirSync(trustNext);
+    copyFileSync(`${newKey}.pub`, join(trustNext, 'stable.pub')); copyFileSync(`${h.dev}.pub`, join(trustNext, 'dev.pub'));
+    // 1.1.0 is the rotation release: signed with the old key, carrying the new key list.
+    await h.publish('1.1.0', { keysDir: trustNext });
+    let r = await h.run();
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.equal(h.current(), '1.1.0');
+    // 1.2.0 is signed with the new key and installs on the new trust.
+    await h.publish('1.2.0', { key: newKey, keysDir: trustNext });
+    r = await h.run();
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.equal(h.current(), '1.2.0');
+    // A release signed with the old key is refused from now on.
+    await h.publish('1.3.0', { key: h.stable, keysDir: trustNext });
+    r = await h.run();
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /does not verify/);
+    assert.equal(h.current(), '1.2.0');
   } finally { await h.close(); }
 });

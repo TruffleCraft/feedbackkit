@@ -68,9 +68,37 @@ stays, the next promotion moves on. Dev: re-run `Release (dev channel)` on an ol
 wait for the next merge. D1 migrations are not rolled back; expand/contract keeps the previous
 code working on the newer schema.
 
-## Server and Proxmox LXC updates
+## Server tarball
 
-The standalone runtime is built from a chosen git release tag with `pnpm build:widget && pnpm build:server`. Keep the persistent data directory, back it up before upgrading and restart on the new build. [SELF_HOSTING.md](SELF_HOSTING.md#data-backups-and-updates) covers the exact workflow. It does not depend on Workers Builds or a Cloudflare account.
+The standalone server ships as a tarball, so an operator installs a finished release without Git, pnpm or a compiler. Every dev build and every stable release carries three files on its GitHub release: `feedbackkit-vX.Y.Z.tar.gz`, `SHA256SUMS` and `SHA256SUMS.sig`. They are published only when the signing key of the channel is configured (see Release keys). An unsigned tarball is never attached.
+
+- **Contents:** a single-file `server.mjs` without `node_modules`, the widget and admin assets, the migrations, the systemd unit, `feedbackkit-update`, the public release keys and `bundle.json` (release, channel, schema version, delivery capability, file list). It is about 190 kB. `/diag` shows the release and channel from `bundle.json`.
+- **Build:** `pnpm build:widget && pnpm build:server && pnpm build:bundle` writes `dist-bundle/`. Two builds of one release are byte-identical (`test/server-bundle.test.mjs`).
+- **What was tested is what ships:** promoting a dev build rebuilds the same commit under the stable version and compares the two tarballs. They must be equal except `bundle.json` and the widget with its version stamp (`scripts/compare-bundles.mjs`), or the promotion stops before anything is deployed.
+- **Target:** Node.js 24 or newer and the standard tools curl, tar, sha256sum and ssh-keygen. One tarball serves every Linux target.
+
+### Release keys
+
+`SHA256SUMS` is signed with an Ed25519 key through `ssh-keygen -Y sign` (namespace `feedbackkit-release`). A checksum detects a damaged download. The signature detects a tampered one. Each channel has its own key: stable releases carry the stable signature, dev builds the dev signature, and the update command trusts the dev key only on the dev channel and never for a stable release.
+
+- **Public keys** are committed as `release-keys/stable.pub` and `release-keys/dev.pub` and ship in every tarball. The stable key and its fingerprint are listed here once the first release is signed. No release has been signed yet.
+- **Private keys** are the secret `FK_RELEASE_SIGNING_KEY` of the GitHub environments `production` (stable) and `dev`. `sh scripts/gen-release-keys.sh` creates both pairs and prints these steps. Nothing else stores them.
+- **Verify by hand** (the first install): `ssh-keygen -Y verify -f allowed_signers -I release-stable -n feedbackkit-release -s SHA256SUMS.sig < SHA256SUMS`, where `allowed_signers` holds the line `release-stable namespaces="feedbackkit-release" ssh-ed25519 <key>`.
+- **Rotation:** publish a release that carries the new key list in `release-keys/` and is signed with the old key. Installs that update to it then trust the new key. Sign every later release with the new key. A release signed with the old key is refused from then on. `test/server-update.test.mjs` rehearses this ("a key rotation").
+- **A lost or leaked key:** publish new keys as a new release, tell operators to verify the first install against the key in this file, and treat releases signed after the leak as untrusted.
+
+### Updating
+
+`feedbackkit-update` is part of every release and needs nothing beyond Node and the tools above. It makes one plain read of the GitHub Releases API and sends nothing about the installation. Nothing updates unless you run it.
+
+| Command | What it does |
+|---|---|
+| `feedbackkit-update --check` | Prints the installed and the newest release. Exit 0 when up to date, 10 when an update waits |
+| `feedbackkit-update` | Downloads the newest release of the channel, verifies signature and checksum, unpacks it, copies the data directory, switches `current`, restarts the service and waits for `/diag` to show the new release. Any failure restores the old release and its data |
+| `feedbackkit-update --channel dev` | Takes dev builds as well. The default is stable, or dev when a dev build is installed |
+| `feedbackkit-update --rollback` | Goes back to the previous release with the data copy taken before the update. What came in since stays in `<data dir>.after-rollback-<time>` |
+
+The two newest releases stay on disk. The layout is `/opt/feedbackkit/releases/<version>/` with `current` and `previous` as links. [SELF_HOSTING.md](SELF_HOSTING.md#install-from-a-release-tarball) has the install steps.
 
 ## Cloudflare self-hosting updates
 
