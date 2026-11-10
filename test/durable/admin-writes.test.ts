@@ -131,6 +131,66 @@ describe("config editor routes", () => {
   });
 });
 
+describe("POST /api/admin/projects (create only)", () => {
+  const fresh = { projectId: "fresh", templates: [{ type: "bug", label: "Bug" }], llm: { provider: "off" }, tracker: { kind: "github", defaultRepo: "acme/site", patSecret: "GITHUB_PAT_default" }, auth: { origins: ["https://acme.example"] } };
+  const create = (cfg: unknown) => call("POST", "/api/admin/projects", { config: cfg });
+  beforeEach(seed);
+
+  it("creates a project and answers with the key, the snippet and the test page", async () => {
+    const res = await create(fresh);
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { status: string; projectId: string; publicKey: string; configVersion: number; snippet: string; testPage: string };
+    expect(body).toMatchObject({ status: "created", projectId: "fresh", configVersion: 1 });
+    expect(body.publicKey).toMatch(/^fk_pub_[0-9a-f]{32}$/);
+    expect(body.snippet).toBe(`<script src="http://localhost/widget.js?v=${gw["WIDGET_VERSION"] ?? "unversioned"}" data-project="${body.publicKey}"></script>`);
+    expect(body.testPage).toBe(`http://localhost/t/${body.publicKey}`);
+    const stored = await env.DB.prepare("SELECT public_key, config FROM projects WHERE id = 'fresh'").first<{ public_key: string; config: string }>();
+    expect(stored!.public_key).toBe(body.publicKey);
+    expect(JSON.parse(stored!.config)).toEqual(fresh);
+  });
+
+  it("never overwrites: a second create of the same ID is 409 FK_PROJECT_EXISTS and changes nothing", async () => {
+    await create(fresh);
+    const again = await create({ ...fresh, locale: "de" });
+    expect(again.status).toBe(409);
+    expect(await again.json()).toMatchObject({ code: "FK_PROJECT_EXISTS" });
+    const stored = await env.DB.prepare("SELECT config FROM projects WHERE id = 'fresh'").first<{ config: string }>();
+    expect(JSON.parse(stored!.config)).toEqual(fresh);
+    // The seeded project is untouched as well.
+    expect((await create(config)).status).toBe(409);
+  });
+
+  it("answers with codes: invalid project ID, invalid config, invalid JSON, too large, no sign-in", async () => {
+    const badId = await create({ ...fresh, projectId: "Not Allowed" });
+    expect(badId.status).toBe(400);
+    expect(await badId.json()).toMatchObject({ code: "FK_PROJECT_ID_INVALID" });
+    const invalid = await create({ ...fresh, templates: [] });
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toMatchObject({ code: "FK_CONFIG_INVALID", issues: [expect.stringContaining("templates")] });
+    const notJson = await app.request("/api/admin/projects", { method: "POST", headers: { Authorization: `Bearer ${TOKEN}` }, body: "{ nope" }, gw);
+    expect(notJson.status).toBe(400);
+    expect(await notJson.json()).toMatchObject({ code: "FK_CONFIG_INVALID" });
+    const large = await create({ ...fresh, privacyUrl: `https://acme.example/${"a".repeat(600 * 1024)}` });
+    expect(large.status).toBe(413);
+    expect(await large.json()).toMatchObject({ code: "FK_CONFIG_TOO_LARGE" });
+    expect((await call("POST", "/api/admin/projects", { config: fresh }, {})).status).toBe(401);
+    expect(await env.DB.prepare("SELECT id FROM projects WHERE id IN ('fresh', 'Not Allowed')").first()).toBeNull();
+  });
+
+  it("holds a local-only project back until the deploy recorded the capability, then creates it", async () => {
+    const local = { projectId: "inbox", templates: [{ type: "feedback", label: "Feedback" }], delivery: "local", llm: { provider: "off" }, auth: { origins: ["https://acme.example"] } };
+    try {
+      const early = await create(local);
+      expect(early.status).toBe(422);
+      expect(await early.json()).toMatchObject({ code: "FK_CONFIG_SHAPE_UNSUPPORTED", required: 1, available: 0 });
+      await env.DB.prepare("INSERT INTO meta (key, value) VALUES ('delivery_capability', '1') ON CONFLICT(key) DO UPDATE SET value = '1'").run();
+      expect((await create(local)).status).toBe(201);
+    } finally {
+      await env.DB.prepare("DELETE FROM meta WHERE key = 'delivery_capability'").run();
+    }
+  });
+});
+
 describe("published type IDs", () => {
   const two = { ...config, templates: [{ type: "bug", label: "Bug" }, { type: "idea", label: "Idea" }] };
   beforeEach(async () => {
@@ -165,6 +225,7 @@ describe("published type IDs", () => {
     expect(await ok.json()).toMatchObject({ status: "published", configVersion: 4 });
     const stored = await env.DB.prepare("SELECT config FROM projects WHERE id = 'demo'").first<{ config: string }>();
     expect(JSON.parse(stored!.config).templates[1]).toMatchObject({ type: "idea", archived: true });
+    await env.DB.prepare("DELETE FROM meta WHERE key = 'delivery_capability'").run();
   });
 });
 

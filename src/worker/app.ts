@@ -18,6 +18,7 @@ import { VERSION, releaseOf, bindingsPresence, secretsPresence } from "./status.
 import { adminAuthed, adminGate } from "./admin/auth.js";
 import { registerAdminRoutes } from "./admin/routes.js";
 import { checkConfigForWrite, parseStoredConfig } from "./admin/config-write.js";
+import { embedSnippet } from "./admin/snippet.js";
 import { registerAdminPages } from "./admin/pages.js";
 import type { Env } from "./env.js";
 
@@ -403,8 +404,7 @@ app.post("/api/admin/config/import", async (c) => {
     projectId: id,
     publicKey: key,
     configVersion: Number(row?.config_version ?? 1),
-    snippet: `<script src="${origin}/widget.js?v=${c.env.WIDGET_VERSION ?? "unversioned"}" data-project="${key}"></script>`,
-    testPage: `${origin}/t/${key}`,
+    ...embedSnippet(origin, c.env.WIDGET_VERSION, key),
   });
 });
 

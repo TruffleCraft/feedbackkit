@@ -8,6 +8,7 @@ import { checkProject } from "../project-check.js";
 import { deleteAssets } from "../storage/r2.js";
 import { forgetConfig } from "../config.js";
 import { checkConfigForWrite, parseStoredConfig } from "./config-write.js";
+import { embedSnippet } from "./snippet.js";
 import { checkRepoAccess } from "../providers/github.js";
 import { retentionImpact, retentionNotice } from "../storage/retention.js";
 import { releaseOf, bindingsPresence, secretsPresence } from "../status.js";
@@ -25,7 +26,7 @@ import type { Env } from "../env.js";
 type AppT = Hono<{ Bindings: Env }>;
 type Ctx = Context<{ Bindings: Env }>;
 
-const err = (c: Ctx, status: 400 | 404 | 409 | 500 | 502, error: string, code?: string, extra: Record<string, unknown> = {}) =>
+const err = (c: Ctx, status: 400 | 404 | 409 | 413 | 500 | 502, error: string, code?: string, extra: Record<string, unknown> = {}) =>
   c.json({ v: WIRE_VERSION, status: "error", error, ...(code ? { code } : {}), ...extra }, status);
 
 const DISPOSITIONS = new Set(["open", "done", "dismissed"]);
@@ -80,18 +81,18 @@ export function registerAdminRoutes(app: AppT): void {
     const denied = await adminGate(c);
     if (denied) return denied;
     const raw = await c.req.text();
-    if (new TextEncoder().encode(raw).byteLength > 512 * 1024) return c.json({ v: WIRE_VERSION, status: "error", error: "config too large" }, 413);
+    if (new TextEncoder().encode(raw).byteLength > 512 * 1024) return err(c, 413, "config too large", "FK_CONFIG_TOO_LARGE");
     let body: { config?: unknown };
-    try { body = JSON.parse(raw) as { config?: unknown }; } catch { return err(c, 400, "invalid JSON"); }
+    try { body = JSON.parse(raw) as { config?: unknown }; } catch { return err(c, 400, "invalid JSON", "FK_CONFIG_INVALID"); }
     const cfg = stripColumns(body?.config);
     const check = await checkConfigForWrite(c.env, cfg);
     if (!check.ok) return c.json(check.body, check.status);
-    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(check.config.projectId)) return err(c, 400, "Use 1–64 lowercase letters, digits, hyphens or underscores for the project ID.");
+    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(check.config.projectId)) return err(c, 400, "Use 1–64 lowercase letters, digits, hyphens or underscores for the project ID.", "FK_PROJECT_ID_INVALID");
     const publicKey = `fk_pub_${crypto.randomUUID().replace(/-/g, "")}`;
     const result = await c.env.DB.prepare("INSERT INTO projects (id, public_key, config, config_version, updated_at) VALUES (?1, ?2, ?3, 1, ?4) ON CONFLICT(id) DO NOTHING")
       .bind(check.config.projectId, publicKey, JSON.stringify(cfg), Date.now()).run();
-    if (!result.meta.changes) return err(c, 409, "A project with this ID already exists. Choose another ID; its settings were not changed.");
-    return c.json({ v: WIRE_VERSION, status: "created", projectId: check.config.projectId, publicKey, configVersion: 1 }, 201);
+    if (!result.meta.changes) return err(c, 409, "A project with this ID already exists. Choose another ID; its settings were not changed.", "FK_PROJECT_EXISTS");
+    return c.json({ v: WIRE_VERSION, status: "created", projectId: check.config.projectId, publicKey, configVersion: 1, ...embedSnippet(new URL(c.req.url).origin, c.env.WIDGET_VERSION, publicKey) }, 201);
   });
 
   // ── Config export (re-importable through POST /api/admin/config/import) ─────

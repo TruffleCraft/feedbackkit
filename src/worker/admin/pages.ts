@@ -326,7 +326,7 @@ const PROJECTS = `<section id="view-projects" hidden>
   <div class="pagehead"><div><h1>Projects</h1><p id="projects-sub"></p></div><button class="b violet" type="button" id="new-project">New project</button></div>
   <dialog id="new-project-dialog"><form id="new-project-form" class="stack">
     <h2>Create a project</h2><p class="help">Start with the FeedbackKit inbox. No GitHub or AI credentials are needed. You can change delivery and AI settings afterwards.</p>
-    <div class="field"><label for="new-project-id">Project ID</label><input class="in" id="new-project-id" required pattern="[a-z0-9][a-z0-9_-]{0,63}" maxlength="64" placeholder="my-website"></div>
+    <div class="field"><label for="new-project-id">Project ID</label><input class="in" id="new-project-id" required pattern="[a-z0-9][a-z0-9_\\-]{0,63}" maxlength="64" placeholder="my-website"></div>
     <div class="field"><label for="new-project-origin">Website origin</label><input class="in" id="new-project-origin" type="url" required placeholder="https://example.org"><p class="help">Include scheme and hostname. No page path.</p></div>
     <div class="field"><label for="new-project-locale">Issue language</label><select class="in" id="new-project-locale"><option value="en">English</option><option value="de">Deutsch</option></select></div>
     <p class="help" id="new-project-msg" role="status"></p><div class="row-flex"><button class="b violet" type="submit" id="create-project">Create project</button><button class="b ghost" type="button" id="cancel-project">Cancel</button></div>

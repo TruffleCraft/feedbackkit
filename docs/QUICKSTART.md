@@ -74,7 +74,9 @@ pnpm deploy
 
 This builds the widget, generates `wrangler.toml` from your build variables
 (ADR-004 — the real toml is gitignored), applies D1 migrations to the remote DB,
-and deploys the Worker.
+and deploys the Worker. After the deploy it records the release's delivery
+capability in the database (it only ever rises), so the admin can create a
+local-inbox project right away.
 
 ## 4. Create a project (seed config)
 

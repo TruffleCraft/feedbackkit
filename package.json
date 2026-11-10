@@ -22,7 +22,7 @@
     "dev": "pnpm materialize && wrangler dev",
     "migrate:local": "wrangler d1 migrations apply feedbackkit --local",
     "migrate:remote": "wrangler d1 migrations apply feedbackkit --remote",
-    "deploy": "pnpm build:widget && pnpm materialize && pnpm migrate:remote && wrangler deploy",
+    "deploy": "pnpm build:widget && pnpm materialize && pnpm migrate:remote && wrangler deploy && node scripts/record-capability.mjs",
     "setup": "node scripts/setup.mjs",
     "build:server": "node scripts/build-server.mjs",
     "start": "node scripts/server.mjs",

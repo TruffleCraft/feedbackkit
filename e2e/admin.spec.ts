@@ -488,3 +488,51 @@ test.describe("phone layout", () => {
     }
   });
 });
+
+test.describe("New project dialog", () => {
+  test("creates a local-inbox project and opens its setup", async ({ page }) => {
+    const { writes } = await installAdminMocks(page);
+    allowStatus.push(404); // the mock knows only the harborline project, so the new one's page answers 404
+    await signedIn(page);
+    await page.goto("/admin");
+    await page.getByRole("button", { name: "New project", exact: true }).click();
+    const dialog = page.locator("#new-project-dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel("Project ID").fill("newsite");
+    await dialog.getByLabel("Website origin").fill("https://newsite.example");
+    await dialog.getByLabel("Issue language").selectOption("de");
+    await dialog.getByRole("button", { name: "Create project", exact: true }).click();
+    await page.waitForURL(/\/admin\/projects\/newsite#setup$/);
+    const sent = writes.find((w) => w.method === "POST" && w.path === "/api/admin/projects");
+    expect(sent?.body).toMatchObject({ config: { projectId: "newsite", locale: "de", delivery: "local", auth: { origins: ["https://newsite.example"] } } });
+  });
+
+  test("an origin with a path is refused before anything is sent", async ({ page }) => {
+    const { writes } = await installAdminMocks(page);
+    await signedIn(page);
+    await page.goto("/admin");
+    await page.getByRole("button", { name: "New project", exact: true }).click();
+    const dialog = page.locator("#new-project-dialog");
+    await dialog.getByLabel("Project ID").fill("newsite");
+    await dialog.getByLabel("Website origin").fill("https://newsite.example/blog");
+    await dialog.getByRole("button", { name: "Create project", exact: true }).click();
+    await expect(dialog.locator("#new-project-msg")).toContainText("http(s) origin");
+    expect(writes.filter((w) => w.path === "/api/admin/projects")).toEqual([]);
+    await expect(dialog).toBeVisible();
+  });
+
+  test("a project that exists shows the gateway's answer and keeps the entries", async ({ page }) => {
+    await installAdminMocks(page, { create: { status: 409, body: { v: 1, status: "error", code: "FK_PROJECT_EXISTS", error: "A project with this ID already exists. Choose another ID; its settings were not changed." } } });
+    allowStatus.push(409);
+    await signedIn(page);
+    await page.goto("/admin");
+    await page.getByRole("button", { name: "New project", exact: true }).click();
+    const dialog = page.locator("#new-project-dialog");
+    await dialog.getByLabel("Project ID").fill("harborline");
+    await dialog.getByLabel("Website origin").fill("https://harborline.app");
+    await dialog.getByRole("button", { name: "Create project", exact: true }).click();
+    await expect(dialog.locator("#new-project-msg")).toContainText("already exists");
+    await expect(dialog.getByLabel("Project ID")).toHaveValue("harborline");
+    await expect(dialog.getByRole("button", { name: "Create project", exact: true })).toBeEnabled();
+  });
+});

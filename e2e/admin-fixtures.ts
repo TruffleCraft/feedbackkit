@@ -197,6 +197,8 @@ export interface AdminMockOpts {
   pageSize?: number;
   /** Signed in through Cloudflare Access as this email: /api/admin/me says so and no token is needed. */
   access?: string;
+  /** The answer of POST /api/admin/projects (default: created). */
+  create?: { status: number; body: Record<string, unknown> };
   /** Scripted answers of POST …/retry, in order (default: delivered). */
   retry?: Array<{ status: number; body: Record<string, unknown> }>;
 }
@@ -241,12 +243,17 @@ export async function installAdminMocks(page: Page, opts: AdminMockOpts = {}) {
     const p = url.pathname;
     if (p === "/api/admin/me") return json(route, { v: 1, via: "token" });
 
-    if (p === "/api/admin/projects") return json(route, { v: 1, projects: opts.emptyProjects ? [] : projects() });
+    if (p === "/api/admin/projects" && req.method() === "GET") return json(route, { v: 1, projects: opts.emptyProjects ? [] : projects() });
     if (p === "/api/admin/system") return json(route, system());
     const method = req.method();
     if (method !== "GET") {
       const body = req.postData() ? (JSON.parse(req.postData()!) as Record<string, unknown>) : undefined;
       writes.push({ method, path: p, body });
+      if (p === "/api/admin/projects" && method === "POST") {
+        const id = (body?.["config"] as { projectId?: string } | undefined)?.projectId ?? "";
+        const answer = opts.create ?? { status: 201, body: { v: 1, status: "created", projectId: id, publicKey: "fk_pub_0123456789abcdef", configVersion: 1, snippet: `<script src="https://gateway.test/widget.js?v=x" data-project="fk_pub_0123456789abcdef"></script>`, testPage: "https://gateway.test/t/fk_pub_0123456789abcdef" } };
+        return json(route, answer.body, answer.status);
+      }
       const fb = /^\/api\/admin\/feedback\/([^/]+)(\/retry)?$/.exec(p);
       if (fb && fb[2]) {
         const next = opts.retry?.shift() ?? { status: 200, body: { v: 1, status: "delivered", feedbackId: fb[1], projectUrl: "https://github.com/orgs/harborline/projects/3", warnings: [] } };

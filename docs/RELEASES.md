@@ -75,6 +75,6 @@ The standalone runtime is built from a chosen git release tag with `pnpm build:w
 ## Cloudflare self-hosting updates
 
 Fork the repository and connect it to Cloudflare Workers Builds with production branch
-**`stable`** and build command `pnpm deploy` (it builds, applies migrations, deploys). To
+**`stable`** and build command `pnpm deploy` (it builds, applies migrations, deploys and records the delivery capability). To
 update, sync the `stable` branch of your fork with upstream; Workers Builds deploys it. Read the
 release notes of every version you skip.
