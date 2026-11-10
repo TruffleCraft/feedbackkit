@@ -27,8 +27,8 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 ## J1 Install on Linux or a Proxmox LXC
 
 - **Goal:** Robin has a running gateway on an LXC from a finished release, without Git, pnpm, Docker or a Cloudflare account.
-- **Steps:** install Node.js 24 LTS, download the release tarball and `SHA256SUMS`, verify the checksum, extract to `/opt/feedbackkit`, install the systemd unit from the tarball, fill the environment file, start.
-- **Guarantees:** a checksum mismatch stops the install. The service refuses to start with a weak admin token or a bad public URL. Migrations run once. The first sweep cannot keep the service from starting. `/diag` is green only when schema and capability match, and it shows the release.
+- **Steps:** install Node.js 24 LTS, download the release tarball, `SHA256SUMS` and `SHA256SUMS.sig`, verify signature and checksum, extract to `/opt/feedbackkit`, install the systemd unit from the tarball, fill the environment file, start.
+- **Guarantees:** a failed signature or checksum stops the install. The service refuses to start with a weak admin token or a bad public URL. Migrations run once. The first sweep cannot keep the service from starting. `/diag` is green only when schema and capability match, and it shows the release.
 - **Failure paths:** two starts at once on one data directory (today both fail 6 of 6 times in the probe), a failing sweep (crash loop under `Restart=on-failure`), a Node release without `node:sqlite`.
 - **Evidence:** a fresh LXC with only Node, curl and tar installed. Installation from the docs to a green `/diag` that shows the release number, then reboot and restart tests. Outbound traffic is needed once for the download and blocked afterwards until the first report. A conformance suite runs on both runtimes.
 - **Today:** no tarball is built. The docs still describe a clone, `pnpm install` and a build on the server. The happy path works from a checkout on a Mac with Node 26. systemd and a real LXC were not run. The docs say "Node 24+", `engines` says `>=22.13`, CI runs 22 and 24.
@@ -126,10 +126,10 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 ## J12 Upgrade and roll back
 
 - **Goal:** Robin updates with one command and can go back.
-- **Steps:** run `feedbackkit-update`. It reads the installed release, fetches the latest stable release and `SHA256SUMS`, verifies the tarball, stops the service, copies the data directory, switches to the new release directory, starts the service and checks `/diag`. `--check` only reports what it would do. `--rollback` restores the previous release and the copy.
-- **Guarantees:** a checksum mismatch or a failed health check restores the previous release and the data copy by itself. Migrations only add. The command refuses a release whose schema or delivery capability is lower than what the data holds. The recorded delivery capability never drops.
+- **Steps:** run `feedbackkit-update`. It reads the installed release, fetches the latest release of the chosen channel (stable by default) with `SHA256SUMS` and its signature, verifies both, stops the service, copies the data directory, switches to the new release directory, starts the service and checks `/diag`. `--check` only reports what it would do. `--rollback` restores the previous release and the copy.
+- **Guarantees:** a failed signature or checksum, or a failed health check, restores the previous release and the data copy by itself. Migrations only add. The command refuses a release whose schema or delivery capability is lower than what the data holds. The recorded delivery capability never drops.
 - **Failure paths:** an interrupted download, a service that does not come up, a disk that is full, a copy taken while the process writes (the service is stopped first).
-- **Evidence:** an upgrade and rollback test on a data directory with real rows, with a bad bundle (health check fails) and a corrupted tarball (checksum fails), plus a backup test that includes the write-ahead log.
+- **Evidence:** an upgrade and rollback test on a data directory with real rows, with a bad bundle (health check fails), a corrupted tarball (checksum fails) and a tampered checksum file (signature fails), plus a backup test that includes the write-ahead log.
 - **Today:** no update command exists. The docs describe stop, copy, check out, rebuild. The standalone server overwrites the capability on every start. `docs/RELEASES.md` promises the opposite for the Cloudflare path.
 
 ## J13 Reports expire

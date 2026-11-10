@@ -118,14 +118,28 @@ Each step is one reviewable PR (or a small series) with its own tests and docs. 
 - **Why:** operators should install and update a finished release, without Git, pnpm or a compiler on the server (R17).
 - **Needs first:** Step A (capability guard, start sweep, conformance suite).
 - **Capabilities:**
-  - A CI workflow builds the bundle from each stable tag and attaches `feedbackkit-vX.Y.Z.tar.gz`, `SHA256SUMS` and a build attestation to the GitHub release. Dev prereleases may carry it for testing.
+  - A CI workflow builds the bundle for every dev tag and every stable tag and attaches `feedbackkit-vX.Y.Z.tar.gz`, `SHA256SUMS` and `SHA256SUMS.sig` to the GitHub release (release strategy below).
   - The tarball holds a single-file server without `node_modules`, widget and admin assets, migrations, the systemd unit, `feedbackkit-update` and `bundle.json` with release, channel, schema version and delivery capability. The server reads these from the bundle and no longer reads `src/shared/contract.ts` at runtime.
   - `/diag` and the System page show the release from `bundle.json`.
   - `feedbackkit-update` with `--check` and `--rollback`, as described in J12. The admin shows a notice for a newer stable release (J2) with an off switch.
   - `docs/SELF_HOSTING.md` describes install and update from the tarball. The clone-and-build path moves to `CONTRIBUTING.md` as the developer path.
-- **Constraints:** the target needs Node.js 24, curl, tar and a checksum tool, nothing else. Nothing updates without an operator command. The update check is one plain request to the GitHub Releases API and sends nothing about the installation. One bundle serves every Linux target. The update script is POSIX shell and CI tests it on fixtures.
+- **Constraints:** the target needs Node.js 24 and the standard tools curl, tar, sha256sum and ssh-keygen, nothing else. Everything the repo ships is English: release notes, command output, docs and `bundle.json`. The admin notice has `en` and `de` keys, as `CONTRIBUTING.md` requires for user-facing strings. Nothing updates without an operator command. The update check is one plain request to the GitHub Releases API and sends nothing about the installation. One bundle serves every Linux target. The update script is POSIX shell and CI tests it on fixtures.
 - **Non-goals:** a Docker image, an npm registry package, an auto-update daemon, delta updates, init systems other than systemd.
-- **Success signals:** the workflow produces tarball, checksums and attestation from a dev tag (a dry run before the first stable tag). A fresh LXC installs it with only Node, curl and tar. An update from one release to the next keeps the data. A corrupted tarball and a bad bundle each trigger the automatic restore. `/diag` shows the release.
+- **Success signals:** the workflow produces tarball, checksums and signature from a dev tag (a dry run before the first stable tag). A fresh LXC installs it with only Node and the standard tools. An update from one release to the next keeps the data. A corrupted tarball, a tampered checksum file and a bad bundle each stop the update and restore the previous state. `/diag` shows release and channel.
+
+Release strategy for the tarball:
+
+| Topic | Rule |
+|---|---|
+| Versioning | SemVer from git tags (ADR-013). While the version is `0.x`, a minor release may break, and the release notes say so |
+| Channels | `stable` (`vX.Y.Z`, the GitHub release marked latest) and `dev` (`vX.Y.Z-dev.N`, marked pre-release). The default is stable. `feedbackkit-update --channel dev` opts in. No `rc` tag: a tested dev build is promoted by hand |
+| Build | Every merge builds a dev tarball. Promotion rebuilds the same commit under the stable version (ADR-013). CI checks that the dev and stable bundles of one commit are byte-identical except `bundle.json`, so what was tested is what ships |
+| Retention | GitHub keeps the newest three dev pre-releases (ADR-013). Stable releases stay |
+| Integrity | `SHA256SUMS` is signed with the release key (D-08) and checked with `ssh-keygen -Y verify`. The public key ships in every bundle and in the docs. A checksum next to the tarball detects corruption only. The signature detects tampering |
+| Update notice | Uses GitHub's latest-release endpoint, which skips pre-releases (on this repo it returns `v0.1.18` while `v0.1.19-dev.1` exists). On the dev channel it also offers newer dev builds |
+| Skipping releases | `bundle.json` names the oldest release a data directory can update from. The update command walks through intermediate releases when needed |
+| Rollback | The two newest releases stay on disk. Migrations only add, so one release back works on the newer schema. Beyond that the update command restores the data copy |
+| Support | Only the latest stable release gets fixes. A bad stable release is pulled by marking it pre-release and publishing a fixed patch |
 
 ### Step 3: verification on a fresh host
 

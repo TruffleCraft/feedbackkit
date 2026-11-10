@@ -68,7 +68,7 @@ Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready)
 1. One node, one process per database. SQLite in WAL mode on a persistent local disk.
 2. The same Hono application and the same behavior tests as the Worker. A difference between the runtimes is a bug or an entry in the parity table of `docs/SELF_HOSTING.md`.
 3. Node.js 24 LTS. The Node documentation labels `node:sqlite` in v24 "Stability: 1.2, release candidate" (nodejs.org, checked 2026-11-10). One version number appears in `engines`, CI and the docs.
-4. Delivered as a release tarball that CI builds from a tag, with a checksum and a build attestation. The target needs Node.js 24, curl, tar and a checksum tool. It needs no Git, no pnpm, no build and no container. The tarball holds a single-file server, the widget and admin assets, the migrations, the systemd unit and a file that records release, delivery capability and schema version.
+4. Delivered as a release tarball that CI builds from a tag, with a signed checksum file. The target needs Node.js 24 and the standard tools curl, tar, sha256sum and ssh-keygen (OpenSSH 8.0 or newer). It needs no Git, no pnpm, no build and no container. The tarball holds a single-file server, the widget and admin assets, the migrations, the systemd unit and a file that records release, delivery capability and schema version.
 5. `/diag` reports schema, capability and whether stored settings need a newer release than the one running.
 6. Secrets come from environment variables or the service's environment file. The process hands the application an allowlist of them, not its whole environment.
 
@@ -85,7 +85,8 @@ Settled decisions:
 | S5 | The LLM client is OpenAI-compatible and optional | ADR-007, ROADMAP invariant 3 |
 | S6 | Appearance is themed per host through tokens on a neutral base | Owner, 2026-10-07 |
 | S7 | Most backend settings are managed through UI controls, with JSON as the escape hatch | Owner, 2026-11-09 |
-| S8 | The standalone server ships as a release tarball with a checksum. Operators do not build. Docker and an npm package are backlog | Owner, 2026-11-10 |
+| S8 | The standalone server ships as a release tarball with a signed checksum. Operators do not build. Docker and an npm package are backlog | Owner, 2026-11-10 |
+| S9 | Standalone releases follow the channels of ADR-013: stable releases and dev pre-releases, default stable. Details in Step D of the plan | Owner, 2026-11-10 |
 
 Open decisions. Each recommendation is mine and needs the owner's answer.
 
@@ -98,5 +99,6 @@ Open decisions. Each recommendation is mine and needs the owner's answer.
 | D-05 | Does the board need an "in progress" lane? | Not yet. Three states first. A fourth needs an expand-only schema plan and a fix in `queries.ts` |
 | D-06 | Which Node floor? | 24 LTS everywhere |
 | D-07 | Is masking enforced or optional per project? | Optional flag first, default on for new projects after the widget change has shipped for one release |
+| D-08 | Who holds the release signing key, and how is it rotated? | An Ed25519 key in the `production` environment secret of the release workflow. The signature is an OpenSSH signature (`ssh-keygen -Y`): the tool exists wherever OpenSSH does and verified a signature and rejected a tampered file in a local test, while `openssl` Ed25519 verification needs OpenSSL 3 and macOS ships LibreSSL. The public key ships in every bundle and in the docs. Confirm on the target in Step 3 and write the rotation procedure before the first signed release |
 
 Co-created by Michel with NORA (AI Agent)
