@@ -19,7 +19,6 @@ import { adminAuthed, adminGate } from "./admin/auth.js";
 import { registerAdminRoutes } from "./admin/routes.js";
 import { checkConfigForWrite } from "./admin/config-write.js";
 import { registerAdminPages } from "./admin/pages.js";
-import { registerOAuthRoutes } from "./oauth/authorize.js";
 import type { Env } from "./env.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -616,7 +615,7 @@ registerAdminRoutes(app);
 registerAdminPages(app);
 // MCP consent (ADR-015): GET/POST /oauth/authorize. The OAuth provider in
 // index.ts serves the other OAuth paths and /mcp before a request gets here.
-registerOAuthRoutes(app);
+
 
 app.all("/api/admin/*", notImplemented("P2"));
 

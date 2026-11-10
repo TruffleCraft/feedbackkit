@@ -1,0 +1,28 @@
+[Unit]
+Description=FeedbackKit feedback gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=feedbackkit
+Group=feedbackkit
+WorkingDirectory=/opt/feedbackkit
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=8787
+Environment=FK_DATA_DIR=/var/lib/feedbackkit
+EnvironmentFile=/etc/feedbackkit.env
+ExecStart=/usr/bin/node /opt/feedbackkit/scripts/server.mjs
+Restart=on-failure
+StateDirectory=feedbackkit
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/feedbackkit
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

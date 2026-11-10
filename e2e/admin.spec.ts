@@ -137,7 +137,7 @@ test.describe("projects", () => {
     await expect(harbor).toContainText("fk_pub_3a91c07e5d22");
     await expect(harbor).toContainText("38");
     await expect(harbor.locator(".badge.failed")).toHaveText("2");
-    await expect(harbor).toContainText("v12");
+    await expect(harbor).toContainText("Revision 12");
     await noHorizontalScroll(page);
   });
 
@@ -159,8 +159,8 @@ test.describe("project detail", () => {
     await signedIn(page);
     await page.goto("/admin/projects/harborline");
     await expect(page.getByRole("heading", { name: "harborline" })).toBeVisible();
-    await expect(page.locator("#p-meta")).toHaveText("fk_pub_3a91c07e5d22 · config v12");
-    await expect(page.getByRole("tab", { name: "Feedback history" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#p-meta")).toHaveText("fk_pub_3a91c07e5d22 · settings revision 12");
+    await expect(page.getByRole("tab", { name: "Delivery log & inbox" })).toHaveAttribute("aria-selected", "true");
 
     await expect(page.locator('#funnel [data-ev="opened"] b')).toHaveText("412");
     await expect(page.locator('#funnel [data-ev="typed"] small')).toHaveText("58%");
@@ -325,10 +325,10 @@ test.describe("project detail", () => {
     await expect(rows.first().locator(".badge")).toHaveText("Done");
     expect(writes.filter((w) => w.method === "PATCH").map((w) => w.body)).toEqual([{ note: "Shared with the map team" }, { disposition: "done" }]);
 
-    await page.getByRole("button", { name: "Open", exact: true }).click();
+    await page.getByRole("button", { name: "Inbox: open", exact: true }).click();
     await expect(page.getByText("No reports match this filter.")).toBeVisible();
     expect(requests.at(-1)?.view).toBe("open");
-    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await page.getByRole("button", { name: "Inbox: handled", exact: true }).click();
     await expect(rows).toHaveCount(1);
     await page.getByRole("button", { name: "Needs a decision" }).click();
     await expect(rows).toHaveCount(1);
@@ -346,36 +346,37 @@ test.describe("project detail", () => {
     const { writes } = await installAdminMocks(page);
     await signedIn(page);
     await page.goto("/admin/projects/harborline#config");
+    await page.locator("#cfg-advanced > summary").click();
     const text = page.getByLabel("Config JSON");
     await expect(text).toHaveValue(/"projectId": "harborline"/);
     await expect(text).not.toHaveValue(/publicKey|configVersion/);
 
     await text.fill("{ not json");
-    await page.getByRole("button", { name: "Validate" }).click();
+    await page.getByRole("button", { name: "Review changes" }).click();
     await expect(page.locator("#cfg-msg")).toContainText("Not valid JSON");
 
     await text.fill(JSON.stringify({ ...harborConfig, publicKey: undefined, configVersion: undefined, templates: [] }, null, 2));
-    await page.getByRole("button", { name: "Validate" }).click();
+    await page.getByRole("button", { name: "Review changes" }).click();
     await expect(page.locator("#cfg-out .issues li")).toHaveText(["templates: Array must contain at least 1 element(s)"]);
     await expect(page.getByRole("button", { name: "Publish" })).toBeDisabled();
 
     const { publicKey: _k, configVersion: _v, ...stored } = harborConfig;
     const edited = { ...stored, askType: true };
     await text.fill(JSON.stringify(edited, null, 2));
-    await page.getByRole("button", { name: "Validate" }).click();
+    await page.getByRole("button", { name: "Review changes" }).click();
     await expect(page.locator("#cfg-out tbody tr")).toHaveCount(4);
     await expect(page.locator("#cfg-out tbody tr").nth(3)).toHaveText("praiseStored here");
     await expect(page.locator("#cfg-out .diff .del")).toHaveText(['-   "askType": false,\n']);
     await expect(page.locator("#cfg-out .diff .add")).toHaveText(['+   "askType": true,\n']);
     await page.getByRole("button", { name: "Publish" }).click();
-    await expect(page.locator("#cfg-msg")).toHaveText("Published as v13. Active on all edge locations within 60 s.");
-    await expect(page.locator("#p-meta")).toHaveText("fk_pub_3a91c07e5d22 · config v13");
+    await expect(page.locator("#cfg-msg")).toHaveText("Published settings revision 13. Active on all edge locations within 60 s.");
+    await expect(page.locator("#p-meta")).toHaveText("fk_pub_3a91c07e5d22 · settings revision 13");
     expect(writes.at(-1)).toMatchObject({ method: "PUT", body: { expectedVersion: 12 } });
 
     // Someone else published meanwhile: the next publish meets a newer version.
     await page.evaluate(() => fetch("/api/admin/projects/harborline/config", { method: "PUT", headers: { Authorization: `Bearer ${sessionStorage.getItem("fk-admin-token")}`, "Content-Type": "application/json" }, body: JSON.stringify({ config: {}, expectedVersion: 13 }) }));
     await text.fill(JSON.stringify({ ...edited, locale: "de" }, null, 2));
-    await page.getByRole("button", { name: "Validate" }).click();
+    await page.getByRole("button", { name: "Review changes" }).click();
     await page.getByRole("button", { name: "Publish" }).click();
     await expect(page.locator("#cfg-msg")).toContainText("now v14");
     await expect(page.locator("#cfg-out .diff")).toBeVisible();

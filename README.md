@@ -1,39 +1,70 @@
 # FeedbackKit
 
-> ⚠️ **Pre-0.1 — under active development.** APIs, schema and docs are unstable. Roadmap and decisions live in this repo; nothing is announced yet.
+Collect website feedback, ask for missing details, and deliver a report to GitHub or your own inbox.
 
-**Self-hosted feedback gateway: complete-at-the-source user feedback → structured, agent-ready GitHub issues.**
+FeedbackKit adds a small feedback widget to any website. Visitors describe a problem or idea and can attach annotated screenshots. An optional AI model extracts the details your feedback types require and asks a follow-up question before the report is sent.
 
-Users love giving feedback but rarely know *what* developers need. The result: incomplete reports, frustrating back-and-forth, and devs burning time decoding vague messages. FeedbackKit closes that loop **at the source** — while the user is still on the page:
+**You operate the gateway and choose where the feedback goes.** No session replay, keystroke tracking or persistent visitor IDs.
 
-1. A **script-tag widget** (vanilla TS, Shadow DOM — works on any site) collects free-text feedback, a screenshot, and session context (browser, OS, viewport, console errors, URL) automatically.
-2. **One LLM call** structures the unstructured text against the feedback types *you* define (Bug, Idea, Improvement — with required fields per type), including vision extraction from the screenshot.
-3. If required details are missing, the widget shows **pre-filled follow-up fields** ("Almost done — 2 details missing") — the user completes them in seconds, or sends anyway.
-4. A **structured, labeled issue** lands in your GitHub repo. Attachments included, agent-ready.
+## Start here
 
-You host it yourself: **one Cloudflare Worker** (+ D1 + R2, free tiers), one `pnpm deploy`, one snippet. **[docs/QUICKSTART.md](docs/QUICKSTART.md)** gets you from clone to first issue (~15 min for a CF user); [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) has the request/data flow, [docs/SECURITY.md](docs/SECURITY.md) the threat model and [docs/RELEASES.md](docs/RELEASES.md) the stable/dev release channels and how to update. You bring your own LLM key — see [docs/MODELS.md](docs/MODELS.md) for verified, category-based model recommendations (default `gemma-4-26b-a4b-it` — multimodal, open-weights, so the same model runs hosted or fully on-prem; managed, quality, local, and free options included).
+| What you want | Start with | What you need |
+|---|---|---|
+| Run on your own server or a Proxmox LXC | [Server installation](docs/SELF_HOSTING.md#nodejs-on-a-server-or-proxmox-lxc) | Linux, Node.js 24+, persistent disk |
+| Run with Docker Compose | [Docker installation](docs/SELF_HOSTING.md#docker-compose) | Docker with Compose, persistent volume |
+| Deploy on Cloudflare | [Cloudflare installation](docs/QUICKSTART.md) | Workers, D1 and R2 in your account |
+| Add an already running gateway to a site | [Create a project and install the widget](docs/GETTING_STARTED.md) | Access to the gateway admin and your website |
+| Change settings or understand the delivery log | [Admin guide](docs/ADMIN.md) | Admin access |
 
-## Why not …?
+For the server and Docker installations, **no Cloudflare account is required**. The gateway runs on Node.js and stores project settings, reports and attachments in SQLite on your persistent disk. Cloudflare deployments use D1 and R2 instead. Both use the same widget, feedback processing and admin UI. OAuth/MCP connections are currently available on the Cloudflare installation; the standalone server returns an explicit unsupported response for those routes.
 
-| | FeedbackKit | BugDrop | Sentry User Feedback | Marker.io | Formbricks |
-|---|---|---|---|---|---|
-| Sync LLM follow-up **before** the issue exists | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Per-project feedback types with required fields | ✅ | ❌ | ❌ | ✅ | ✅ |
-| Self-hosted, no SaaS | ✅ | ✅ | ❌ | ❌ | ✅ |
-| No session replay / surveillance | ✅ | ✅ | ❌ | ❌ | ✅ |
-| Local/private LLM capable (OpenAI-compatible endpoint) | ✅ (P5) | — | ❌ | ❌ | — |
-| LLM optional (kill switch → plain required-field forms) | ✅ | — | — | — | — |
+## First run with Docker
 
-Honest note: if you just want screenshots → GitHub issues with zero infrastructure, [BugDrop](https://bugdrop.dev/) is excellent. FeedbackKit is for teams that want **complete** feedback (LLM follow-up + session context), their own feedback types, multi-project routing, and privacy-first self-hosting.
+```sh
+git clone https://github.com/TruffleCraft/feedbackkit.git
+cd feedbackkit
+cp .env.example .env
+openssl rand -hex 32
+```
 
-## What the widget measures
+Put the generated value in `.env` as `ADMIN_TOKEN`. Set `FK_PUBLIC_URL` to the address visitors will use, then start:
 
-Anonymous, content-free funnel events only (`opened → typed → submitted → completed`): no session replay, no keystrokes, no stable user IDs, no IP persistence. Console errors are PII-filtered client-side. Details in [SECURITY.md](docs/SECURITY.md) (from P1).
+```sh
+docker compose up -d --build
+```
 
-## Roadmap & status
+Open `http://localhost:8787/admin`, sign in with that token, and choose **New project**. Start with the local inbox; it needs neither GitHub credentials nor an AI service. Follow the [first-project walkthrough](docs/GETTING_STARTED.md) to install and test the widget. For public access, configure HTTPS through your reverse proxy. Compose binds to localhost by default.
 
-The development roadmap lives at [docs/ROADMAP.md](docs/ROADMAP.md). Progress is tracked via [milestones](../../milestones) (P1–P2 committed) and [epics](../../issues?q=is%3Aissue+label%3Aepic); open design decisions carry the [`decision`](../../issues?q=is%3Aissue+label%3Adecision) label — input welcome.
+## What happens to a report?
+
+1. The widget collects the visitor's message, selected images and permitted page context. Automatic screenshots and console capture can be disabled per project.
+2. If AI is enabled, one OpenAI-compatible API call classifies the message and extracts fields. Missing required details become a follow-up; visitors can still send an incomplete report.
+3. The gateway delivers it as a **GitHub issue**, a **GitHub Project draft**, or a **report in the FeedbackKit inbox**.
+4. The admin **delivery log** records delivery success, failure or an uncertain result. Retry is available where the saved delivery can be retried.
+
+GitHub owns the lifecycle of GitHub tickets. FeedbackKit does not mirror open/closed status or comments. A log entry saying an issue was created remains true after that issue closes. Use its destination link for the current status. FeedbackKit's own Open/Done/Discarded state applies to inbox reports.
+
+## AI is optional
+
+Start without AI using required-field forms. To enable it, configure the gateway's `LLM_API_KEY`, then set the project's provider, API base URL and model in **Settings → AI & follow-ups**. OpenAI-compatible gateways and privately hosted models are supported by the client; the endpoint must be reachable from the gateway. See [model setup](docs/MODELS.md).
+
+A local model and a self-hosted gateway are separate choices: you can run either, or both, yourself.
+
+## Setup with an AI agent
+
+Give your coding agent [AGENTS.md](AGENTS.md) and [the agent setup guide](docs/AGENT_SETUP.md). They cover runtime selection, local AI, secret handling, safe project creation and evidence for the first working report.
+
+## Documentation
+
+- [Installation and first report](docs/GETTING_STARTED.md), [server/Docker/LXC operations](docs/SELF_HOSTING.md), [Cloudflare setup](docs/QUICKSTART.md)
+- [Admin settings, revisions and delivery logs](docs/ADMIN.md), [release channels and updates](docs/RELEASES.md)
+- [Architecture](docs/ARCHITECTURE.md), [security and retention](docs/SECURITY.md), [API errors](docs/ERRORS.md)
+- [Contributing](CONTRIBUTING.md), [roadmap](docs/ROADMAP.md), [open issues](https://github.com/TruffleCraft/feedbackkit/issues)
+
+FeedbackKit is under active development. Read the release notes before upgrading; `main` is the development branch. The [release guide](docs/RELEASES.md) explains stable and development builds.
 
 ## License
 
 [MIT](LICENSE)
+
+Co-created by Michel with NORA (AI Agent)

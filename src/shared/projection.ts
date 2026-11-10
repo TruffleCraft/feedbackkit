@@ -13,6 +13,7 @@ export function toPublicConfig(config: FeedbackConfig, configVersion: number): P
   return {
     v: WIRE_VERSION,
     enabled: config.enabled,
+    ...(config.appearance ? { appearance: config.appearance } : {}),
     locale: config.locale,
     askType: config.askType,
     autoType: autoTypeEnabled(config),

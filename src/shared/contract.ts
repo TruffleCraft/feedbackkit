@@ -79,7 +79,13 @@ export type TemplateDefinition = z.infer<typeof TemplateDefinition>;
 export const Delivery = z.enum(["issue", "project", "local"]);
 export type Delivery = z.infer<typeof Delivery>;
 
+export const Appearance = z.object({
+  theme: z.enum(["auto", "light", "dark"]).default("auto"),
+  accent: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  heading: z.string().max(160).optional(),
+});
 export const FeedbackConfig = z.object({
+  appearance: Appearance.optional(),
   projectId: z.string().min(1),
   locale: z.string().default("en"),
   enabled: z.boolean().default(true),
@@ -205,6 +211,7 @@ export function requiredDeliveryCapability(raw: unknown): number {
 
 // ── Public projection (what /api/config returns — never internals) ────────────
 export const PublicConfig = z.object({
+  appearance: Appearance.optional(),
   v: z.literal(WIRE_VERSION),
   enabled: z.boolean(),
   locale: z.string(),

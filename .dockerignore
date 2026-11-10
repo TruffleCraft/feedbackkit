@@ -1,0 +1,14 @@
+.git
+node_modules
+dist
+dist-server
+data
+.env
+.env.*
+.dev.vars*
+.wrangler
+.worktrees
+.gstack
+test-results
+playwright-report
+work

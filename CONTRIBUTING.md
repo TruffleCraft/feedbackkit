@@ -1,6 +1,6 @@
 # Contributing to FeedbackKit
 
-> Pre-0.1: the codebase does not exist yet — we are iterating the [roadmap](docs/ROADMAP.md) first. Until P1 lands, contributions are ideas in Discussions and comments on `decision` issues.
+> FeedbackKit is actively developed. Start with [README.md](README.md) for the product and [AGENTS.md](AGENTS.md) for coding/setup-agent guidance. The [roadmap](docs/ROADMAP.md) contains historical phase plans; linked issues record remaining acceptance criteria.
 
 ## Ideas and feature requests
 
@@ -13,11 +13,11 @@
 
 Open design questions live as issues labeled [`decision`](../../issues?q=is%3Aissue+label%3Adecision) (each states a recommendation and the counter-position). Workflow: **decision issue → discussion → resolution → ADR entry in [docs/DECISIONS.md](docs/DECISIONS.md) → issue closed.** The roadmap is updated at phase exits only; epics are the living truth.
 
-## Development (from P1)
+## Development
 
 - `pnpm setup` — one-time bootstrap: creates D1/R2, asks for secrets (LLM key skippable), prints your URLs. Idempotent.
-- `pnpm dev` — local worker + widget + admin with local D1/R2, a seeded project, **mock LLM & mock GitHub** (no secrets needed).
-- `pnpm test` / `pnpm test:e2e:local` — unit + Playwright against the local stack. **CI runs secret-free** — fork PRs get green builds.
+- `pnpm dev` — local worker + widget + admin with local D1/R2, local D1/R2 bindings. Seed a project and configure test integrations before exercising delivery.
+- `pnpm test` / `pnpm e2e` — unit + Playwright against the local stack. **CI runs secret-free** — fork PRs get green builds.
 - `pnpm deploy` — build all artifacts, apply D1 migrations, deploy. This exact command is also the Workers Builds deploy command.
 
 ## Ground rules

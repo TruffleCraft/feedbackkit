@@ -1,4 +1,6 @@
-# Quickstart
+# Cloudflare installation
+
+This guide installs the **Cloudflare** backend. For an independent Linux, Proxmox LXC or Docker installation, use [SELF_HOSTING.md](SELF_HOSTING.md). After installation, follow [GETTING_STARTED.md](GETTING_STARTED.md).
 
 Self-host FeedbackKit — one Cloudflare Worker (+ D1 + R2, free tiers) — and get
 your first structured issue. **Existing Cloudflare user: ~15 min. Cold (no CF
@@ -76,7 +78,7 @@ and deploys the Worker.
 
 ## 4. Create a project (seed config)
 
-There's no admin UI yet (P2); in P1 a project is a JSON file seeded into D1 —
+The admin UI now creates projects and edits settings. See [the first-project guide](GETTING_STARTED.md) for that path. For scripted setup, a project is a JSON file seeded into D1 —
 **the same schema the admin will import**, so no rework.
 
 ```bash
@@ -454,7 +456,7 @@ feedback history with the funnel of the last 30 days, and the config editor.
   deleted with their screenshots. **Open**, **Done** and **Needs a decision**
   (reports from before the delivery model that never became an issue) filter
   the list.
-- **Config:** the stored JSON in an editor. **Validate** checks it on the
+- **Settings:** form controls for general settings, AI, types, delivery and appearance; the same draft is available under **Advanced JSON**. **Validate** checks it on the
   gateway, lists where each type goes and shows the changes; **Publish** stores
   it as written and bumps the version (widgets pick it up within 60 s). If
   someone published in between, you get the new diff instead of overwriting it.

@@ -37,6 +37,7 @@ function toUIConfig(cfg: PublicConfig, triggerLabel: string | undefined, hideTri
   return {
     locale,
     triggerLabel,
+    heading: cfg.appearance?.heading,
     hideTrigger,
     triggerMedia,
     screenshot: cfg.capture?.screenshot !== "off",
@@ -86,11 +87,12 @@ async function boot() {
   host.setAttribute("data-feedbackkit", "host");
   host.style.cssText = "all: initial;"; // isolate from page styles; shadow does the rest
   const syncTheme = () => {
-    const theme = document.documentElement.getAttribute("data-theme");
+    const theme = cfg.appearance?.theme && cfg.appearance.theme !== "auto" ? cfg.appearance.theme : document.documentElement.getAttribute("data-theme");
     if (theme === "dark" || theme === "light") host.setAttribute("data-theme", theme);
     else host.removeAttribute("data-theme"); // CSS prefers-color-scheme fallback
   };
   syncTheme();
+  if (cfg.appearance?.accent) host.style.setProperty("--fk-accent", cfg.appearance.accent);
   new MutationObserver(syncTheme).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   document.body.appendChild(host);
   const shadow = host.attachShadow({ mode: "open" });

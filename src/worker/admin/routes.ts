@@ -75,6 +75,25 @@ export function registerAdminRoutes(app: AppT): void {
     return c.json({ v: WIRE_VERSION, projects: await listProjects(c.env) });
   });
 
+  // Create-only: unlike import, this cannot overwrite an existing project.
+  app.post("/api/admin/projects", async (c) => {
+    const denied = await adminGate(c);
+    if (denied) return denied;
+    const raw = await c.req.text();
+    if (new TextEncoder().encode(raw).byteLength > 512 * 1024) return c.json({ v: WIRE_VERSION, status: "error", error: "config too large" }, 413);
+    let body: { config?: unknown };
+    try { body = JSON.parse(raw) as { config?: unknown }; } catch { return err(c, 400, "invalid JSON"); }
+    const cfg = stripColumns(body?.config);
+    const check = await checkConfigForWrite(c.env, cfg);
+    if (!check.ok) return c.json(check.body, check.status);
+    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(check.config.projectId)) return err(c, 400, "Use 1–64 lowercase letters, digits, hyphens or underscores for the project ID.");
+    const publicKey = `fk_pub_${crypto.randomUUID().replace(/-/g, "")}`;
+    const result = await c.env.DB.prepare("INSERT INTO projects (id, public_key, config, config_version, updated_at) VALUES (?1, ?2, ?3, 1, ?4) ON CONFLICT(id) DO NOTHING")
+      .bind(check.config.projectId, publicKey, JSON.stringify(cfg), Date.now()).run();
+    if (!result.meta.changes) return err(c, 409, "A project with this ID already exists. Choose another ID; its settings were not changed.");
+    return c.json({ v: WIRE_VERSION, status: "created", projectId: check.config.projectId, publicKey, configVersion: 1 }, 201);
+  });
+
   // ── Config export (re-importable through POST /api/admin/config/import) ─────
   app.get("/api/admin/projects/:id/config", async (c) => {
     const denied = await adminGate(c);

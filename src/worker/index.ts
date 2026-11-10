@@ -3,6 +3,8 @@
 // WorkerEntrypoint and refuses to start on non-handler values). Routes, the
 // version constant, and the test surface live in app.ts.
 import { app } from "./app.js";
+import { registerOAuthRoutes } from "./oauth/authorize.js";
+registerOAuthRoutes(app);
 import { workerFetch } from "./oauth/provider.js";
 import { sweepExpiredAssets } from "./storage/r2.js";
 import { pruneExpiredRecords } from "./storage/retention.js";

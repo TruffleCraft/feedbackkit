@@ -23,6 +23,7 @@ export interface UIType {
 }
 export interface UIConfig {
   locale: Locale;
+  heading?: string;
   triggerLabel?: string;
   /** data-trigger="none": no floating button, the host opens the panel itself. */
   hideTrigger?: boolean;
@@ -151,7 +152,7 @@ export class WidgetUI {
   }
 
   private tr(k: Parameters<typeof t>[1]) {
-    return t(this.config.locale, k);
+    return k === "heading" && this.config.heading ? this.config.heading : t(this.config.locale, k);
   }
 
   /** No floating button right now: switched off, or its media query does not match. */

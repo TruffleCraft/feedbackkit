@@ -1,3 +1,4 @@
+import { settingsEditor } from "./settings.js";
 // FeedbackKit admin, read-only (P2, step 3, ADR-014). Fills the Worker-rendered
 // shells from /api/admin/*. Two ways in: when Cloudflare Access sits in front of
 // the admin, GET /api/admin/me answers with the signed-in email and no token is
@@ -339,6 +340,27 @@ function fail(err: unknown, what: string) {
 
 // ── projects ──────────────────────────────────────────────────────────────────
 async function loadProjects() {
+  const dialog = $<HTMLDialogElement>("new-project-dialog");
+  $("new-project").onclick = () => dialog.showModal();
+  $("cancel-project").onclick = () => dialog.close();
+  $("new-project-form").onsubmit = async (event) => {
+    event.preventDefault();
+    const button = $<HTMLButtonElement>("create-project");
+    const msg = $("new-project-msg");
+    const projectId = $<HTMLInputElement>("new-project-id").value.trim();
+    const rawOrigin = $<HTMLInputElement>("new-project-origin").value.trim();
+    let origin: URL;
+    try { origin = new URL(rawOrigin); } catch { msg.textContent = "Enter a valid website origin."; return; }
+    if (!["http:", "https:"].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash) { msg.textContent = "Use an http(s) origin without credentials, a path, query or fragment."; return; }
+    button.disabled = true;
+    try {
+      const config = { projectId, locale: $<HTMLSelectElement>("new-project-locale").value, delivery: "local", auth: { origins: [origin.origin] }, llm: { provider: "off", model: "" }, templates: [{ type: "feedback", label: "Feedback", fields: [] }] };
+      const result = await send("POST", "/api/admin/projects", { config });
+      if (result.status !== 201) { msg.textContent = errText(result); return; }
+      location.assign(`/admin/projects/${encodeURIComponent(projectId)}#setup`);
+    } catch { msg.textContent = "The gateway did not answer. Your entries are still here; retry when it is available."; }
+    finally { button.disabled = false; }
+  };
   const r = await api<{ projects: ProjectSummary[] }>("/api/admin/projects");
   const list = r.projects;
   $("projects-sub").textContent = !list.length ? "No projects on this gateway yet" : list.length === 1 ? "1 project on this gateway" : `${list.length} projects on this gateway`;
@@ -364,7 +386,7 @@ async function loadProjects() {
         el("td", { class: "num" }, p.feedback7d.total),
         el("td", null, failed > 0 ? badge("failed", String(failed)) : el("span", { class: "muted" }, "0")),
         el("td", null, deliveryCell(p)),
-        el("td", { class: "mono" }, `v${p.configVersion}`),
+        el("td", { class: "mono" }, `Revision ${p.configVersion}`),
         el("td", null, timeEl(p.updatedAt, "muted")),
       );
     }),
@@ -803,7 +825,7 @@ async function loadProject() {
     }
     throw err;
   }
-  $("p-meta").textContent = `${cfg.publicKey} · config v${cfg.configVersion}`;
+  $("p-meta").textContent = `${cfg.publicKey} · settings revision ${cfg.configVersion}`;
   renderTypes(cfg);
   initHistory(id, new Map(cfg.templates.map((t) => [t.type, labelText(t.label, cfg.locale) || t.type])));
 
@@ -825,7 +847,7 @@ async function loadProject() {
   }
   renderSetup(cfg, funnel);
   initTestReport(base);
-  initConfigEditor(id, base, (v) => ($("p-meta").textContent = `${cfg.publicKey} · config v${v}`));
+  initConfigEditor(id, base, (v) => ($("p-meta").textContent = `${cfg.publicKey} · settings revision ${v}`));
 }
 
 // ── config editor (#111) ──────────────────────────────────────────────────────
@@ -853,6 +875,14 @@ function lineDiff(a: string, b: string): Array<[" " | "+" | "-", string]> {
 
 function initConfigEditor(id: string, base: string, onPublished: (version: number) => void) {
   const ta = $<HTMLTextAreaElement>("cfg-text");
+  const form = settingsEditor($("cfg-form"), (draft) => {
+    ta.value = pretty(draft);
+    ta.dispatchEvent(new Event("input"));
+  });
+  $("cfg-advanced").addEventListener("toggle", () => {
+    if (($("cfg-advanced") as HTMLDetailsElement).open) return;
+    try { form.load(JSON.parse(ta.value) as Record<string, unknown>, false); } catch { /* JSON validation explains errors. */ }
+  });
   const gutter = $("cfg-lines");
   const msg = $("cfg-msg");
   const out = $("cfg-out");
@@ -878,8 +908,8 @@ function initConfigEditor(id: string, base: string, onPublished: (version: numbe
 
   const showDiff = (text: string) => {
     const d = lineDiff(stored, text);
-    const pre = el("pre", { class: "term diff" }, ...(d.length ? d.map(([op, l]) => el("span", op === " " ? null : { class: op === "+" ? "add" : "del" }, `${op} ${l}\n`)) : [`No changes against v${version}.`]));
-    return el("div", null, el("h3", { class: "sm" }, `Changes against v${version}`), pre);
+    const pre = el("pre", { class: "term diff" }, ...(d.length ? d.map(([op, l]) => el("span", op === " " ? null : { class: op === "+" ? "add" : "del" }, `${op} ${l}\n`)) : [`No changes against settings revision ${version}.`]));
+    return el("div", null, el("h3", { class: "sm" }, `Changes against settings revision ${version}`), pre);
   };
 
   const parse = (): unknown => {
@@ -924,7 +954,7 @@ function initConfigEditor(id: string, base: string, onPublished: (version: numbe
       stored = pretty(cfg);
       checked = null;
       out.replaceChildren();
-      say(`Published as v${version}. Active on all edge locations within 60 s.`);
+      say(`Published settings revision ${version}. Active on all edge locations within 60 s.`);
       onPublished(version);
       return;
     }
@@ -946,6 +976,7 @@ function initConfigEditor(id: string, base: string, onPublished: (version: numbe
       version = Number(configVersion);
       stored = pretty(rest);
       ta.value = stored;
+      form.load(rest);
       lines();
       validateBtn.disabled = false;
       $("cfg-id").textContent = id;
