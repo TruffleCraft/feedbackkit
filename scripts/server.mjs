@@ -1,4 +1,5 @@
 import { serve } from "@hono/node-server";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -13,7 +14,12 @@ import { appEnvironment } from "./server-env.mjs";
 process.umask(0o077);
 const trustedHops = readTrustedHops(process.env);
 let warnedForwarded = false;
-const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Two layouts. A release tarball puts this file next to bundle.json (release,
+// channel, schema, capability), the assets and the migrations. A checkout runs it
+// from scripts/ and reads the capability from the source.
+const here = dirname(fileURLToPath(import.meta.url));
+const bundle = (() => { try { return JSON.parse(readFileSync(join(here, "bundle.json"), "utf8")); } catch { return null; } })();
+const root = bundle ? here : join(here, "..");
 if ((process.env.ADMIN_TOKEN ?? "").length < 32) throw new Error("Set ADMIN_TOKEN to a random secret of at least 32 characters before starting.");
 const origin = new URL(process.env.FK_PUBLIC_URL || "http://localhost:8787");
 if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new Error("FK_PUBLIC_URL must be an http(s) origin, without credentials, path, query or fragment.");
@@ -21,7 +27,7 @@ const storage = openStorage(join(process.env.FK_DATA_DIR || join(root, "data"), 
 // The capability only ever rises. A database that a newer release raised past
 // this release holds settings this release cannot honor, and serving them could
 // send a report to a public issue that a newer release would have kept private.
-const supported = codeDeliveryCapability();
+const supported = bundle ? bundle.deliveryCapability : codeDeliveryCapability();
 const recorded = Number(storage.sqlite.prepare("SELECT value FROM meta WHERE key='delivery_capability'").get()?.value ?? 0);
 if (recorded > supported) throw new Error(`This database needs delivery capability ${recorded} and this release provides ${supported}. Start the newer release again, or restore the backup taken before the update.`);
 storage.sqlite.prepare("INSERT INTO meta (key,value) VALUES ('delivery_capability',?) ON CONFLICT(key) DO UPDATE SET value=MAX(CAST(meta.value AS INTEGER),CAST(excluded.value AS INTEGER))").run(String(supported));
@@ -38,7 +44,7 @@ async function asset(path) {
     return new Response(data, { headers: { "Content-Type": file[1], "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff", "Access-Control-Allow-Origin": "*" } });
   } catch { return new Response("Assets not built", { status: 503 }); }
 }
-const env = { ...appEnvironment(process.env), DB: storage.DB, UPLOADS: storage.UPLOADS, ASSETS: { fetch: (r) => asset(new URL(typeof r === 'string' ? r : r.url).pathname) }, FK_ENV: "production", FK_CHANNEL: "local", WIDGET_VERSION: (await readFile(join(root,"dist/widget.ver"),"utf8")).trim() };
+const env = { ...appEnvironment(process.env), DB: storage.DB, UPLOADS: storage.UPLOADS, ASSETS: { fetch: (r) => asset(new URL(typeof r === 'string' ? r : r.url).pathname) }, FK_ENV: "production", FK_CHANNEL: bundle?.channel ?? "local", ...(bundle ? { FK_RELEASE: bundle.release } : {}), WIDGET_VERSION: (await readFile(join(root,"dist/widget.ver"),"utf8")).trim() };
 // Cloudflare Access and OAuth are deployment-specific; never trust headers or
 // bind accidental process-environment strings as runtime objects.
 delete env.OAUTH_KV; delete env.OAUTH_PROVIDER; delete env.FK_ACCESS_TEAM_DOMAIN; delete env.FK_ACCESS_AUD;

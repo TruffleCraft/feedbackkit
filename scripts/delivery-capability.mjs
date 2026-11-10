@@ -13,6 +13,14 @@ export function codeDeliveryCapability() {
   return Number(m[1]);
 }
 
+/** SCHEMA_VERSION as declared in src/shared/contract.ts. */
+export function codeSchemaVersion() {
+  const src = readFileSync(fileURLToPath(new URL("../src/shared/contract.ts", import.meta.url)), "utf8");
+  const m = /export const SCHEMA_VERSION = (\d+) as const;/.exec(src);
+  if (!m) throw new Error("SCHEMA_VERSION not found in src/shared/contract.ts");
+  return Number(m[1]);
+}
+
 /** Mirror of requiredDeliveryCapability in src/shared/contract.ts (test/delivery.test.ts keeps them equal). */
 export function requiredDeliveryCapability(raw) {
   if (!raw || typeof raw !== "object") return 0;
