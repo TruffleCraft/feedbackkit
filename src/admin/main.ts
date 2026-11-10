@@ -105,9 +105,18 @@ interface SystemProject {
   /** Unhandled reports that retention deletes within 7 days (null: no retentionDays). */
   retention?: { retentionDays: number; dueSoon: number; items: Array<{ id: string; deletesAt: number }> } | null;
 }
+interface UpdateInfo {
+  state: "available" | "current" | "failed";
+  latest: string | null;
+  url: string | null;
+  checkedAt: number;
+  reason?: string;
+}
+
 interface SystemInfo {
   version: string;
   channel: string;
+  update?: UpdateInfo;
   schema: { ok: boolean; version: number | null; expected: number };
   bindings: Record<string, boolean>;
   secrets: { adminToken: boolean; githubPat: boolean; llmKey: boolean; accessTeamDomain?: boolean; accessAud?: boolean };
@@ -1165,6 +1174,27 @@ async function loadSystem() {
   const s = await api<SystemInfo>("/api/admin/system");
   $("sys-sub").textContent = `${s.version} on ${s.channel} · schema v${s.schema.version ?? "?"}`;
 
+  // The notice for a newer release (J2): only a tarball install sends `update`.
+  const u = s.update;
+  const when = u ? dateFmt.format(u.checkedAt) : "";
+  // Badge class, badge text and the line under the version. Without `update` the row is what it always was.
+  const rel: [string, string, string] = !u
+    ? ["ok", s.channel, ""]
+    : u.state === "failed"
+      ? ["incomplete", "Check failed", `Could not check on ${when}: ${u.reason}. The gateway is not affected.`]
+      : u.state === "current"
+        ? ["ok", "Up to date", `Checked ${when}`]
+        : ["update", `${u.latest} available`, `Checked ${when}`];
+  if (u?.state === "available") {
+    const card = $("upd");
+    card.dataset["channel"] = s.channel;
+    card.hidden = false;
+    $("upd-v").textContent = u.latest;
+    $("upd-cur").textContent = s.version;
+    $("upd-at").textContent = when;
+    $<HTMLAnchorElement>("upd-link").href = u.url ?? "";
+  }
+
   const items = attentionItems(s);
   const count = $("attn-count");
   count.className = `badge ${items.length ? "failed" : "ok"}`;
@@ -1184,9 +1214,9 @@ async function loadSystem() {
   const patsSet = [...pats.values()].filter(Boolean).length;
   const missingSecrets = pats.size - patsSet + (llmUsed && !s.secrets.llmKey ? 1 : 0);
   const secretList = ["ADMIN_TOKEN", s.secrets.llmKey ? "LLM_API_KEY" : llmUsed ? "LLM_API_KEY missing" : "no LLM_API_KEY", `${patsSet} of ${pats.size} GitHub tokens`].join(", ");
-  const row = (k: string, v: string, status: HTMLElement) => el("tr", null, el("td", null, k), el("td", { class: "mono" }, v), el("td", null, status));
+  const row = (k: string, v: string, status: HTMLElement, note?: string) => el("tr", null, el("td", null, k), el("td", { class: "mono" }, v, note ? el("div", { class: "sm muted" }, note) : null), el("td", null, status));
   $("sys-gateway").replaceChildren(
-    row("Release", s.version, badge("ok", s.channel)),
+    row("Release", s.version, badge(rel[0], rel[1]), rel[2]),
     row("Database schema", `v${s.schema.version ?? "?"}`, s.schema.ok ? badge("ok", "Matches code") : badge("failed", `Expected v${s.schema.expected}`)),
     row("Bindings", bindings.join(" · "), missingBindings.length ? badge("failed", `Missing ${missingBindings.join(", ")}`) : badge("ok", "All present")),
     row("Secrets", secretList, missingSecrets ? badge("failed", `${missingSecrets} missing`) : badge("ok", "All set")),

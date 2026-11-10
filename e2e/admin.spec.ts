@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { TOKEN, SHOT_URL, PRIVATE_SHOT_URL, installAdminMocks, signedIn, feedbackItems, inboxItems, harborConfig } from "./admin-fixtures";
+import { TOKEN, SHOT_URL, PRIVATE_SHOT_URL, installAdminMocks, signedIn, feedbackItems, inboxItems, harborConfig, updateWaiting } from "./admin-fixtures";
 
 // Admin UI, read-only (P2, step 3): the real shells from src/worker/admin/pages.ts
 // under their production CSP, with /api/admin/* mocked. Runs in both projects
@@ -465,6 +465,99 @@ test.describe("system", () => {
     await expect(gateway.nth(3)).toContainText("2 of 3 GitHub tokens");
     await expect(gateway.nth(3)).toContainText("1 missing");
     await noHorizontalScroll(page);
+  });
+});
+
+test.describe("system: the notice for a newer release (J2)", () => {
+  const stable = { version: "0.2.0", channel: "stable" };
+  const dev = { version: "0.3.0-dev.4", channel: "dev" };
+  const devWaiting = { ...updateWaiting, latest: "0.3.1-dev.2", url: "https://github.com/TruffleCraft/feedbackkit/releases/tag/v0.3.1-dev.2" };
+  const open = async (page: Page, system: Record<string, unknown>) => {
+    const outside: string[] = [];
+    page.on("request", (r) => { if (new URL(r.url()).host !== "localhost:8788") outside.push(r.url()); });
+    await installAdminMocks(page, { system });
+    await signedIn(page);
+    await page.goto("/admin/system");
+    await expect(page.locator("#sys-gateway tr")).toHaveCount(4);
+    return outside;
+  };
+  const release = (page: Page) => page.locator("#sys-gateway tr").first();
+
+  test("an update waiting: the card above Needs attention, the command, the notes link and a badge in the Release row", async ({ page }) => {
+    const outside = await open(page, { ...stable, update: updateWaiting });
+    const card = page.locator("#upd");
+    await expect(card).toBeVisible();
+    await expect(card.getByRole("heading")).toHaveText("FeedbackKit 0.3.1 is available", { useInnerText: true });
+    await expect(card.locator(".badge.update:visible")).toHaveText("stable");
+    await expect(card).toContainText("This gateway runs 0.2.0. Release notes", { useInnerText: true });
+    await expect(card).toContainText("Nothing changes until you run it. Add --check to preview. Checked 10 Nov 2026 with one request to GitHub. It says nothing about this installation.");
+    await expect(card.locator("pre.term")).toHaveText("/opt/feedbackkit/current/feedbackkit-update");
+    const link = card.getByRole("link", { name: "Release notes" });
+    await expect(link).toHaveAttribute("href", "https://github.com/TruffleCraft/feedbackkit/releases/tag/v0.3.1");
+    await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    await expect(link).toHaveAttribute("target", "_blank");
+    // It sits above Needs attention, and the update is not counted as a fault.
+    const order = await page.evaluate(() => [...document.querySelectorAll("#view-system > .c")].map((e) => e.id || e.querySelector("h3")?.textContent));
+    expect(order.slice(0, 2)).toEqual(["upd", "Needs attention"]);
+    await expect(page.locator("#attn-count")).toHaveText("4");
+    await expect(release(page)).toContainText("0.2.0");
+    await expect(release(page)).toContainText("Checked 10 Nov 2026");
+    await expect(release(page).locator(".badge")).toHaveText("0.3.1 available");
+    await expect(release(page).locator(".badge")).toHaveClass(/update/);
+    await noHorizontalScroll(page);
+    expect(outside, "the browser never calls GitHub or anyone else").toEqual([]);
+  });
+
+  test("the dev channel: a dev build is named as one, and the card says why", async ({ page }) => {
+    await open(page, { ...dev, update: devWaiting });
+    const card = page.locator("#upd");
+    await expect(card.getByRole("heading")).toHaveText("Dev build 0.3.1-dev.2 is available", { useInnerText: true });
+    await expect(card.locator(".badge.update:visible")).toHaveText("dev");
+    await expect(card).toContainText("This gateway runs 0.3.0-dev.4. You follow the dev channel, so dev builds count too. Release notes", { useInnerText: true });
+    await expect(page.locator("#sys-sub")).toHaveText("0.3.0-dev.4 on dev · schema v2");
+    await expect(release(page).locator(".badge")).toHaveText("0.3.1-dev.2 available");
+    await expect(card.getByRole("link", { name: "Release notes" })).toHaveAttribute("href", /v0\.3\.1-dev\.2$/);
+  });
+
+  test("up to date: no card, the Release row says so", async ({ page }) => {
+    await open(page, { version: "0.3.1", channel: "stable", update: { ...updateWaiting, state: "current" } });
+    await expect(page.locator("#upd")).toBeHidden();
+    await expect(release(page).locator(".badge")).toHaveText("Up to date");
+    await expect(release(page)).toContainText("0.3.1");
+    await expect(release(page)).toContainText("Checked 10 Nov 2026");
+    await expect(page.locator("#attn-count")).toHaveText("4");
+  });
+
+  test("a failed check: no card, the row gives the reason, and the page is otherwise intact", async ({ page }) => {
+    await open(page, { ...stable, update: { state: "failed", latest: null, url: null, checkedAt: updateWaiting.checkedAt, reason: "GitHub rate limit reached" } });
+    await expect(page.locator("#upd")).toBeHidden();
+    await expect(release(page).locator(".badge")).toHaveText("Check failed");
+    await expect(release(page)).toContainText("Could not check on 10 Nov 2026: GitHub rate limit reached. The gateway is not affected.");
+    await expect(page.locator("#notice")).toBeHidden();
+    await expect(page.locator("#attn-count")).toHaveText("4");
+    await expect(page.locator("#sys-projects tr")).toHaveCount(3);
+  });
+
+  test("Cloudflare and checkouts send no update field: the page is what it was", async ({ page }) => {
+    await open(page, stable);
+    await expect(page.locator("#upd")).toBeHidden();
+    await expect(release(page).locator(".badge")).toHaveText("stable");
+    await expect(release(page)).not.toContainText("Checked");
+  });
+
+  test("dark mode keeps the card and the badge readable", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "dark" });
+    await open(page, { ...stable, update: updateWaiting });
+    const badge = page.locator("#upd .badge.update:visible");
+    await expect(badge).toBeVisible();
+    const [bg, fg, ground] = await page.evaluate(() => {
+      const b = getComputedStyle(document.querySelector("#upd .badge.update:not([style*=none])") as Element);
+      return [b.backgroundColor, b.color, getComputedStyle(document.body).backgroundColor];
+    });
+    expect(bg).toBe("rgb(124, 58, 237)");
+    expect(fg).toBe("rgb(255, 255, 255)");
+    expect(ground).toBe("rgb(26, 26, 26)");
+    await expect(page.locator("#upd pre.term")).toBeVisible();
   });
 });
 
