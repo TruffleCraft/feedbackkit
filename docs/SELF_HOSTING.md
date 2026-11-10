@@ -2,7 +2,7 @@
 
 The standalone gateway runs on **Node.js 24 or newer**, with SQLite on a persistent disk. It supports the widget, admin UI, inbox, AI extraction, GitHub issue/Project delivery and attachment retention. It needs no Cloudflare account, D1 or R2.
 
-What is verified and what is not: the server and its tests run on a developer machine and in CI on Node 24 and 26. It has not been run on a clean Debian LXC or a cloud VPS, a real GitHub delivery has not been run from it, and there is no release tarball, update command or rollback command yet. [Claims and their proof](design/claims.md) lists each statement with its test.
+What is verified and what is not: the server and its tests run on a developer machine and in CI on Node 24 and 26, and the steps below ran on a clean, unprivileged Debian 13 LXC without nesting, including systemd, a crash and a reboot. It has not been tested on a cloud VPS, a real GitHub delivery has not been run from it, and there is no release tarball, update command or rollback command yet. [Claims and their proof](design/claims.md) lists each statement with its test.
 
 The Cloudflare installation additionally supports OAuth/MCP through its Worker OAuth provider. Those endpoints are explicitly unavailable in the standalone server; admin and widget operation do not depend on them.
 

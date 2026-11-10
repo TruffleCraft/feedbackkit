@@ -53,6 +53,9 @@ Each finding is assigned to a step. IDs are stable so later reviews can refer to
 | R14 | Docs: Node version, rollback claim, broken anchor, `Discarded` against `Dismissed`, missing standalone threat model | C |
 | R15 | Picked images upload at once and the remove button keeps the object. Private elements are not excluded. Rectangle is a frame | Gate 1 |
 | R16 | Uploads without a report never expire when no retention is set. No quota | Gate 1, A |
+| R18 | `/diag` on the standalone server lists Cloudflare steps as next steps (`npx wrangler secret put`, `docs/QUICKSTART.md`). Seen in the LXC run | D |
+| R19 | The systemd unit leaves `/var/lib/feedbackkit` at mode 755 and `systemd-analyze security` rates it 8.3 EXPOSED. Seen in the LXC run | D (the unit ships in the tarball) |
+| R20 | A checkout install puts 575 MB on the host and needs pnpm, the network and 53 s. Seen in the LXC run | D (same cause as R17) |
 | R17 | The standalone server has no release artifact: installs build on the target, `/diag` reports `0.0.0` and `local`, releases carry only `widget.js`, there is no update command and no notice of a newer release | D |
 
 ## Steps
@@ -162,6 +165,7 @@ Release strategy for the tarball:
 - **Why:** a build that passes on a laptop says little about an LXC.
 - **Capabilities:** run J1, J2, J12 and J14 from the release tarball on a clean Debian LXC and on a clean cloud VPS (for example at Hetzner). Outbound traffic is allowed for the download and blocked until the first report. Include an update with data and a rollback. Update the status of each journey with the evidence.
 - **Success signals:** transcripts and results are linked from the journeys. Only now may README and docs say the gateway runs without Cloudflare. Tag the release after this step.
+- **Status (2026-11-10):** the clone-and-build path ran on a clean Debian 13 LXC ([evidence](evidence/2026-11-10-debian-lxc.md)). A cloud VPS stays untested, by decision of the owner. The tarball path, the update with data, the rollback and J2 wait for Step D.
 
 ### Steps 4 to 10, after the gates
 

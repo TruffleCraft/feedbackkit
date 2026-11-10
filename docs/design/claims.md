@@ -9,18 +9,18 @@ Measured at the head of the branch `feat/standalone-runtime-hardening` on 2026-1
 | Claim | Made in | Proof | Status |
 |---|---|---|---|
 | One Hono application serves both runtimes | `docs/ARCHITECTURE.md`, `README.md` | The 42 tests in `test/durable/` run on workerd with the real D1 and R2 (`vitest.workers.config.ts`) and on Node with the SQLite storage (`vitest.conformance.config.ts`). `pnpm test` runs both | verified for what those tests cover |
-| The server installation needs no Cloudflare account | `README.md`, `docs/SELF_HOSTING.md` | `test/server-storage.test.mjs` starts the real server with Node only: create, publish with conflict, report, private attachment | partly: not run on a clean Debian LXC or a cloud VPS (Step 3, J1) |
+| The server installation needs no Cloudflare account | `README.md`, `docs/SELF_HOSTING.md` | `test/server-storage.test.mjs` starts the real server with Node only. A clean Debian 13 LXC ran it from a checkout with no Cloudflare account ([evidence](evidence/2026-11-10-debian-lxc.md)) | verified on a Debian 13 LXC. A cloud VPS was not tested (owner's decision) |
 | GitHub issue and Project delivery work on the standalone server | `docs/SELF_HOSTING.md` | `test/durable/delivery.test.ts` runs the delivery logic on SQLite against a mocked GitHub | partly: no real GitHub delivery was run from the standalone server (J9, Step 3) |
 | OAuth and MCP are not served by the standalone server | `docs/SELF_HOSTING.md` | `test/server-storage.test.mjs` asserts 404 on `/mcp` | verified |
 | Node.js 24 or newer | `README.md`, `docs/SELF_HOSTING.md`, `package.json` `engines` | The `standalone` CI job runs `pnpm test:server` on Node 24 and on Node 26 | verified |
 | Run one process per database | `docs/SELF_HOSTING.md` | Opening one database from two processes at the same instant is safe (`test/server-storage-hardening.test.mjs`). Nothing stops a second long-running process | convention |
-| Run as a systemd service | `docs/SELF_HOSTING.md`, `deploy/feedbackkit.service` | None | planned: not run (Step 3) |
+| Run as a systemd service | `docs/SELF_HOSTING.md`, `deploy/feedbackkit.service` | The unit, with its hardening, ran in an unprivileged Debian 13 LXC without nesting, survived `kill -9` and a reboot ([evidence](evidence/2026-11-10-debian-lxc.md)) | verified on a Debian 13 LXC. Exposure score 8.3 (R19) |
 
 ## Install, update and rollback
 
 | Claim | Made in | Proof | Status |
 |---|---|---|---|
-| Install from a checkout with pnpm | `README.md`, `docs/SELF_HOSTING.md` | CI builds both bundles and runs the server tests on a clean runner | partly: not a clean target host (Step 3) |
+| Install from a checkout with pnpm | `README.md`, `docs/SELF_HOSTING.md` | CI builds both bundles and runs the server tests. The same steps ran on a clean Debian 13 LXC ([evidence](evidence/2026-11-10-debian-lxc.md)) | verified on a Debian 13 LXC. Not a cloud VPS (owner's decision) |
 | A release tarball with a signed checksum, an update command and an update notice | `scope.md` only | None | planned (Step D). The user documents do not claim it |
 | A release older than the data refuses to start | `docs/SELF_HOSTING.md` | `test/server-storage-hardening.test.mjs`: "the delivery capability never goes down" | verified |
 | The delivery capability only rises, on both install paths | `docs/RELEASES.md`, `docs/QUICKSTART.md` | `test/server-storage-hardening.test.mjs`, `test/server-capability.test.mjs` | verified |
