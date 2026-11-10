@@ -1,6 +1,6 @@
 # Notice for a newer release (journey J2)
 
-Status: mock for review. Nothing is built and `src/` is unchanged. Open [update-notice.html](update-notice.html) in a browser. It shows three placements in four states, on desktop and on a phone, with a light and a dark switch. One PNG per variant: [A](update-notice-a.png), [B](update-notice-b.png), [C](update-notice-c.png). All data is invented.
+Status: variant A was approved and built (see "Outcome" at the end). The mock below is what it was built from. Open [update-notice.html](update-notice.html) in a browser. It shows three placements in four states, on desktop and on a phone, with a light and a dark switch. One PNG per variant: [A](update-notice-a.png), [B](update-notice-b.png), [C](update-notice-c.png). All data is invented.
 
 The short version of this note sits in the J2 section of [journeys.md](../journeys.md).
 
@@ -54,5 +54,11 @@ All three variants exceed the budget today. Either raise the admin budget by 0.2
 - **The bundle budget.** Raise it by 0.25 kB, or find the bytes elsewhere in the admin?
 - **Languages.** CONTRIBUTING and the plan ask for English and German keys for new strings. The admin has no string table and is English only. Is the notice the first German admin string, or does the rule cover the widget only?
 - **Skipping a version.** Only variant C needs it. Should a dismissal last for one release, as drawn, or until the operator brings the notice back?
+
+## Outcome
+
+Variant A was approved and built, with the evidence in [2026-11-10-update-notice.md](../evidence/2026-11-10-update-notice.md). The five questions were decided as recommended: the gateway checks once a day and the browser never does, `FK_UPDATE_CHECK=off` switches it off, `/api/admin/system` carries an `update` field that is absent on Cloudflare and on checkouts, the admin budget is 15.25 kB (ADR-014), and the notice is English only with no dismiss.
+
+The built module costs 215 bytes gzipped. The scratch build above cost 71, because it did not carry the reason text of a failed check or the badge texts of every state.
 
 Co-created by Michel with NORA (AI Agent)

@@ -1,5 +1,14 @@
 import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
 
+/** What the admin notice about a newer release shows (docs/design/mockups/update-notice.md). */
+export interface UpdateStatus {
+  state: "available" | "current" | "failed";
+  latest: string | null; // newest release of the channel, without the leading v
+  url: string | null; // its release notes
+  checkedAt: number; // epoch ms
+  reason?: string; // state "failed" only: a short fixed phrase
+}
+
 // Worker bindings. Adapters resolve lazily per request (Workers have no env at
 // module init); this type is the contract, not a constructed instance.
 export interface Env {
@@ -10,6 +19,9 @@ export interface Env {
   WIDGET_VERSION: string;
   FK_RELEASE?: string; // semver of this build (ADR-013); unset in tests
   FK_CHANNEL?: string; // stable | dev | local
+  // Set by the standalone server on installs from a release tarball (scripts/server-update-check.mjs),
+  // never on Cloudflare and never on a checkout. Absent means: no notice.
+  UPDATE_CHECK?: () => Promise<UpdateStatus>;
   // Optional MCP server (ADR-015): grants, clients and tokens live in this KV
   // namespace. Bound only when FK_OAUTH_KV_ID is set at build time.
   OAUTH_KV?: KVNamespace;

@@ -23,6 +23,7 @@ Choose **Review changes** before **Publish**. Validation checks the full draft o
 | **Settings revision 9** on a project | That project's configuration counter | Each successful publication/import increments it |
 | **FeedbackKit `0.x.y`** on System or `/diag` | The gateway software release | Installing/upgrading a release |
 | **`dev` / `stable`** | Cloudflare release channel | The gateway URL and installed build determine it |
+| **0.x.y available**, **Up to date** or **Check failed** in the Release row of System | Whether a newer release exists. Release tarball installs only; Cloudflare and checkouts show the channel instead | The gateway asks GitHub at most once a day. `FK_UPDATE_CHECK=off` turns it off |
 | **Schema / wire version** in diagnostics | Database/API compatibility | A release changes the contract or schema |
 
 Two projects can have different settings revisions while using exactly the same FeedbackKit release. Revision 11 is not newer software than revision 9. The settings revision also prevents lost updates and lets widgets refresh cached settings.

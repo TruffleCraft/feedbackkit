@@ -10,6 +10,7 @@ import { pruneExpiredRecords } from "../dist-server/retention.mjs";
 import { codeDeliveryCapability } from "./code-capability.mjs";
 import { canonicalUrl, clientAddress, readTrustedHops } from "./server-http.mjs";
 import { appEnvironment } from "./server-env.mjs";
+import { createUpdateCheck, readSwitch } from "./server-update-check.mjs";
 
 process.umask(0o077);
 const trustedHops = readTrustedHops(process.env);
@@ -44,7 +45,11 @@ async function asset(path) {
     return new Response(data, { headers: { "Content-Type": file[1], "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff", "Access-Control-Allow-Origin": "*" } });
   } catch { return new Response("Assets not built", { status: 503 }); }
 }
-const env = { ...appEnvironment(process.env), DB: storage.DB, UPLOADS: storage.UPLOADS, ASSETS: { fetch: (r) => asset(new URL(typeof r === 'string' ? r : r.url).pathname) }, FK_ENV: "production", FK_CHANNEL: bundle?.channel ?? "local", ...(bundle ? { FK_RELEASE: bundle.release } : {}), WIDGET_VERSION: (await readFile(join(root,"dist/widget.ver"),"utf8")).trim() };
+// The admin notice for a newer release exists on tarball installs only (a bundle.json next to this
+// file), and FK_UPDATE_CHECK=off removes it. The browser never calls GitHub; the gateway does.
+const updateCheckOn = readSwitch(process.env.FK_UPDATE_CHECK);
+const updateCheck = bundle && updateCheckOn ? createUpdateCheck({ release: bundle.release, channel: bundle.channel, api: process.env.FK_UPDATE_API }) : null;
+const env = { ...appEnvironment(process.env), ...(updateCheck ? { UPDATE_CHECK: updateCheck } : {}), DB: storage.DB, UPLOADS: storage.UPLOADS, ASSETS: { fetch: (r) => asset(new URL(typeof r === 'string' ? r : r.url).pathname) }, FK_ENV: "production", FK_CHANNEL: bundle?.channel ?? "local", ...(bundle ? { FK_RELEASE: bundle.release } : {}), WIDGET_VERSION: (await readFile(join(root,"dist/widget.ver"),"utf8")).trim() };
 // Cloudflare Access and OAuth are deployment-specific; never trust headers or
 // bind accidental process-environment strings as runtime objects.
 delete env.OAUTH_KV; delete env.OAUTH_PROVIDER; delete env.FK_ACCESS_TEAM_DOMAIN; delete env.FK_ACCESS_AUD;

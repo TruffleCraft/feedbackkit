@@ -137,7 +137,10 @@ export const funnel = {
   feedback: { total: 171, byOutcome: { created: 158, accepted_incomplete: 9, "ai-failed": 1, issue_failed: 3 } },
 };
 
-export function system(now = Date.now()) {
+/** What /api/admin/system sends as `update` on a tarball install (docs/design/mockups/update-notice.md). */
+export const updateWaiting = { state: "available", latest: "0.3.1", url: "https://github.com/TruffleCraft/feedbackkit/releases/tag/v0.3.1", checkedAt: Date.UTC(2026, 10, 10, 9, 30) };
+
+export function system(now = Date.now(), extra: Record<string, unknown> = {}) {
   const expiry = (days: number) => {
     const at = new Date(now + days * DAY + HOUR).toISOString();
     return { raw: at, at, daysLeft: days };
@@ -151,6 +154,7 @@ export function system(now = Date.now()) {
     schema: { expected: 2, ok: true, version: 2 },
     bindings: { DB: true, UPLOADS: true, ASSETS: true },
     secrets: { adminToken: true, githubPat: true, llmKey: true, accessTeamDomain: true, accessAud: true },
+    ...extra,
     projects: [
       {
         id: "harborline",
@@ -195,6 +199,8 @@ export interface AdminMockOpts {
   items?: Item[];
   /** Page size of the mocked history (the real API defaults to 25). */
   pageSize?: number;
+  /** Fields that replace or extend the answer of /api/admin/system (version, channel, update). */
+  system?: Record<string, unknown>;
   /** Signed in through Cloudflare Access as this email: /api/admin/me says so and no token is needed. */
   access?: string;
   /** The answer of POST /api/admin/projects (default: created). */
@@ -244,7 +250,7 @@ export async function installAdminMocks(page: Page, opts: AdminMockOpts = {}) {
     if (p === "/api/admin/me") return json(route, { v: 1, via: "token" });
 
     if (p === "/api/admin/projects" && req.method() === "GET") return json(route, { v: 1, projects: opts.emptyProjects ? [] : projects() });
-    if (p === "/api/admin/system") return json(route, system());
+    if (p === "/api/admin/system") return json(route, system(Date.now(), opts.system));
     const method = req.method();
     if (method !== "GET") {
       const body = req.postData() ? (JSON.parse(req.postData()!) as Record<string, unknown>) : undefined;

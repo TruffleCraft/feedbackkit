@@ -368,6 +368,8 @@ export function registerAdminRoutes(app: AppT): void {
     const denied = await adminGate(c);
     if (denied) return denied;
     const today = dayWindow();
+    // Runs beside the other reads: the standalone server asks GitHub at most once a day and answers from memory otherwise.
+    const updating = c.env.UPDATE_CHECK ? Promise.resolve().then(c.env.UPDATE_CHECK).catch(() => null) : null;
     const [schema, projects, usage] = await Promise.all([
       checkSchema(c.env),
       c.env.DB.prepare("SELECT id, public_key, config, config_version, updated_at FROM projects ORDER BY id").all<ProjectRow>(),
@@ -429,6 +431,7 @@ export function registerAdminRoutes(app: AppT): void {
       }),
     );
 
+    const update = updating ? await updating : null;
     return c.json({
       v: WIRE_VERSION,
       service: "feedbackkit",
@@ -437,6 +440,7 @@ export function registerAdminRoutes(app: AppT): void {
       schema: { expected: SCHEMA_VERSION, ...schema },
       bindings: bindingsPresence(c.env),
       secrets: secretsPresence(c.env),
+      ...(update ? { update } : {}),
       projects: perProject,
     });
   });

@@ -36,7 +36,7 @@ Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready)
 | Local inbox: open, done, dismissed, note, delete | yes | yes | shipped |
 | Settings revisions, publish with conflict detection | yes | yes | shipped |
 | Run on a Linux host (home LXC, Hetzner server, any VPS) with SQLite | n/a | yes | branch |
-| Install from a release tarball, update with one command, release shown in `/diag`, notice for a newer release | n/a | yes | planned |
+| Install from a release tarball, update with one command, release shown in `/diag`, notice for a newer release | n/a | yes | shipped |
 | Settings form for types, fields, AI, appearance | yes | yes | branch |
 | Create-only project API and New project dialog | yes | yes | branch |
 | Local AI endpoint without a placeholder key | yes | yes | planned |

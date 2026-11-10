@@ -149,6 +149,16 @@ main{max-width:1120px;margin:0 auto;padding:28px 24px 64px}
 .badge.aifail{border:1px dashed var(--line-2);color:var(--ink-2)}
 .badge.stored{background:var(--ground);border-color:var(--line);color:var(--muted)}
 .badge .i{width:13px;height:13px;stroke-width:2.6}
+.badge.update{background:var(--accent);color:#fff}
+.upd{border-color:var(--accent)}
+.upd p{margin-bottom:10px}
+.upd .term{margin:2px 0 10px;white-space:pre-wrap;overflow-wrap:anywhere}
+.upd .dev-only{display:none}
+.upd[data-channel="dev"] .dev-only{display:inline}
+.upd[data-channel="dev"] .badge.dev-only{display:inline-flex}
+.upd[data-channel="dev"] .stable-only{display:none}
+.tbl td .sm{margin-top:2px;font-family:var(--sans)}
+@media (max-width:640px){.tbl td .sm{max-width:190px;white-space:normal}}
 .t{display:inline-flex;align-items:center;height:22px;padding:0 10px;border:1px solid var(--line-2);border-radius:999px;font-size:12px;font-weight:700;color:var(--ink-2);white-space:nowrap}
 .lnk{display:inline-flex;align-items:center;gap:5px;color:var(--accent-text);font-weight:700;font-size:14px;white-space:nowrap}
 .lnk .i{width:14px;height:14px}
@@ -422,6 +432,13 @@ const PROJECT = `<section id="view-project" hidden>
 
 const SYSTEM = `<section id="view-system" class="stack" hidden>
   <div class="pagehead"><div><h1>System</h1><p id="sys-sub"></p></div></div>
+  <div class="c tight upd" id="upd" role="status" hidden>
+    <div class="c-head"><h3><span class="stable-only">FeedbackKit</span><span class="dev-only">Dev build</span> <span id="upd-v"></span> is available</h3><span class="badge update stable-only">stable</span><span class="badge update dev-only">dev</span></div>
+    <p>This gateway runs <span id="upd-cur"></span><span class="dev-only">. You follow the dev channel, so dev builds count too</span>. <a class="lnk" id="upd-link" href="/admin/system" target="_blank" rel="noopener noreferrer">Release notes</a></p>
+    <p class="muted sm">To update, run this on the server:</p>
+    <pre class="term">/opt/feedbackkit/current/feedbackkit-update</pre>
+    <p class="help">Nothing changes until you run it. Add --check to preview. Checked <span id="upd-at"></span> with one request to GitHub. It says nothing about this installation.</p>
+  </div>
   <div class="c tight">
     <div class="c-head"><h3>Needs attention</h3><span class="badge" id="attn-count"></span></div>
     <div class="kv" id="attention"></div>

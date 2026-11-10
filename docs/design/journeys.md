@@ -11,7 +11,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 | ID | Journey | Status today | Gate |
 |---|---|---|---|
 | J1 | Install on a Linux host (LXC, Hetzner, any VPS) | partly | autonomy |
-| J2 | Robin sees which release runs and that a newer one exists | gap | autonomy |
+| J2 | Robin sees which release runs and that a newer one exists | works | autonomy |
 | J3 | Bootstrap the first owner | planned | autonomy |
 | J4 | Create a project and receive a first report | partly | autonomy |
 | J5 | Define feedback types, fields and destinations | partly | none |
@@ -49,13 +49,12 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 
 - **Goal:** Robin can tell which release is installed and whether a newer stable one is out.
 - **Steps:** open the System page or `/diag`, read release and channel, see a notice when a newer stable release exists, open its release notes.
-- **Guarantees:** the release comes from the record inside the bundle. The notice comes from one plain request to the GitHub Releases API, can be switched off, and its failure never affects the gateway. No data about the installation is sent. Pre-releases are never offered.
+- **Guarantees:** the release comes from the record inside the bundle. The notice comes from one plain request to the GitHub Releases API, made by the gateway at most once a day (once an hour after a failure) and never by the browser. `FK_UPDATE_CHECK=off` switches it off, and its failure never affects the gateway. No data about the installation is sent. A stable install is never offered a pre-release, a dev install sees dev builds too. Cloudflare and checkouts show no notice.
 - **Failure paths:** no outbound access (no notice and no error), a newer release that needs a newer Node, a rate-limited API.
 - **Evidence:** unit tests for version comparison and for the switch, and an e2e that shows the notice from a mocked releases response.
-- **Today:** a release tarball reports its release and channel from `bundle.json`. A checkout reports `0.0.0` and `local`. `feedbackkit-update --check` says whether a newer release exists. The admin notice does not exist: it is a new UI element and needs an approved mock first. The mock exists, but no variant is approved and nothing is built.
-- **Mock and recommendation:** three placements in four states (update waiting, up to date, check failed, dev channel), on desktop and phone: [update-notice.html](mockups/update-notice.html), with the references in [update-notice.md](mockups/update-notice.md). Recommended is variant A: a card above Needs attention on the System page when a newer release waits, and the other states in the Release row. No banner and no dot. The card shows only on a tarball install, never on Cloudflare or a checkout, and names `feedbackkit-update`.
-- **Open:** where the check runs and how it is switched off (the admin CSP blocks a call from the browser), how the server tells a tarball install from Cloudflare (both report `stable` or `dev`), the admin bundle budget (55 bytes left, variant A needs about 71), English and German strings in an English-only admin, and whether a version can be skipped.
-- **Verified:** `live` `GET /diag` returns `version` `0.0.0` and `channel` `local`. `code` grep for `releases/latest` and the releases API in `src` finds nothing. `live` a scratch build of the admin with variant A added is 71 bytes larger gzipped than the 15,305 bytes of `dist/admin.js` (details in `update-notice.md`). Repeat: `curl <gateway>/diag`.
+- **Today:** a release tarball reports its release and channel from `bundle.json`. A checkout reports `0.0.0` and `local`. `feedbackkit-update --check` says whether a newer release exists. The System page of a tarball install shows the notice: a card above Needs attention when a newer release waits, with the update command and a link to the release notes, and a Release row that says up to date, update waiting or check failed with the reason. The admin is English only.
+- **Mock:** the approved mock is [update-notice.html](mockups/update-notice.html), variant A, with the references and the reasoning in [update-notice.md](mockups/update-notice.md). Not built, by decision: a dismiss button and a dot on the System tab (variants B and C).
+- **Verified:** `test` `test/server-update-notice.test.mjs` (version comparison, the release pick per channel, the switch, every failure state, the request, the daily cache, and the real server against a fake GitHub for a stable install, a dev install, current, failed, switched off and a checkout), `test/admin-api.test.ts` (the `update` field) and `e2e/admin.spec.ts` (every state on desktop and phone, dark mode). `live` 2026-11-10: the built tarball server and a checkout server loaded in Chrome on desktop and phone, light and dark, against a fake GitHub, and one check against the real GitHub API (a stable 0.1.0 install is offered 0.1.18, a dev 0.1.19-dev.1 install 0.1.19-dev.4), see the [evidence](evidence/2026-11-10-update-notice.md). `live` `pnpm check:bundle`: the admin module is 15,520 bytes gzipped against a budget of 15,616. Repeat: `node --test test/server-update-notice.test.mjs` and `pnpm e2e`.
 
 ## J3 Bootstrap the first owner
 

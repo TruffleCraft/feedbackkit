@@ -75,7 +75,7 @@ sudo install -m 644 /opt/feedbackkit/current/deploy/feedbackkit.service /etc/sys
 sudo systemctl daemon-reload && sudo systemctl enable --now feedbackkit
 ```
 
-Both checks must pass before you extract anything. The unit expects Node at `/usr/bin/node`; change `ExecStart` if yours is elsewhere. `/diag` shows the release and channel. To update, run `/opt/feedbackkit/current/feedbackkit-update --check`, then without `--check`. [Updating](RELEASES.md#updating) lists the commands.
+Both checks must pass before you extract anything. The unit expects Node at `/usr/bin/node`; change `ExecStart` if yours is elsewhere. `/diag` shows the release and channel, and the System page tells you when a newer release exists (`FK_UPDATE_CHECK` turns that off). To update, run `/opt/feedbackkit/current/feedbackkit-update --check`, then without `--check`. [Updating](RELEASES.md#updating) lists the commands.
 
 ## Configuration
 
@@ -86,6 +86,8 @@ Both checks must pass before you extract anything. The unit expects Node at `/us
 | `FK_DATA_DIR` | Directory for `feedbackkit.sqlite`; default `./data`, systemd `/var/lib/feedbackkit` |
 | `HOST`, `PORT` | Listen interface and port; defaults `127.0.0.1`, `8787` |
 | `LLM_API_KEY`, `GITHUB_PAT_<name>`, `TURNSTILE_SECRET_<name>` | Optional integration secrets; project settings reference the variable names |
+| `FK_UPDATE_CHECK` | Default `on`. On a release tarball install the System page tells you when a newer release exists. The server asks the GitHub Releases API at most once a day (once an hour after a failed check) and sends nothing about your installation. `off` turns the check and the notice off. Any other value stops the start. A checkout install never checks |
+| `FK_UPDATE_API` | The releases API the notice asks. Default: this project's GitHub API. Set it for a mirror or a test |
 | `FK_TRUSTED_PROXY_HOPS` | Default 0. The number of reverse proxies in front of this server, for example 1 for one nginx or Caddy. The visitor address for rate limits and the failed-login limit is then read from `X-Forwarded-For` through that many proxies, counted from the right. With 0 every client behind a proxy shares the proxy's address, and the server logs a warning once |
 
 Never expose a plain HTTP admin endpoint to the internet. Use HTTPS through your own reverse proxy and preserve the external Host/Origin. Incoming Cloudflare Access assertion headers are discarded by the standalone server; login uses the admin token. `FK_TRUSTED_PROXY_HOPS` is a network trust decision, not an automatic detector: set it to the real number of proxies, or a client can pick its own address. The earlier `FK_TRUST_PROXY=true` is refused at start. Request paths that start with two slashes are answered with 400, and the server builds every request URL from `FK_PUBLIC_URL`, never from the `Host` header.

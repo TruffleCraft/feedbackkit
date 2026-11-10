@@ -32,7 +32,8 @@ if (gz > BUDGET_GZ) {
 
 // The admin module (P2, ADR-014) only loads on /admin, but stays a small
 // vanilla module: a framework would blow this budget first.
-const ADMIN_BUDGET_GZ = 15 * 1024;
+// 15.25 kB since the notice for a newer release (J2, ADR-014): the first 15 kB were used up before it.
+const ADMIN_BUDGET_GZ = 15.25 * 1024;
 let admin;
 try {
   admin = readFileSync(join(root, "dist", "admin.js"));
