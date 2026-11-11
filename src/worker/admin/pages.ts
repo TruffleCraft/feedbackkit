@@ -1,5 +1,6 @@
 import type { Hono } from "hono";
 import type { Env } from "../env.js";
+import { releaseOf } from "../status.js";
 
 // Admin shell pages (P2, step 3, ADR-014). The Worker renders three static
 // shells: /admin (project list), /admin/projects/:id and /admin/system. They
@@ -479,7 +480,12 @@ const SYSTEM = `<section id="view-system" hidden>
   <div class="kv" id="sys-gateway"></div>
 </section>`;
 
-export function renderAdminPage(view: AdminView, nonce: string): string {
+/** `?v=<release>` on the page scripts: the HTML is never cached but the script is, by browsers and by an edge
+ * in front of the server, so after an update a stale script would run in the new shell (seen on a phone
+ * the day 0.3.1 went live, with a 4 hour browser cache added by Cloudflare). A new release is a new URL. */
+export const assetQuery = (version: string): string => (version ? `?v=${encodeURIComponent(version)}` : "");
+
+export function renderAdminPage(view: AdminView, nonce: string, version = ""): string {
   return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -498,7 +504,7 @@ ${LOGIN}
 ${view === "projects" ? PROJECTS : view === "project" ? PROJECT : SYSTEM}
 </main>
 </div>
-<script src="/admin.js" nonce="${nonce}" defer></script>
+<script src="/admin.js${assetQuery(version)}" nonce="${nonce}" defer></script>
 </body></html>`;
 }
 
@@ -509,7 +515,7 @@ export function registerAdminPages(app: AppT): void {
   const serve = (view: AdminView) => (c: import("hono").Context<{ Bindings: Env }>) => {
     const nonce = crypto.randomUUID().replace(/-/g, "");
     for (const [k, v] of Object.entries(adminHeaders(nonce))) c.header(k, v);
-    return c.html(renderAdminPage(view, nonce));
+    return c.html(renderAdminPage(view, nonce, releaseOf(c.env).version));
   };
   app.get("/admin", serve("projects"));
   app.get("/admin/", serve("projects"));
