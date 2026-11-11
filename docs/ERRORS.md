@@ -63,7 +63,7 @@ answered as `issue_failed`, as before.
 
 ## Accounts, sessions and tokens
 
-Routes under `/api/auth/*` (public) and the account, accounts and tokens routes under `/api/admin/*`. Design: [design/gate2-accounts.md](design/gate2-accounts.md).
+Routes under `/api/auth/*` (public) and the account, accounts and tokens routes under `/api/admin/*`. The route `/api/admin/accounts` and the codes keep their names; the admin calls the people it lists users. Design: [design/gate2-accounts.md](design/gate2-accounts.md).
 
 | Code | HTTP | Where | Meaning and what to do |
 |---|---|---|---|
@@ -84,9 +84,9 @@ Routes under `/api/auth/*` (public) and the account, accounts and tokens routes 
 | `FK_TOKEN_SCOPE` | 403 | any admin route | A read-only token on a write, or a token limited to projects on a route outside them (or one that is not about a project: system, config import, project creation) |
 | `FK_TOKEN_INVALID` | 400 | `POST /api/admin/tokens` | Name, access, projects (known project IDs) or lifetime (1 to 365 days) is wrong |
 | `FK_TOKEN_LIMIT` | 409 | `POST /api/admin/tokens` | An account can hold 100 active tokens. Revoke one |
-| `FK_TOKEN_NOT_FOUND`, `FK_ACCOUNT_NOT_FOUND`, `FK_PASSKEY_NOT_FOUND`, `FK_SESSION_NOT_FOUND` | 404 | the matching routes | No such token, account, passkey or session |
-| `FK_ACCOUNT_EXISTS` | 409 | invite | A live account has this name (case does not matter) |
-| `FK_ACCOUNT_STATE` | 409 | link routes, setup finish | The account is in the wrong state for this: an invitation for an account that was set up, a recovery link for one that was not, or an account that was removed |
+| `FK_TOKEN_NOT_FOUND`, `FK_ACCOUNT_NOT_FOUND`, `FK_PASSKEY_NOT_FOUND`, `FK_SESSION_NOT_FOUND` | 404 | the matching routes | No such token, user, passkey or session |
+| `FK_ACCOUNT_EXISTS` | 409 | invite | A live user has this name (case does not matter) |
+| `FK_ACCOUNT_STATE` | 409 | link routes, setup finish | The user is in the wrong state for this: an invitation for a user who was set up, a recovery link for one who was not, or a user who was removed |
 | `FK_ROLE_INVALID`, `FK_NAME_INVALID`, `FK_BODY_INVALID` | 400 | the matching routes | Role is owner or member, a name has 1 to 64 characters without control characters, a body is a JSON object under 32 kB |
 | `FK_LAST_OWNER` | 409 | role change, remove | The last active owner cannot be demoted or removed. Make someone else an owner first |
 | `FK_LAST_PASSKEY` | 409 | remove passkey | An account keeps at least one passkey. Add another first |

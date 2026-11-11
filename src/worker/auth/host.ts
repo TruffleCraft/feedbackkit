@@ -33,10 +33,10 @@ export async function hostRecoveryLink(env: Env, input: { origin: string; accoun
   if (!(await ownerExists(env))) throw new AuthError(409, "FK_NO_OWNER", "There is no owner yet. Run setup-link to create the first one.");
   const accounts = (await listAccounts(env)).filter((a) => a.state === "active");
   let target = input.account ? await findLiveAccountByName(env, input.account) : null;
-  if (input.account && (!target || target.state !== "active")) throw new AuthError(404, "FK_ACCOUNT_NOT_FOUND", `No active account named "${input.account}". Accounts: ${accounts.map((a) => a.name).join(", ") || "none"}.`);
+  if (input.account && (!target || target.state !== "active")) throw new AuthError(404, "FK_ACCOUNT_NOT_FOUND", `No active user named "${input.account}". Users: ${accounts.map((a) => a.name).join(", ") || "none"}.`);
   if (!target) {
     const owners = accounts.filter((a) => a.role === "owner");
-    if (owners.length !== 1) throw new AuthError(400, "FK_BODY_INVALID", `Name the account with --account. Owners: ${owners.map((a) => a.name).join(", ") || "none"}.`);
+    if (owners.length !== 1) throw new AuthError(400, "FK_BODY_INVALID", `Name the user with --user. Owners: ${owners.map((a) => a.name).join(", ") || "none"}.`);
     target = owners[0]!;
   }
   const link = await issueLink(env, { purpose: "recovery", accountId: target.id, createdBy: "host", ttlMs: ttl(input.minutes), keepTokens: input.keepTokens });

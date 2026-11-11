@@ -38,7 +38,7 @@ function mapConstraint(e: unknown): never {
   if (/owner_claim/i.test(message)) throw new AuthError(409, "FK_OWNER_EXISTS", "This instance already has an owner.");
   if (/used_challenges/i.test(message)) throw new AuthError(400, "FK_PASSKEY_REJECTED", "This sign-in request was already used. Start again.");
   if (/passkeys/i.test(message)) throw new AuthError(409, "FK_PASSKEY_EXISTS", "This passkey is already registered.");
-  if (/accounts/i.test(message)) throw new AuthError(409, "FK_ACCOUNT_EXISTS", "An account with this name exists.");
+  if (/accounts/i.test(message)) throw new AuthError(409, "FK_ACCOUNT_EXISTS", "A user with this name exists.");
   throw e;
 }
 

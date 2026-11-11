@@ -443,7 +443,7 @@ Open `https://<your-gateway>/admin`. There are three ways in:
 - Cloudflare Access (recommended for teams that already use it): each person
   signs in with their own account and nothing has to be pasted. Setup below.
   Access stays accepted beside accounts. It is not an account, so it cannot
-  create tokens or manage accounts.
+  create tokens or manage users.
 - The admin token: paste your `ADMIN_TOKEN`, until the first owner exists. The page keeps it in
   `sessionStorage` for this tab only and sends it as a Bearer header. curl and
   scripts use the token too, but only on paths Access does not cover: with the
@@ -531,7 +531,7 @@ Accounts replace `ADMIN_TOKEN` on Cloudflare as on a server ([design](design/gat
 pnpm materialize                                              # wrangler.toml, as for the migrations
 pnpm admin:link --url https://<your-gateway>                  # first owner
 pnpm admin:link --url https://<your-gateway> --recovery       # recovery link for the only owner
-pnpm admin:link --url https://<your-gateway> --recovery --account "Robin"
+pnpm admin:link --url https://<your-gateway> --recovery --user "Robin"
 pnpm admin:link --url https://<your-gateway> --print-sql      # print the SQL, paste it into the D1 console, no tooling needed
 ```
 

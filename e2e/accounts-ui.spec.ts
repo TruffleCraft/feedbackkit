@@ -42,7 +42,7 @@ const watch = (page: Page) => {
   return problems;
 };
 
-test("an owner works through every screen: setup, account, sessions, accounts, invitations, tokens, sign-out and recovery", async ({ browser }) => {
+test("an owner works through every screen: setup, account, sessions, users, invitations, tokens, sign-out and recovery", async ({ browser }) => {
   const server = await startServer();
   const a = await newDevice(browser, { viewport: { width: 1100, height: 820 }, permissions: ["clipboard-read", "clipboard-write"] });
   const b = await newDevice(browser);
@@ -141,24 +141,30 @@ test("an owner works through every screen: setup, account, sessions, accounts, i
       await syncPasskeys(b, a); // B signed in with its copy, so A needs the newer sign counter
     });
 
-    await test.step("accounts: the only owner cannot be demoted or removed, and the page says why", async () => {
-      await page.getByRole("link", { name: "Accounts", exact: true }).click();
-      await expect(page).toHaveURL(`${server.origin}/admin/accounts`);
+    await test.step("users: the only owner cannot be demoted or removed, and the page says why", async () => {
+      await page.getByRole("link", { name: "Users", exact: true }).click();
+      await expect(page).toHaveURL(`${server.origin}/admin/users`);
       const robin = row(page.locator("#acct-list"), "Robin");
       await expect(robin).toContainText("(you)");
       await expect(robin.getByRole("button", { name: "Make member" })).toBeDisabled();
       await expect(robin.getByRole("button", { name: "Remove" })).toBeDisabled();
       await expect(robin).toContainText("the only owner");
-      await shot(page, "accounts-only-owner");
+      await shot(page, "users-only-owner");
+    });
+
+    await test.step("the old /admin/accounts address still works and leads to Users", async () => {
+      await page.goto(`${server.origin}/admin/accounts`);
+      await expect(page).toHaveURL(`${server.origin}/admin/users`);
+      await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
     });
 
     let invitation = "";
-    await test.step("accounts: invite someone (an empty name is refused), copy the link, make a new link", async () => {
-      await page.getByRole("button", { name: "Invite someone" }).click();
+    await test.step("users: invite a user (an empty name is refused), copy the link, make a new link", async () => {
+      await page.getByRole("button", { name: "Invite user" }).click();
       await dialog(page).getByRole("button", { name: "Create invitation" }).click();
       await expect(dialog(page).locator("#inv-msg")).toContainText("Enter a name");
       await dialog(page).getByLabel("Name").fill("Taylor");
-      await shot(page, "accounts-invite");
+      await shot(page, "users-invite");
       await dialog(page).getByRole("button", { name: "Create invitation" }).click();
       await expect(dialog(page).getByRole("heading", { name: "Invitation for Taylor" })).toBeVisible();
       invitation = await dialog(page).locator("#inv-link-out").inputValue();
@@ -166,7 +172,7 @@ test("an owner works through every screen: setup, account, sessions, accounts, i
       await dialog(page).getByRole("button", { name: "Copy link" }).click();
       await expect(dialog(page).getByRole("button", { name: "Copied" })).toBeVisible();
       expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(invitation);
-      await shot(page, "accounts-invitation-link");
+      await shot(page, "users-invitation-link");
       await dialog(page).getByRole("button", { name: "Done" }).click();
       const taylor = row(page.locator("#acct-list"), "Taylor");
       await expect(taylor).toContainText("Invited");
@@ -188,8 +194,8 @@ test("an owner works through every screen: setup, account, sessions, accounts, i
       await expect(c.page.locator("#st-done-who")).toHaveText("Taylor, member");
       await c.page.getByRole("link", { name: "Open the admin" }).click();
       await expect(c.page.getByRole("heading", { name: "Projects" })).toBeVisible();
-      await c.page.goto(`${server.origin}/admin/accounts`);
-      await expect(c.page.getByRole("heading", { name: "Only owners can manage Accounts" })).toBeVisible();
+      await c.page.goto(`${server.origin}/admin/users`);
+      await expect(c.page.getByRole("heading", { name: "Only owners can manage Users" })).toBeVisible();
       await c.page.goto(`${server.origin}/admin/tokens`);
       await expect(c.page.getByRole("heading", { name: "Only owners can manage API tokens" })).toBeVisible();
       await shot(c.page, "tokens-member-denied");
@@ -200,39 +206,39 @@ test("an owner works through every screen: setup, account, sessions, accounts, i
       expect((await api(c.page,"POST", "/api/auth/setup/begin", undefined, { token: tokenOf(invitation), name: "Taylor" })).status).toBe(410);
     });
 
-    await test.step("accounts: make an owner (cancel first), make a member, remove, show removed", async () => {
+    await test.step("users: make an owner (cancel first), make a member, remove, show removed", async () => {
       await page.reload();
       const taylor = row(page.locator("#acct-list"), "Taylor");
       await expect(taylor).toContainText("Active");
       await taylor.getByRole("button", { name: "Make owner" }).click();
       await expect(dialog(page).getByRole("heading", { name: "Make Taylor an owner?" })).toBeVisible();
-      await shot(page, "accounts-make-owner");
+      await shot(page, "users-make-owner");
       await dialog(page).getByRole("button", { name: "Cancel" }).click();
       await expect(taylor).toContainText("Member");
       await taylor.getByRole("button", { name: "Make owner" }).click();
       await dialog(page).getByRole("button", { name: "Make owner" }).click();
       await expect(taylor).toContainText("Owner");
-      await expect(page.locator("#accts-sub")).toHaveText("2 accounts · 2 owners");
+      await expect(page.locator("#accts-sub")).toHaveText("2 users · 2 owners");
       await expect(row(page.locator("#acct-list"), "Robin").getByRole("button", { name: "Make member" })).toBeEnabled(); // two owners now
       await taylor.getByRole("button", { name: "Make member" }).click();
       await dialog(page).getByRole("button", { name: "Make member" }).click();
       await expect(taylor).toContainText("Member");
       await taylor.getByRole("button", { name: "Remove" }).click();
       await expect(dialog(page).getByRole("heading", { name: "Remove Taylor?" })).toBeVisible();
-      await shot(page, "accounts-remove");
+      await shot(page, "users-remove");
       await dialog(page).getByRole("button", { name: "Cancel" }).click();
       await expect(taylor).toHaveCount(1);
       await taylor.getByRole("button", { name: "Remove" }).click();
       await dialog(page).getByRole("button", { name: "Remove Taylor" }).click();
       await expect(row(page.locator("#acct-list"), "Taylor")).toHaveCount(0);
-      await expect(page.locator("#accts-sub")).toHaveText("1 account · 1 owner");
+      await expect(page.locator("#accts-sub")).toHaveText("1 user · 1 owner");
       const chip = page.getByRole("button", { name: "Show removed" });
       await chip.click();
       await expect(chip).toHaveAttribute("aria-pressed", "true");
       const gone = row(page.locator("#acct-list"), "Taylor");
       await expect(gone).toContainText("Removed");
       await expect(gone.getByRole("button")).toHaveCount(0);
-      await shot(page, "accounts-show-removed");
+      await shot(page, "users-show-removed");
       await chip.click();
       await expect(row(page.locator("#acct-list"), "Taylor")).toHaveCount(0);
       await c.page.goto(`${server.origin}/admin/account`);
@@ -454,7 +460,7 @@ test("states: no link, a spent link, an owner that exists, rate limit, no passke
     });
 
     await test.step("the pages are not indexed, carry a nonce-based policy and load no inline code or style", async () => {
-      for (const path of ["/admin/sign-in", "/admin/setup", "/admin/account", "/admin/accounts", "/admin/tokens"]) {
+      for (const path of ["/admin/sign-in", "/admin/setup", "/admin/account", "/admin/users", "/admin/tokens"]) {
         const res = await page.request.get(`${server.origin}${path}`);
         expect(res.status(), path).toBe(200);
         const csp = res.headers()["content-security-policy"] ?? "";
@@ -494,12 +500,12 @@ test("phone and dark: every screen fits 375 px without horizontal scroll", async
     await page.getByRole("button", { name: "Add a passkey" }).click();
     await fits("account-add-passkey");
     await page.getByRole("button", { name: "Cancel" }).click();
-    await page.goto(`${server.origin}/admin/accounts`);
-    await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
-    await page.getByRole("button", { name: "Invite someone" }).click();
-    await fits("accounts-invite");
+    await page.goto(`${server.origin}/admin/users`);
+    await expect(page.getByRole("heading", { name: "Users" })).toBeVisible();
+    await page.getByRole("button", { name: "Invite user" }).click();
+    await fits("users-invite");
     await page.getByRole("button", { name: "Cancel" }).click();
-    await fits("accounts");
+    await fits("users");
     await page.goto(`${server.origin}/admin/tokens`);
     await expect(page.getByRole("heading", { name: "API tokens" })).toBeVisible();
     await page.locator("#tok-open").click();

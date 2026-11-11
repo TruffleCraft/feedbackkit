@@ -2,6 +2,8 @@
 
 Status: waiting for approval. Gate 2 replaces `ADMIN_TOKEN` with accounts (S11, S12, S14, S15 in [scope.md](../scope.md), flows in the [Gate 2 diagrams](../diagrams/gate2-bootstrap-sequence.html)). Open [accounts.html](accounts.html) in a browser. It shows every screen and state on desktop and on a phone, with a light and a dark switch. The dialogs, the menu and the copy buttons in the frames work, so click through them. All data is invented.
 
+Renamed after review on 2026-11-11: the list of people, called Accounts in this mock, is called Users in the product (the screen, `/admin/users`, **Invite user**, `feedbackkit-admin users`). The old `/admin/accounts` redirects. This mock, its file names and its sheets keep the old name, because they are the record of what was approved. **Your account** is unchanged.
+
 PNG contact sheets, one per section and theme. Names follow `accounts-<section>-<light|dark>.png`, and each sheet holds the desktop and the phone frames of that section:
 
 | Choice | Sheets |

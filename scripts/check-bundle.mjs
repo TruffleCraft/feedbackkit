@@ -45,7 +45,7 @@ try {
 }
 const adminGz = gzipSync(admin).length;
 // The account screens (Gate 2) are a module of their own, loaded only by their five pages.
-// 9 kB gz: sign-in, setup, passkeys and sessions, accounts and tokens with their dialogs.
+// 9 kB gz: sign-in, setup, passkeys and sessions, users and tokens with their dialogs.
 const AUTH_BUDGET_GZ = 9 * 1024;
 let auth;
 try {

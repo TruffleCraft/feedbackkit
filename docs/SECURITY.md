@@ -191,7 +191,7 @@ missing only.
 
 ### Admin pages
 
-`/admin`, `/admin/projects/:id`, `/admin/system` and the account screens (`/admin/sign-in`, `/admin/setup`, `/admin/account`, `/admin/accounts`, `/admin/tokens`) are public HTML shells
+`/admin`, `/admin/projects/:id`, `/admin/system` and the account screens (`/admin/sign-in`, `/admin/setup`, `/admin/account`, `/admin/users`, `/admin/tokens`; `/admin/accounts` is the old address of the users page and redirects to it) are public HTML shells
 without data: no D1 read, nothing from the URL in the markup. `dist/admin.js`
 first asks `GET /api/admin/me` without a token. If Access signed the visitor
 in, it skips the token form, shows the email and links **Sign out** to
@@ -220,10 +220,10 @@ Local accounts (Gate 2) work the same on the standalone server and on Cloudflare
 | Cross-site request forgery | `SameSite=Lax` cookies, a CSRF token on every state-changing request of a session, and a same-origin check on `Origin` or `Sec-Fetch-Site`. The ceremonies check the origin too |
 | Session fixation | A new random session token at every sign-in and enrollment. A session cookie that arrives with the request is deleted and replaced, never adopted |
 | Replay of a captured ceremony | Challenges are signed, expire after 5 minutes and are recorded as used. A counter that goes back is refused |
-| A stolen API token | Hashed at rest, shown once, read-only or write, limited to projects, 1 to 365 days, revoked on the next request. A token cannot create tokens or accounts. A token limited to projects reaches only routes that name one of them, and is refused on `/api/admin/system`, config import and project creation |
+| A stolen API token | Hashed at rest, shown once, read-only or write, limited to projects, 1 to 365 days, revoked on the next request. A token cannot create tokens or users. A token limited to projects reaches only routes that name one of them, and is refused on `/api/admin/system`, config import and project creation |
 | An owner locks everyone out | The last active owner cannot be demoted or removed, and two owners who demote or remove each other at the same time leave one. The last passkey of an account cannot be removed |
-| A lost device | Recovery by a host command: the link replaces the account's passkeys, ends its sessions and revokes the API tokens that account created (a stolen session could have made one that outlives it; `--keep-tokens` opts out). Recovery needs host access, or on Cloudflare the operator's own Cloudflare credentials |
-| A removed person keeps access | Removing an account deletes its sessions and passkeys and revokes its tokens in one batch |
+| A lost device | Recovery by a host command: the link replaces the user's passkeys, ends their sessions and revokes the API tokens that user created (a stolen session could have made one that outlives it; `--keep-tokens` opts out). Recovery needs host access, or on Cloudflare the operator's own Cloudflare credentials |
+| A removed person keeps access | Removing a user deletes their sessions and passkeys and revokes their tokens in one batch |
 
 ### Sessions and cookies
 
@@ -254,7 +254,7 @@ Failed sign-ins, link redemptions and API-token attempts are counted per hashed 
 
 - **Passkeys need a secure context.** Browsers allow WebAuthn only on https or on `localhost`. The relying party ID is the host name of `FK_PUBLIC_URL`, and a passkey belongs to that name. Changing `FK_PUBLIC_URL` to another host orphans every passkey: use recovery links to enroll again. An IP address cannot be a relying party ID. Reach a server without TLS through `ssh -L 8787:127.0.0.1:8787 host` and `http://localhost:8787`.
 - **Cloudflare:** the relying party follows the request URL or the optional `FK_PUBLIC_URL` variable. A passkey made on the `workers.dev` address does not work on a custom domain. After the first owner exists, delete the `ADMIN_TOKEN` secret: `wrangler rollback` to a release without accounts would honor it again.
-- **Cloudflare Access** stays an accepted identity for the admin routes (S15). It is not an account, so it cannot create tokens, manage accounts or use the account page.
+- **Cloudflare Access** stays an accepted identity for the admin routes (S15). It is not an account, so it cannot create tokens, manage users or use the account page.
 - **Backups of the data directory hold the session hashes and passkey public keys.** Restoring an old copy brings back sessions that were revoked after it was taken. Revoke or recover after a restore.
 
 ## MCP server (`/mcp`)
@@ -296,7 +296,7 @@ and a grant needs two things:
   same `verifyAccess()` as the admin; the operator adds `/oauth/authorize` to the
   admin's Access application), or the session cookie of an account's passkey
   sign-in (both runtimes, `authenticateAccount()` of `src/worker/auth/`). Any
-  active account may approve, member or owner, because a connection reads what the
+  active user may approve, member or owner, because a connection reads what the
   admin API shows them. Without an identity the page says where to sign in and
   creates nothing, not even a consent transaction. There is no token fallback: a
   consent page with a token field would teach people to paste the admin token into
@@ -364,8 +364,8 @@ token its authorization server issued through OAuth, and the provider's own docu
 calls an external token a compatibility feature. The token here is issued by this gateway
 itself, bound to this resource, and never forwarded to another service, so it is not the
 token passthrough the specification forbids, but it is a deliberate side door. An operator
-who wants the conformant path uses OAuth. A token is as strong as the account that made
-it: removing the account revokes its tokens.
+who wants the conformant path uses OAuth. A token is as strong as the user that made
+it: removing the user revokes their tokens.
 
 ### Standalone server
 
