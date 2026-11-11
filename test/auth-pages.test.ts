@@ -78,7 +78,7 @@ describe("account screen shells", () => {
     expect(users).toContain("<title>Users · FeedbackKit admin</title>");
     expect(users).toContain("<h1>Users</h1>");
     expect(users).toContain(">Invite user</button>");
-    expect(users).toContain('<a class="b" href="/admin/users" data-nav="users">Users</a>');
+    expect(users).toContain('<a href="/admin/users" data-nav="users">Users</a>');
     expect(users).not.toContain("Accounts");
     expect(users).not.toContain("Invite someone");
     const own = await (await app.request("/admin/account", {}, env())).text();
