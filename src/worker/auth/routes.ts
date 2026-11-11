@@ -6,7 +6,7 @@ import { AuthError, changeRole, cleanName, createInvitedAccount, getAccount, lis
 import { sha256Hex } from "./crypto.js";
 import { addPasskey, bootstrapAccountId, completeBootstrap, completeLinked, completeSignIn, defaultPasskeyName } from "./enroll.js";
 import { issueLink, openLink, setupUrl } from "./links.js";
-import { CSRF_HEADER, SESSION_ABSOLUTE_MS, clearedSessionCookie, csrfToken, listSessions, readSessionToken, sessionCookie, type NewSession } from "./sessions.js";
+import { CSRF_HEADER, SESSION_ABSOLUTE_MS, clearedSessionCookie, csrfToken, csrfValid, listSessions, readSessionToken, sessionCookie, type NewSession } from "./sessions.js";
 import { recordAuthFailure } from "./throttle.js";
 import { createApiToken, listApiTokens, revokeApiToken, validateTokenInput } from "./tokens.js";
 import { authenticationOptions, registrationOptions, relyingParty, verifyAuthentication, verifyRegistration } from "./webauthn.js";
@@ -197,7 +197,7 @@ export function registerAuthRoutes(app: AppT): void {
       const token = readSessionToken(c.req.raw);
       if (token) {
         // The session is ended only for the holder of its CSRF token, so a cross-site page cannot sign someone out.
-        if (c.req.header(CSRF_HEADER) === (await csrfToken(token))) await c.env.DB.prepare("DELETE FROM sessions WHERE id = ?1").bind(await sha256Hex(token)).run();
+        if (await csrfValid(token, c.req.header(CSRF_HEADER))) await c.env.DB.prepare("DELETE FROM sessions WHERE id = ?1").bind(await sha256Hex(token)).run();
         else return c.json({ v: WIRE_VERSION, status: "error", error: "missing or wrong CSRF token", code: "FK_CSRF" }, 403);
       }
       c.header("Set-Cookie", clearedSessionCookie(c.req.raw));
