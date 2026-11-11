@@ -44,7 +44,7 @@ describe("account screen shells", () => {
     expect(res.headers.get("Cache-Control")).toBe("no-store");
 
     const html = await res.text();
-    expect(html).toContain(`<body data-view="${view}">`);
+    expect(html).toMatch(new RegExp(`<body data-view="${view}"( class="bare")?>`));
     expect(html).toContain('<meta name="robots" content="noindex,nofollow">');
     expect(html).toContain(`<script src="/auth.js" nonce="${nonce}" defer></script>`);
     expect(html).not.toContain("/admin.js"); // the account screens load their own module only

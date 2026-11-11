@@ -1,4 +1,5 @@
 import { settingsEditor } from "./settings.js";
+import { fillProjects, initShell, markCurrent } from "./shell.js";
 // FeedbackKit admin, read-only (P2, step 3, ADR-014). Fills the Worker-rendered
 // shells from /api/admin/*. Two ways in: when Cloudflare Access sits in front of
 // the admin, GET /api/admin/me answers with the signed-in email and no token is
@@ -124,7 +125,6 @@ interface SystemInfo {
 }
 
 const TOKEN_KEY = "fk-admin-token";
-const THEME_KEY = "fk-admin-theme";
 const PAT_WARN_DAYS = 14;
 const BUDGET_WARN = 0.8;
 const DAY = 86_400_000;
@@ -161,6 +161,7 @@ let accessEmail: string | null = null;
 // `owner` says an owner exists, so the token form gives way to /admin/sign-in.
 let csrf = "";
 let owner = false;
+let role = "";
 
 async function api<T>(path: string, token = readToken()): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
@@ -235,7 +236,8 @@ function icon(name: string): SVGSVGElement {
   svg.append(use);
   return svg;
 }
-const badge = (cls: string, text: string, ...kids: Kid[]) => el("span", { class: `badge ${cls}` }, ...kids, text);
+/** A status in plain words. Only a failure is marked (red dot). */
+const status = (text: string, bad = false) => el("span", { class: bad ? "st bad" : "st" }, text);
 
 /** Only http(s) URLs become links or image sources; anything else is dropped. */
 function safeUrl(raw: string | null | undefined, imageOnly = false): string | null {
@@ -286,18 +288,6 @@ function notice(text: string | null) {
   n.hidden = !text;
 }
 
-// ── theme (manual override on top of prefers-color-scheme) ───────────────────
-function applyTheme(t: string | null) {
-  if (t === "light" || t === "dark") document.documentElement.dataset["theme"] = t;
-}
-function toggleTheme() {
-  const root = document.documentElement;
-  const dark = root.dataset["theme"] ? root.dataset["theme"] === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
-  const next = dark ? "light" : "dark";
-  root.dataset["theme"] = next;
-  store("local", THEME_KEY, next);
-}
-
 // ── auth ──────────────────────────────────────────────────────────────────────
 const MSG_WRONG = "That token didn't match.";
 const MSG_LOCKED = "Too many failed sign-ins from your network. After 20 in an hour, sign-in stays blocked until the hour is over.";
@@ -308,10 +298,11 @@ const MSG_ACCESS_ENDED = "Your sign-in has ended. Reload the page to sign in aga
 async function accessSignIn(): Promise<string | null> {
   try {
     const res = await fetch("/api/admin/me", { headers: { Accept: "application/json" }, cache: "no-store", credentials: "same-origin" });
-    const me = (await res.json()) as { via?: string; email?: string; account?: { name?: string }; csrf?: string; ownerExists?: boolean };
+    const me = (await res.json()) as { via?: string; email?: string; account?: { name?: string; role?: string }; csrf?: string; ownerExists?: boolean };
     owner = !!me.ownerExists;
     if (!res.ok) return null;
     csrf = me.csrf ?? "";
+    role = me.account?.role ?? "";
     return (me.via === "session" ? me.account?.name : me.via === "access" ? me.email : "") || null;
   } catch {
     return null;
@@ -324,6 +315,7 @@ function showLogin(msg?: string) {
   store("session", TOKEN_KEY, null);
   notice(null);
   for (const s of document.querySelectorAll<HTMLElement>("main > section")) s.hidden = s.id !== "login";
+  document.body.classList.add("bare");
   $("nav").hidden = true;
   $("signout").hidden = true;
   $("signout-access").hidden = true;
@@ -377,6 +369,10 @@ function fail(err: unknown, what: string) {
 }
 
 // ── projects ──────────────────────────────────────────────────────────────────
+// The sidebar and the projects page share one answer.
+let projectList: Promise<{ projects: ProjectSummary[] }> | null = null;
+const projects = () => (projectList ??= api<{ projects: ProjectSummary[] }>("/api/admin/projects"));
+
 async function loadProjects() {
   const dialog = $<HTMLDialogElement>("new-project-dialog");
   $("new-project").onclick = () => dialog.showModal();
@@ -399,8 +395,7 @@ async function loadProjects() {
     } catch { msg.textContent = "The gateway did not answer. Your entries are still here; retry when it is available."; }
     finally { button.disabled = false; }
   };
-  const r = await api<{ projects: ProjectSummary[] }>("/api/admin/projects");
-  const list = r.projects;
+  const list = (await projects()).projects;
   $("projects-sub").textContent = !list.length ? "No projects on this gateway yet" : list.length === 1 ? "1 project on this gateway" : `${list.length} projects on this gateway`;
   $("projects-table").hidden = list.length === 0;
   $("projects-empty").hidden = list.length > 0;
@@ -417,29 +412,19 @@ async function loadProjects() {
   $("projects-rows").replaceChildren(
     ...list.map((p) => {
       const failed = p.feedback7d.byOutcome["issue_failed"] ?? 0;
+      const total = p.feedback7d.total;
+      const where = (p.deliveries ?? []).map((d) => DELIVERY_WORD[d]).join(" + ");
       return el(
-        "tr",
-        null,
-        el("td", null, el("a", { class: "name", href: `/admin/projects/${encodeURIComponent(p.id)}` }, p.id), el("div", { class: "mono muted" }, p.publicKey)),
-        el("td", { class: "num" }, p.feedback7d.total),
-        el("td", null, failed > 0 ? badge("failed", String(failed)) : el("span", { class: "muted" }, "0")),
-        el("td", null, deliveryCell(p)),
-        el("td", { class: "mono" }, `Revision ${p.configVersion}`),
-        el("td", null, timeEl(p.updatedAt, "muted")),
+        "a",
+        { class: "item", href: `/admin/projects/${encodeURIComponent(p.id)}` },
+        el("span", { class: "main" }, el("span", { class: "ttl" }, p.id), el("span", { class: "meta" }, `${total} ${total === 1 ? "report" : "reports"} in 7 days`, failed > 0 ? " · " : null, failed > 0 ? status(`${failed} failed`, true) : null, where ? ` · ${where}` : null, ` · edited ${ago(p.updatedAt)}`)),
+        el("span", { class: "end chev" }),
       );
     }),
   );
 }
 
 const DELIVERY_WORD: Record<Delivery, string> = { issue: "Issues", project: "GitHub Project", local: "Stored here" };
-function deliveryCell(p: ProjectSummary): HTMLElement {
-  const words = (p.deliveries ?? []).map((d) => DELIVERY_WORD[d]).join(" + ") || "—";
-  const links = [
-    p.links?.project ? el("a", { class: "lnk", href: safeUrl(p.links.project) ?? "#", target: "_blank", rel: "noopener noreferrer" }, "Project", icon("i-ext")) : null,
-    p.links?.repo ? el("a", { class: "lnk", href: safeUrl(p.links.repo) ?? "#", target: "_blank", rel: "noopener noreferrer" }, "Repo", icon("i-ext")) : null,
-  ];
-  return el("div", { class: "row-flex" }, el("span", null, words), ...links);
-}
 
 // ── project detail ────────────────────────────────────────────────────────────
 type Filter = "all" | "created" | "saved" | "open" | "done" | "undecided" | Outcome;
@@ -457,49 +442,57 @@ const FILTERS: Record<Filter, { outcome?: Outcome; view?: string; keep?: (i: Fee
 // Client-side filters skip rows, so a page can come back empty while older
 // rows match; keep paging, but not forever.
 const MAX_PAGES_PER_LOAD = 8;
+// From this width the list and the open report sit side by side (CSS agrees).
+const SPLIT = "(min-width: 1180px)";
 
 const isLocal = (i: FeedbackItem) => i.delivery === "local";
 const isUndecided = (i: FeedbackItem) => (i.delivery ?? null) === null && !i.issueUrl && i.outcome !== "issue_failed";
-const DISPOSITION_WORD: Record<string, string> = { open: "Open", done: "Done", dismissed: "Dismissed" };
+const DISPOSITION_WORD: Record<string, string> = { open: "open", done: "done", dismissed: "dismissed" };
 
-function outcomeBadge(i: FeedbackItem): HTMLElement {
-  if (i.delivery === "project" && i.deliveryState === "delivered") return badge("created", "In GitHub Project");
-  if (i.delivery === "project") return badge("failed", i.deliveryState === "unknown" ? "Delivery unclear" : "Delivery failed");
-  if (isLocal(i)) return badge(i.disposition === "open" ? "incomplete" : "stored", DISPOSITION_WORD[i.disposition ?? "open"] ?? "Open");
-  if (isUndecided(i) && (i.disposition ?? "open") === "open") return badge("incomplete", "Needs a decision");
+/** How a report ended up, in plain words; only a failure is flagged. */
+function outcomeWord(i: FeedbackItem): [string, boolean] {
+  if (i.delivery === "project" && i.deliveryState === "delivered") return ["In GitHub Project", false];
+  if (i.delivery === "project") return [i.deliveryState === "unknown" ? "Delivery unclear" : "Delivery failed", true];
+  if (isLocal(i)) return [`Inbox: ${DISPOSITION_WORD[i.disposition ?? "open"] ?? "open"}`, false];
+  if (isUndecided(i) && (i.disposition ?? "open") === "open") return ["Needs a decision", false];
   switch (i.outcome) {
-    case "created":
-      return i.issueUrl ? badge("created", "Issue created") : badge("stored", "Saved, no issue");
+    case "created": {
+      if (!i.issueUrl) return ["Saved, no issue", false];
+      const num = /\/(?:issues|pull)\/(\d+)/.exec(i.issueUrl)?.[1];
+      return [num ? `Issue #${num}` : "Issue created", false];
+    }
     case "accepted_incomplete":
-      return badge("incomplete", "Sent incomplete");
+      return ["Sent incomplete", false];
     case "ai-failed":
-      return badge("aifail", "AI failed");
+      return ["AI failed", false];
     case "issue_failed":
-      return badge("failed", "Issue failed");
+      return ["Issue failed", true];
     default:
-      return badge("stored", i.outcome);
+      return [i.outcome, false];
   }
 }
 
-function thumb(atts: Attachment[]): HTMLElement {
-  if (!atts.length) return el("div", { class: "thumb none", title: "No attachment" });
+/** The screenshot of a report, or null without an attachment. */
+function shotBlock(atts: Attachment[]): HTMLElement | null {
+  if (!atts.length) return null;
   const n = atts.length === 1 ? "1 attachment" : `${atts.length} attachments`;
   const url = safeUrl(atts.find((a) => a.url)?.url, true);
-  if (!url) return el("div", { class: "thumb", title: `${n}, no public URL configured` }, icon("i-image"));
+  if (!url) return el("div", { class: "shot" }, el("div", { class: "none" }, `${n}, no public URL configured`));
   const isPrivate = new URL(url).pathname.startsWith(PRIVATE_ASSETS);
   const img = el("img", { ...(isPrivate ? {} : { src: url }), alt: "Screenshot of the report", loading: "lazy", decoding: "async" });
-  img.addEventListener("error", () => img.replaceWith(icon("i-image")), { once: true });
-  const link = el("a", { class: "thumb", ...(isPrivate ? {} : { href: url }), target: "_blank", rel: "noopener noreferrer", title: `${n}, opens full size` }, img);
+  const gone = () => img.replaceWith(el("div", { class: "none" }, "The screenshot did not load."));
+  img.addEventListener("error", gone, { once: true });
+  const link = el("a", { ...(isPrivate ? {} : { href: url }), target: "_blank", rel: "noopener noreferrer", title: `${n}, opens full size` }, img);
   if (isPrivate) {
     privateImage(url).then(
       (object) => {
         img.src = object;
         link.href = object;
       },
-      () => img.replaceWith(icon("i-image")),
+      gone,
     );
   }
-  return link;
+  return el("div", { class: "shot" }, link);
 }
 
 function issueLink(raw: string | null): HTMLElement | null {
@@ -507,12 +500,6 @@ function issueLink(raw: string | null): HTMLElement | null {
   if (!url) return null;
   const num = /\/(?:issues|pull)\/(\d+)/.exec(url)?.[1];
   return el("a", { class: "lnk", href: url, target: "_blank", rel: "noopener noreferrer" }, num ? `#${num}` : "Issue", icon("i-ext"));
-}
-
-const GLYPH: Record<string, string> = { bug: "i-bug", idea: "i-bulb", feature: "i-bulb", improvement: "i-wrench", question: "i-help", praise: "i-heart" };
-function typeTag(type: string | null, typeLabels: Map<string, string>): HTMLElement | null {
-  if (!type) return null;
-  return el("span", { class: "t ty" }, icon(GLYPH[type] ?? "i-dot"), typeLabels.get(type) ?? type);
 }
 
 /** The report as Markdown for an agent. The visitor's text sits in a fence marked
@@ -543,135 +530,196 @@ function asMarkdown(i: FeedbackItem, typeLabels: Map<string, string>): string {
 
 interface RowCtx {
   typeLabels: Map<string, string>;
-  /** Re-render one row after a change (or drop it when deleted). */
-  replace: (old: HTMLElement, next: FeedbackItem | null) => void;
+  /** Show one report again after a change, or drop it when it was deleted or left the current view. */
+  replace: (id: string, next: FeedbackItem | null) => void;
 }
 
-function historyRow(i: FeedbackItem, ctx: RowCtx): HTMLElement {
-  const text = i.summary || i.message || i.title || "(no text)";
-  const meta = i.llmModel ? i.llmModel : "model not recorded";
-  const side = el("div", { class: "side" }, outcomeBadge(i));
-  const extra: HTMLElement[] = [];
+const reportText = (i: FeedbackItem) => i.summary || i.message || i.title || "(no text)";
+
+/** One report in the list: its words, when it came in, and how it ended up. */
+function reportRow(i: FeedbackItem, ctx: RowCtx): HTMLAnchorElement {
+  const [word, bad] = outcomeWord(i);
+  const meta = [i.type ? (ctx.typeLabels.get(i.type) ?? i.type) : null, i.isTest ? "Test" : null, ago(i.createdAt), i.attachments.length ? "Screenshot" : null].filter(Boolean).join(" · ");
+  return el(
+    "a",
+    { class: "item report", href: `#history/${encodeURIComponent(i.id)}`, "data-id": i.id },
+    el("span", { class: "main" }, el("span", { class: "ttl" }, reportText(i)), el("span", { class: "meta" }, meta)),
+    el("span", { class: "end" }, status(word, bad)),
+  );
+}
+
+/** One report in full, with the actions that make sense now. */
+function reportDetail(i: FeedbackItem, ctx: RowCtx): HTMLElement {
+  const [word, bad] = outcomeWord(i);
+  const typeName = i.type ? (ctx.typeLabels.get(i.type) ?? i.type) : "Report";
   const say = el("p", { class: "why", role: "status" });
   say.hidden = true;
-  const status = (msg: string, bad = false) => {
+  const tell = (msg: string, isErr = false) => {
     say.textContent = msg;
-    say.classList.toggle("err", bad);
+    say.classList.toggle("err", isErr);
     say.hidden = !msg;
   };
-  const row = el("article", { class: "hrow", "data-outcome": i.outcome, "data-delivery": i.delivery ?? "" });
+  const acts = el("div", { class: "acts" });
+  const extra: HTMLElement[] = [];
+  const button = (label: string, onClick: () => void, cls = "b") => {
+    const b = el("button", { class: cls, type: "button" }, label);
+    b.addEventListener("click", onClick);
+    return b;
+  };
 
   if (i.retryable) {
-    const btn = el("button", { class: "b ghost sm", type: "button" }, "Retry");
-    btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      status("Retrying…");
+    const retry = button("Retry delivery", async () => {
+      retry.disabled = true;
+      tell("Retrying…");
       let r = await send("POST", `/api/admin/feedback/${encodeURIComponent(i.id)}/retry`, {});
       if (r.status === 409 && r.json["needsCreateAnyway"] === true) {
-        btn.disabled = false;
-        if (!confirm("An earlier attempt may already have created this in GitHub, and it wasn't found there. Check the Project first. Create it anyway?")) return status("Not created. Check the GitHub Project, then retry.");
-        btn.disabled = true;
+        retry.disabled = false;
+        if (!confirm("An earlier attempt may already have created this in GitHub, and it wasn't found there. Check the Project first. Create it anyway?")) return tell("Not created. Check the GitHub Project, then retry.");
+        retry.disabled = true;
         r = await send("POST", `/api/admin/feedback/${encodeURIComponent(i.id)}/retry`, { createAnyway: true });
       }
       if (r.status === 200) {
-        ctx.replace(row, { ...i, retryable: false, outcome: "created", deliveryState: "delivered", issueUrl: (r.json["issueUrl"] as string) ?? i.issueUrl, projectUrl: (r.json["projectUrl"] as string) ?? i.projectUrl, warnings: (r.json["warnings"] as string[]) ?? [] });
+        ctx.replace(i.id, { ...i, retryable: false, outcome: "created", deliveryState: "delivered", issueUrl: (r.json["issueUrl"] as string) ?? i.issueUrl, projectUrl: (r.json["projectUrl"] as string) ?? i.projectUrl, warnings: (r.json["warnings"] as string[]) ?? [] });
         return;
       }
-      btn.disabled = false;
-      status(errText(r), true);
-    });
-    side.append(btn);
+      retry.disabled = false;
+      tell(errText(r), true);
+    }, "b violet");
+    acts.append(retry);
   } else if (i.outcome === "issue_failed" && i.delivery !== "project") {
-    extra.push(el("p", { class: "why" }, "No issue draft was saved for this report, so it can't be retried."));
+    extra.push(el("p", { class: "note" }, "No issue draft was saved for this report, so it can't be retried."));
   }
-  const link = issueLink(i.issueUrl);
-  if (link) side.append(link);
-  const pUrl = safeUrl(i.projectUrl);
-  if (pUrl && i.deliveryState === "delivered") side.append(el("a", { class: "lnk", href: pUrl, target: "_blank", rel: "noopener noreferrer" }, "Project", icon("i-ext")));
-  if (i.warnings?.length) extra.push(el("p", { class: "why" }, `Skipped in the Project: ${i.warnings.join("; ")}`));
+  if (i.warnings?.length) extra.push(el("p", { class: "note" }, `Skipped in the Project: ${i.warnings.join("; ")}`));
 
   if (isLocal(i) || isUndecided(i)) {
-    const acts = el("div", { class: "acts" });
     const patch = async (body: Record<string, unknown>) => {
       const r = await send("PATCH", `/api/admin/feedback/${encodeURIComponent(i.id)}`, body);
-      if (r.status !== 200) return status(errText(r), true);
-      ctx.replace(row, { ...i, disposition: (r.json["disposition"] as string) ?? i.disposition, note: (r.json["note"] as string | null) ?? null });
+      if (r.status !== 200) return tell(errText(r), true);
+      ctx.replace(i.id, { ...i, disposition: (r.json["disposition"] as string) ?? i.disposition, note: (r.json["note"] as string | null) ?? null });
     };
-    const open = (i.disposition ?? "open") === "open";
-    const btn = (label: string, onClick: () => void, cls = "b ghost sm") => {
-      const b = el("button", { class: cls, type: "button" }, label);
-      b.addEventListener("click", onClick);
-      return b;
-    };
-    if (open) {
-      acts.append(btn("Done", () => void patch({ disposition: "done" })), btn("Dismiss", () => void patch({ disposition: "dismissed" })));
-    } else {
-      acts.append(btn("Reopen", () => void patch({ disposition: "open" })));
-    }
+    if ((i.disposition ?? "open") === "open") acts.append(button("Mark as done", () => void patch({ disposition: "done" }), "b violet"), button("Dismiss", () => void patch({ disposition: "dismissed" })));
+    else acts.append(button("Reopen", () => void patch({ disposition: "open" })));
     const noteBox = el("textarea", { class: "in note-in", rows: "2", maxlength: "2000", "aria-label": "Note" }) as HTMLTextAreaElement;
     noteBox.value = i.note ?? "";
-    const noteWrap = el("div", { class: "note-edit" }, noteBox, btn("Save note", () => void patch({ note: noteBox.value }), "b sm"));
+    const noteWrap = el("div", { class: "note-edit" }, noteBox, button("Save note", () => void patch({ note: noteBox.value }), "b violet sm"));
     noteWrap.hidden = true;
-    acts.append(
-      btn(i.note ? "Edit note" : "Add note", () => {
-        noteWrap.hidden = !noteWrap.hidden;
-        if (!noteWrap.hidden) noteBox.focus();
-      }),
-      btn("Copy as Markdown", async () => {
-        try {
-          await navigator.clipboard.writeText(asMarkdown(i, ctx.typeLabels));
-          status("Copied as Markdown.");
-        } catch {
-          status("Copying failed.", true);
-        }
-      }),
-      btn(
-        "Delete",
-        async () => {
-          if (!confirm("Delete this report and its screenshots? This can't be undone.")) return;
-          const r = await send("DELETE", `/api/admin/feedback/${encodeURIComponent(i.id)}`);
-          if (r.status === 200) return ctx.replace(row, null);
-          status(errText(r), true);
-        },
-        "b ghost sm danger",
+    const menu = el(
+      "details",
+      { class: "menu" },
+      el("summary", { class: "b quiet" }, "More"),
+      el(
+        "div",
+        { class: "pop" },
+        button(i.note ? "Edit note" : "Add note", () => {
+          menu.removeAttribute("open");
+          noteWrap.hidden = !noteWrap.hidden;
+          if (!noteWrap.hidden) noteBox.focus();
+        }),
+        button("Copy as Markdown", async () => {
+          menu.removeAttribute("open");
+          try {
+            await navigator.clipboard.writeText(asMarkdown(i, ctx.typeLabels));
+            tell("Copied as Markdown.");
+          } catch {
+            tell("Copying failed.", true);
+          }
+        }),
+        el("hr"),
+        button(
+          "Delete report…",
+          async () => {
+            menu.removeAttribute("open");
+            if (!confirm("Delete this report and its screenshots? This can't be undone.")) return;
+            const r = await send("DELETE", `/api/admin/feedback/${encodeURIComponent(i.id)}`);
+            if (r.status === 200) return ctx.replace(i.id, null);
+            tell(errText(r), true);
+          },
+          "danger",
+        ),
       ),
     );
+    acts.append(menu);
     if (i.note) extra.push(el("p", { class: "note sm" }, i.note));
-    extra.push(acts, noteWrap);
+    extra.push(noteWrap);
   }
-  extra.push(say);
 
-  row.append(
-    thumb(i.attachments),
-    el(
-      "div",
-      null,
-      el("div", { class: "top-line" }, typeTag(i.type, ctx.typeLabels), i.isTest ? el("span", { class: "t" }, "Test") : null, timeEl(i.createdAt)),
-      el("p", { class: "sum" }, text),
-      el("p", { class: "meta mono" }, meta),
-      ...extra,
-    ),
-    side,
+  const delivery: Kid[] = [];
+  const link = issueLink(i.issueUrl);
+  const pUrl = safeUrl(i.projectUrl);
+  if (link) delivery.push("GitHub issue ", link);
+  if (pUrl && i.deliveryState === "delivered") delivery.push(delivery.length ? " · " : null, "GitHub Project draft ", el("a", { class: "lnk", href: pUrl, target: "_blank", rel: "noopener noreferrer" }, "Open", icon("i-ext")));
+  if (!delivery.length) delivery.push(isLocal(i) ? "FeedbackKit inbox" : "No issue yet");
+  const iso = new Date(i.createdAt).toISOString();
+  const rows: Array<[string, Kid[]]> = [
+    ["Type", [typeName, i.isTest ? " (test report)" : null]],
+    ["Received", [`${iso.replace("T", " ").slice(0, 16)} UTC`]],
+    ["Delivery", delivery],
+    ...(i.pageUrl ? ([["Page", [el("span", { class: "mono" }, i.pageUrl)]]] as Array<[string, Kid[]]>) : []),
+    ["AI model", [i.llmModel ? el("span", { class: "mono" }, i.llmModel) : "Not recorded"]],
+  ];
+  const shot = shotBlock(i.attachments);
+  return el(
+    "article",
+    { class: "rd", "data-id": i.id },
+    el("div", { class: "pagehead" }, el("div", null, el("h2", { class: "wrapany" }, reportText(i)), el("p", null, `${typeName} · ${ago(i.createdAt)} · `, status(word, bad))), acts),
+    ...extra,
+    say,
+    i.summary && i.summary !== i.message ? el("div", null, el("div", { class: "grp-label" }, "Summary"), el("p", { class: "body" }, i.summary)) : null,
+    el("div", null, el("div", { class: "grp-label" }, "In the visitor's words"), el("p", { class: "body" }, i.message ?? i.title ?? "(no text)")),
+    shot ? el("div", null, el("div", { class: "grp-label" }, "Screenshot"), shot) : null,
+    el("div", null, el("div", { class: "grp-label" }, "Details"), el("div", { class: "kv" }, ...rows.map(([k, v]) => el("div", { class: "item" }, el("span", null, k), el("span", null, ...v))))),
   );
-  return row;
 }
 
 function initHistory(id: string, typeLabels: Map<string, string>) {
   const rows = $("rows");
+  const detail = $("detail");
   const more = $<HTMLButtonElement>("more");
   const loading = $("rows-loading");
+  const filterBox = $<HTMLSelectElement>("filter");
   let filter: Filter = "all";
   let cursor: string | null = null;
   let gen = 0;
+  const items = new Map<string, FeedbackItem>();
+  let wanted: string | null = null; // the report the address asks for
+  let shown: string | null = null;
+  const wide = () => matchMedia(SPLIT).matches;
+
+  /** Shows one report in the pane. Narrow screens swap the list for it (initSections sets has-detail from the address). */
+  function showReport(reportId: string | null) {
+    wanted = reportId;
+    const fromAddress = reportId !== null;
+    let target = reportId;
+    if (target === null && wide()) target = (rows.querySelector<HTMLElement>(".report")?.dataset["id"]) ?? null;
+    const item = target ? items.get(target) : undefined;
+    shown = item ? target : null;
+    for (const r of rows.querySelectorAll<HTMLElement>(".report")) r.setAttribute("aria-current", String(r.dataset["id"] === shown));
+    detail.replaceChildren(
+      item
+        ? reportDetail(item, ctx)
+        : fromAddress
+          ? el("p", { class: "empty-msg" }, "That report isn't in the list yet. Pick one from the list, or load more.")
+          : el("p", { class: "empty-msg" }, items.size ? "Select a report." : ""),
+    );
+  }
+
   const ctx: RowCtx = {
     typeLabels,
-    replace: (old, next) => {
-      if (!next) return old.remove();
-      // A row that left the current view (marked done under "Open") goes away.
+    replace: (reportId, next) => {
+      const old = rows.querySelector<HTMLElement>(`.report[data-id="${CSS.escape(reportId)}"]`);
+      // A report that left the current view (marked done under "Inbox: open") goes away.
       const f = FILTERS[filter];
-      const stays = !f.view || (f.view === "open" ? next.disposition === "open" : f.view === "done" ? next.disposition !== "open" : next.disposition === "open");
-      if (stays) old.replaceWith(historyRow(next, ctx));
-      else old.remove();
+      const stays = next !== null && (!f.view || (f.view === "open" ? next.disposition === "open" : f.view === "done" ? next.disposition !== "open" : next.disposition === "open"));
+      if (!next || !stays) {
+        items.delete(reportId);
+        old?.remove();
+        if (!rows.childElementCount && !cursor) rows.append(el("p", { class: "empty-msg" }, "No reports match this filter."));
+        if (shown === reportId || wanted === reportId) location.hash = "#history";
+        return;
+      }
+      items.set(reportId, next);
+      old?.replaceWith(reportRow(next, ctx));
+      if (shown === reportId) showReport(wanted);
     },
   };
 
@@ -681,6 +729,7 @@ function initHistory(id: string, typeLabels: Map<string, string>) {
       cursor = null;
       releaseShots();
       rows.replaceChildren();
+      items.clear();
     }
     more.hidden = true;
     loading.hidden = false;
@@ -696,7 +745,8 @@ function initHistory(id: string, typeLabels: Map<string, string>) {
         const r = await api<{ items: FeedbackItem[]; nextCursor: string | null }>(`/api/admin/projects/${encodeURIComponent(id)}/feedback?${q}`);
         if (mine !== gen) return;
         const keep = f.keep ? r.items.filter(f.keep) : r.items;
-        rows.append(...keep.map((i) => historyRow(i, ctx)));
+        for (const i of keep) items.set(i.id, i);
+        rows.append(...keep.map((i) => reportRow(i, ctx)));
         added += keep.length;
         cursor = r.nextCursor;
         pages++;
@@ -711,59 +761,55 @@ function initHistory(id: string, typeLabels: Map<string, string>) {
     if (!rows.childElementCount && !cursor) {
       rows.append(el("p", { class: "empty-msg" }, filter === "all" ? "No reports yet. They show up here once someone sends feedback." : "No reports match this filter."));
     }
+    showReport(wanted);
   }
 
-  const chips = [...document.querySelectorAll<HTMLButtonElement>("#filters [data-filter]")];
-  for (const chip of chips) {
-    chip.addEventListener("click", () => {
-      filter = chip.dataset["filter"] as Filter;
-      for (const c of chips) c.setAttribute("aria-pressed", c === chip ? "true" : "false");
-      void load(true);
-    });
-  }
+  filterBox.addEventListener("change", () => {
+    filter = filterBox.value as Filter;
+    void load(true);
+  });
   more.addEventListener("click", () => void load(false));
   void load(true);
+  return { open: showReport };
 }
 
-function initTabs() {
-  const tabs = [...document.querySelectorAll<HTMLButtonElement>("[role=tab][data-tab]")];
-  const select = (name: string, focus = false) => {
-    for (const t of tabs) {
-      const on = t.dataset["tab"] === name;
-      t.setAttribute("aria-selected", on ? "true" : "false");
-      t.tabIndex = on ? 0 : -1;
-      $(`panel-${t.dataset["tab"]}`).hidden = !on;
-      if (on && focus) t.focus();
-    }
+const SECTIONS = [["history", "Reports"], ["setup", "Setup"], ["types", "Types"], ["config", "Settings"]] as const;
+
+let currentSection = "history";
+/** Marks the section of the open project in the sidebar (it may arrive after the page chose its section). */
+function markSection() {
+  for (const a of document.querySelectorAll<HTMLElement>("#side-sections a")) {
+    if (a.dataset["section"] === currentSection) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  }
+}
+
+/** The sections of a project are panels chosen by the address: #history (the default), #history/<report>, #setup, #types, #config. */
+function initSections(onReport: (id: string | null) => void) {
+  const apply = () => {
+    const [name, report] = location.hash.slice(1).split("/");
+    const section = SECTIONS.some(([s]) => s === name) ? name! : "history";
+    for (const [s] of SECTIONS) $(`panel-${s}`).hidden = s !== section;
+    currentSection = section;
+    markSection();
+    $("view-project").classList.toggle("has-detail", section === "history" && !!report);
+    onReport(section === "history" && report ? decodeURIComponent(report) : null);
   };
-  tabs.forEach((t, idx) => {
-    t.addEventListener("click", () => {
-      select(t.dataset["tab"]!);
-      history.replaceState(null, "", `#${t.dataset["tab"]}`);
-    });
-    t.addEventListener("keydown", (e) => {
-      const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
-      if (!step) return;
-      e.preventDefault();
-      const next = tabs[(idx + step + tabs.length) % tabs.length]!;
-      select(next.dataset["tab"]!, true);
-    });
-  });
-  const fromHash = location.hash.slice(1);
-  select(tabs.some((t) => t.dataset["tab"] === fromHash) ? fromHash : "history");
+  addEventListener("hashchange", apply);
+  return apply;
 }
 
 function renderFunnel(f: Funnel) {
   const ev = (k: string) => f.events[k] ?? 0;
   const opened = ev("opened");
-  for (const step of document.querySelectorAll<HTMLElement>("#funnel [data-ev]")) {
-    const n = ev(step.dataset["ev"]!);
-    const pct = opened > 0 ? Math.round((n / opened) * 100) : null;
-    step.querySelector("b")!.textContent = String(n);
-    step.querySelector("small")!.textContent = pct === null ? "" : `${pct}%`;
-    step.querySelector("i")!.style.setProperty("--w", `${Math.min(pct ?? 0, 100)}%`);
+  for (const row of document.querySelectorAll<HTMLElement>("#funnel .item[data-ev]")) {
+    const n = ev(row.dataset["ev"]!);
+    row.querySelector("b")!.textContent = String(n);
+    row.querySelector(".pct")!.textContent = opened > 0 ? `· ${Math.round((n / opened) * 100)}%` : "";
   }
-  for (const b of document.querySelectorAll<HTMLElement>(".fafter [data-ev]")) b.textContent = String(ev(b.dataset["ev"]!));
+  for (const b of document.querySelectorAll<HTMLElement>("#funnel b[data-ev]")) b.textContent = String(ev(b.dataset["ev"]!));
+  const sent = ev("submitted");
+  $("funnel-sum").textContent = opened > 0 ? `Last 30 days: ${sent} of ${opened} visitors who opened the widget sent a report (${Math.round((sent / opened) * 100)}%). Details` : "Last 30 days: nobody has opened the widget yet. Details";
 }
 
 function renderSetup(cfg: ProjectConfig, funnel: Funnel | null) {
@@ -777,7 +823,7 @@ function renderSetup(cfg: ProjectConfig, funnel: Funnel | null) {
   const done = (stepId: string, isDone: boolean) => {
     const s = $(stepId);
     s.classList.toggle("done", isDone);
-    s.querySelector(".n")!.replaceChildren(isDone ? icon("i-check") : stepId === "step-snippet" ? "1" : "2");
+    s.querySelector<HTMLElement>(".done-mark")!.hidden = !isDone;
   };
   done("step-snippet", (funnel?.events["opened"] ?? 0) > 0);
   done("step-origins", origins.length > 0);
@@ -827,25 +873,12 @@ function renderTypes(cfg: ProjectConfig) {
         fields.length
           ? el(
               "div",
-              { class: "tbl inset" },
-              el(
-                "table",
-                null,
-                el("thead", null, el("tr", null, ...["Label", "Key", "Kind", "Required", "Ask if missing"].map((h) => el("th", { scope: "col" }, h)))),
+              { class: "list" },
+              ...fields.map((f) =>
                 el(
-                  "tbody",
-                  null,
-                  ...fields.map((f) =>
-                    el(
-                      "tr",
-                      null,
-                      el("td", null, labelText(f.label, locale)),
-                      el("td", { class: "mono" }, f.key),
-                      el("td", null, KIND[f.kind] ?? f.kind),
-                      el("td", null, f.required ? "Yes" : "No"),
-                      el("td", null, f.askIfMissing === false ? "No" : "Yes"),
-                    ),
-                  ),
+                  "div",
+                  { class: "item" },
+                  el("span", { class: "main" }, el("span", { class: "ttl" }, labelText(f.label, locale)), el("span", { class: "meta" }, el("span", { class: "mono" }, f.key), ` · ${KIND[f.kind] ?? f.kind} · ${f.required ? "required" : "optional"} · ${f.askIfMissing === false ? "not asked if missing" : "asked if missing"}`)),
                 ),
               ),
             )
@@ -860,10 +893,11 @@ function renderTypes(cfg: ProjectConfig) {
 
 async function loadProject() {
   const id = decodeURIComponent(location.pathname.split("/")[3] ?? "");
-  $("p-name").textContent = id;
   $("p-crumb").textContent = id;
   document.title = `${id} · FeedbackKit admin`;
-  initTabs();
+  const reports = { open: (_id: string | null): void => undefined };
+  const applyRoute = initSections((report) => reports.open(report));
+  applyRoute();
   const base = `/api/admin/projects/${encodeURIComponent(id)}`;
   let cfg: ProjectConfig;
   try {
@@ -878,7 +912,8 @@ async function loadProject() {
   }
   $("p-meta").textContent = `${cfg.publicKey} · settings revision ${cfg.configVersion}`;
   renderTypes(cfg);
-  initHistory(id, new Map(cfg.templates.map((t) => [t.type, labelText(t.label, cfg.locale) || t.type])));
+  reports.open = initHistory(id, new Map(cfg.templates.map((t) => [t.type, labelText(t.label, cfg.locale) || t.type]))).open;
+  applyRoute();
 
   const exp = $<HTMLButtonElement>("p-export");
   exp.disabled = false;
@@ -1114,7 +1149,7 @@ function initTestReport(base: string) {
 // ── system ────────────────────────────────────────────────────────────────────
 function attentionItems(s: SystemInfo): HTMLElement[] {
   const out: HTMLElement[] = [];
-  const item = (project: string | null, ...text: Kid[]) => out.push(el("div", null, el("span", null, project ? el("b", null, project) : null, project ? " " : null, ...text)));
+  const item = (project: string | null, ...text: Kid[]) => out.push(el("div", { class: "item" }, el("span", null, project ? el("b", null, project) : null, project ? " " : null, ...text)));
   if (!s.schema.ok) item(null, `The database schema is v${s.schema.version ?? "?"}, the code expects v${s.schema.expected}. Apply the D1 migrations.`);
   for (const p of s.projects) {
     if (!p.configValid || p.tracker === undefined || !p.llm) {
@@ -1156,27 +1191,29 @@ function attentionItems(s: SystemInfo): HTMLElement[] {
 }
 
 function projectRow(p: SystemProject): HTMLElement {
-  const name = el("td", { class: "name" }, p.id);
-  if (!p.configValid || !p.llm || p.tracker === undefined) return el("tr", null, name, el("td", { colspan: "3", class: "danger" }, "Config doesn't validate"));
+  const name = el("span", { class: "ttl" }, p.id);
+  if (!p.configValid || !p.llm || p.tracker === undefined) return el("div", { class: "item" }, el("span", { class: "main" }, name), el("span", { class: "end danger" }, "Config doesn't validate"));
   const { llm, tracker } = p;
-  let usage: HTMLElement[];
-  if (llm.provider === "off") usage = [el("td", { class: "muted sm" }, "AI off"), el("td")];
+  const exp = tracker?.patExpiry;
+  const soon = !!tracker && tracker.patPresent && !!exp?.at && typeof exp.daysLeft === "number" && exp.daysLeft <= PAT_WARN_DAYS;
+  let token: Kid[];
+  if (!tracker) token = ["No tracker"];
+  else if (!tracker.patPresent) token = [el("span", { class: "danger" }, "GitHub token: secret not set")];
+  else if (exp?.at && typeof exp.daysLeft === "number") token = [el("span", soon ? { class: "danger" } : null, `GitHub token: ${dateFmt.format(new Date(exp.at))}, ${inDays(exp.daysLeft)}`)];
+  else if (tracker.access && !tracker.access.ok) token = [el("span", { class: "danger" }, `GitHub token: no access (${tracker.access.status})`)];
+  else token = ["GitHub token: no expiry date"];
+  const kids: Kid[] = [name];
+  let usage: string;
+  if (llm.provider === "off") usage = "AI off";
   else {
     const ratio = llm.dailyBudget > 0 ? llm.usedToday / llm.dailyBudget : 0;
     const fill = el("span", ratio > BUDGET_WARN ? { class: "hot" } : null);
     fill.style.setProperty("--w", `${Math.min(100, Math.round(ratio * 100))}%`);
-    usage = [el("td", { class: "w38" }, el("div", { class: "bar", role: "img", "aria-label": `${Math.round(ratio * 100)}% of the daily budget` }, fill)), el("td", { class: "num" }, `${llm.usedToday} / ${llm.dailyBudget}`)];
+    kids.push(el("div", { class: "bar", role: "img", "aria-label": `${Math.round(ratio * 100)}% of the daily budget` }, fill));
+    usage = `${llm.usedToday} / ${llm.dailyBudget}`;
   }
-  let token: HTMLElement;
-  const exp = tracker?.patExpiry;
-  if (!tracker) token = el("td", { class: "muted" }, "No tracker");
-  else if (!tracker.patPresent) token = el("td", null, el("span", { class: "danger" }, "Secret not set"));
-  else if (exp?.at && typeof exp.daysLeft === "number") {
-    const soon = exp.daysLeft <= PAT_WARN_DAYS;
-    token = el("td", null, el("span", soon ? { class: "danger" } : null, dateFmt.format(new Date(exp.at))), el("div", { class: "sm muted" }, inDays(exp.daysLeft)));
-  } else if (tracker.access && !tracker.access.ok) token = el("td", null, el("span", { class: "danger" }, `No access (${tracker.access.status})`));
-  else token = el("td", { class: "muted" }, "No expiry date");
-  return el("tr", null, name, ...usage, token);
+  kids.push(el("span", { class: "meta" }, ...token));
+  return el("div", { class: "item" }, el("span", { class: "main" }, ...kids), el("span", { class: "end num" }, usage));
 }
 
 async function loadSystem() {
@@ -1186,14 +1223,14 @@ async function loadSystem() {
   // The notice for a newer release (J2): only a tarball install sends `update`.
   const u = s.update;
   const when = u ? dateFmt.format(u.checkedAt) : "";
-  // Badge class, badge text and the line under the version. Without `update` the row is what it always was.
-  const rel: [string, string, string] = !u
-    ? ["ok", s.channel, ""]
+  // The word next to the version and the line under it. Without `update` the row is what it always was.
+  const rel: [string, string] = !u
+    ? [s.channel, ""]
     : u.state === "failed"
-      ? ["incomplete", "Check failed", `Could not check on ${when}: ${u.reason}. The gateway is not affected.`]
+      ? ["Check failed", `Could not check on ${when}: ${u.reason}. The gateway is not affected.`]
       : u.state === "current"
-        ? ["ok", "Up to date", `Checked ${when}`]
-        : ["update", `${u.latest} available`, `Checked ${when}`];
+        ? ["Up to date", `Checked ${when}`]
+        : [`${u.latest} available`, `Checked ${when}`];
   if (u?.state === "available") {
     const card = $("upd");
     card.dataset["channel"] = s.channel;
@@ -1206,11 +1243,10 @@ async function loadSystem() {
 
   const items = attentionItems(s);
   const count = $("attn-count");
-  count.className = `badge ${items.length ? "failed" : "ok"}`;
-  count.textContent = items.length ? String(items.length) : "All good";
-  $("attention").replaceChildren(...(items.length ? items : [el("div", null, el("span", { class: "muted" }, "Nothing needs attention right now."))]));
+  count.textContent = items.length ? `· ${items.length}` : "· all good";
+  $("attention").replaceChildren(...(items.length ? items : [el("div", { class: "item" }, el("span", { class: "muted" }, "Nothing needs attention right now."))]));
 
-  $("sys-projects").replaceChildren(...(s.projects.length ? s.projects.map(projectRow) : [el("tr", null, el("td", { colspan: "4", class: "muted" }, "No projects yet."))]));
+  $("sys-projects").replaceChildren(...(s.projects.length ? s.projects.map(projectRow) : [el("div", { class: "item" }, el("span", { class: "muted" }, "No projects yet."))]));
 
   const bindings = Object.keys(s.bindings);
   const missingBindings = bindings.filter((b) => !s.bindings[b]);
@@ -1223,12 +1259,12 @@ async function loadSystem() {
   const patsSet = [...pats.values()].filter(Boolean).length;
   const missingSecrets = pats.size - patsSet + (llmUsed && !s.secrets.llmKey ? 1 : 0);
   const secretList = ["ADMIN_TOKEN", s.secrets.llmKey ? "LLM_API_KEY" : llmUsed ? "LLM_API_KEY missing" : "no LLM_API_KEY", `${patsSet} of ${pats.size} GitHub tokens`].join(", ");
-  const row = (k: string, v: string, status: HTMLElement, note?: string) => el("tr", null, el("td", null, k), el("td", { class: "mono" }, v, note ? el("div", { class: "sm muted" }, note) : null), el("td", null, status));
+  const row = (k: string, v: string, state: HTMLElement, note?: string) => el("div", { class: "item" }, el("span", null, k), el("span", null, el("span", { class: "mono" }, v), " ", state, note ? el("div", { class: "sm muted" }, note) : null));
   $("sys-gateway").replaceChildren(
-    row("Release", s.version, badge(rel[0], rel[1]), rel[2]),
-    row("Database schema", `v${s.schema.version ?? "?"}`, s.schema.ok ? badge("ok", "Matches code") : badge("failed", `Expected v${s.schema.expected}`)),
-    row("Bindings", bindings.join(" · "), missingBindings.length ? badge("failed", `Missing ${missingBindings.join(", ")}`) : badge("ok", "All present")),
-    row("Secrets", secretList, missingSecrets ? badge("failed", `${missingSecrets} missing`) : badge("ok", "All set")),
+    row("Release", s.version, status(rel[0]), rel[1]),
+    row("Database schema", `v${s.schema.version ?? "?"}`, s.schema.ok ? status("matches the code") : status(`expected v${s.schema.expected}`, true)),
+    row("Bindings", bindings.join(" · "), missingBindings.length ? status(`missing ${missingBindings.join(", ")}`, true) : status("all present")),
+    row("Secrets", secretList, missingSecrets ? status(`${missingSecrets} missing`, true) : status("all set")),
   );
 }
 
@@ -1248,24 +1284,32 @@ function start(view: string) {
   started = true;
   const section = $(`view-${view}`);
   $("login").hidden = true;
+  document.body.classList.remove("bare");
   $("nav").hidden = false;
+  $("side-owner").hidden = role !== "owner";
   $("signout").hidden = accessEmail !== null && !csrf;
   $("signout-access").hidden = accessEmail === null || !!csrf;
   if (accessEmail !== null) {
     const who = $("who");
-    // On phones only the email shows; the label is for wider screens and screen readers.
-    who.replaceChildren(el("span", { class: "who-label" }, "Signed in as "), csrf ? el("a", { href: "/admin/account" }, accessEmail) : accessEmail);
+    // The label is for screen readers; the sidebar shows the name, which opens the account page.
+    who.replaceChildren(el("span", { class: "sr" }, "Signed in as "), csrf ? el("a", { href: "/admin/account", title: "Your account" }, accessEmail) : accessEmail);
     who.title = accessEmail;
     who.hidden = false;
   }
+  markCurrent(view);
+  // The projects in the sidebar, and the sections of the open one. A failure here is not the page's failure.
+  const open = view === "project" ? decodeURIComponent(location.pathname.split("/")[3] ?? "") : null;
+  projects().then((r) => {
+    fillProjects(r.projects, open, SECTIONS);
+    markSection();
+  }, () => undefined);
   section.hidden = false;
   const [what, load] = LOADERS[view] ?? LOADERS["projects"]!;
   load().catch((err) => fail(err, what));
 }
 
 async function boot() {
-  applyTheme(store("local", THEME_KEY));
-  $("theme").addEventListener("click", toggleTheme);
+  initShell();
   $("signout").addEventListener("click", () => (csrf ? void send("POST", "/api/auth/signout").finally(() => location.replace("/admin/sign-in")) : showLogin()));
   const view = document.body.dataset["view"] ?? "projects";
   wireLogin(view);
