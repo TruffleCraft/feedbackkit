@@ -5,7 +5,7 @@
 //
 // Writes dist-bundle/feedbackkit-v<release>.tar.gz and dist-bundle/SHA256SUMS. The
 // tarball holds a single-file server without node_modules, the widget and admin
-// assets, the migrations, the systemd unit, the update command, the public release
+// assets, the migrations, the systemd unit, the update and migrate commands, the public release
 // keys and bundle.json (release, channel, schema version, delivery capability). The
 // bytes depend on the sources and the release only, so a rebuild is identical.
 import { build } from "esbuild";
@@ -49,6 +49,18 @@ export async function buildBundle({ root, outDir, release, commit = null, epoch 
     alias: { "cloudflare:workers": join(root, "src/worker/standalone/cloudflare-workers.ts") },
   });
   entries.push({ path: `feedbackkit-v${release}/server.mjs`, mode: 0o644, data: bundled.outputFiles[0].contents });
+  // The command that moves a gateway from Cloudflare into this server (J19), built the same way.
+  const migrate = await build({
+    entryPoints: [join(root, "scripts/feedbackkit-migrate.mjs")],
+    bundle: true,
+    write: false,
+    format: "esm",
+    platform: "node",
+    target: "node24",
+    legalComments: "none",
+    logLevel: "silent",
+  });
+  entries.push({ path: `feedbackkit-v${release}/feedbackkit-migrate.mjs`, mode: 0o755, data: migrate.outputFiles[0].contents });
 
   for (const name of ["widget.js", "admin.js", "urbanist.woff2", "widget.ver"]) {
     if (existsSync(join(root, "dist", name))) entries.push(file(`dist/${name}`));

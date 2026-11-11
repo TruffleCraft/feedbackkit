@@ -28,7 +28,8 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 | J16 | Robin creates a scoped token for an agent or script | planned | autonomy |
 | J17 | Robin embeds the team board in the product's own admin UI | planned | autonomy |
 | J18 | Sam follows their own reports | planned | autonomy |
-| J19 | Robin connects an agent to the gateway through MCP | works on both runtimes with the MCP SDK client | autonomy (consent through accounts) |
+| J19 | Robin moves a gateway from Cloudflare to the standalone server | works | autonomy |
+| J20 | Robin connects an agent to the gateway through MCP | works on both runtimes with the MCP SDK client | autonomy (consent through accounts) |
 
 ## Diagrams
 
@@ -217,7 +218,17 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Today:** not built. The widget passes `FeedbackKitContext` as plain, unsigned values, and no public route lists reports.
 - **Verified:** `code` `src/widget/lib/host-context.ts` copies the host's object as is, `src/worker/admin/queries.ts:366` documents the context as "never verified by the gateway", and the public routes in `src/worker/app.ts` (`/diag`, `/api/config`, `/api/upload`, `/api/feedback`, `/api/events`, `/api/test-preview`, `/t/:key`, `/`) return no report list.
 
-## J19 Robin connects an agent to the gateway through MCP
+## J19 Robin moves a gateway from Cloudflare to the standalone server
+
+- **Goal:** Robin runs FeedbackKit on Cloudflare and wants the same projects, reports and attachments on a Linux host. The snippets already embedded in sites keep working.
+- **Steps:** install the standalone server from the release tarball (J1) and do not start it. On a machine where wrangler is signed in to Robin's Cloudflare account, run `feedbackkit-migrate export`. Copy the export directory to the host. Run `feedbackkit-migrate import --dry-run`, then `import`. Set the secrets that the dry run names, start the service, check `/diag` and the System page, then point the gateway's hostname at the host.
+- **Guarantees:** the export only reads. The import refuses a data directory that already holds data, a schema or delivery capability newer than the release knows, a damaged or edited export, and an attachment whose checksum or image type is wrong. It copies in one transaction, and checks row counts and a checksum of every table and the checksum of every attachment before it commits and again after. Project public keys, settings revisions, reports with their delivery state and error, inbox dispositions and notes, attachments and the delivery capability arrive unchanged. Rate-limit and AI budget counters stay behind. No secret is in an export, because D1 holds variable names only, and none is printed.
+- **Failure paths:** no wrangler login or a wrong bucket name (the export stops), an attachment that the database lists but the bucket does not have (reported, the row stays as it is on Cloudflare), an export of a newer schema, a data directory that already has data, an interrupted import (one transaction: all or nothing), an import run as root (the files go to the owner of the data directory).
+- **Evidence:** the tool run against a local D1 and R2 that a Worker filled with fictional data, then the standalone server started on the result: `/diag`, the inbox, an attachment download, the public config through the old project key. A unit test for each refusal.
+- **Today:** built. `feedbackkit-migrate` ships in the release tarball with `export` and `import`, and `import` takes `--dry-run`, `--replace-existing` and `--json`. It moves projects, public keys, settings revisions, reports with their delivery state, inbox state, attachments, funnel events, the idempotency table and the delivery capability. `docs/SELF_HOSTING.md` has the section "Move from Cloudflare", including what stays different: no OAuth or MCP, no Cloudflare Access, counters start at zero, secrets are set on the new host. A remote export was not run, because the tests never touch a Cloudflare account.
+- **Verified:** `test` `test/server-migrate.test.mjs` (every refusal, old schemas with their backfills, the dry run, missing attachments, a copy that does not match the export, export with a stand-in wrangler, and the command from the tarball through a link) and `test/server-migrate-e2e.test.mjs` (the real wrangler on a local D1 and R2: the standalone server on the result answers exactly as the Worker did, and the attachments download byte for byte). `live` 2026-11-11: the run in the [evidence](evidence/2026-11-11-cloudflare-move.md). Repeat: `pnpm build:widget && pnpm build:server && node --test test/server-migrate.test.mjs test/server-migrate-e2e.test.mjs`.
+
+## J20 Robin connects an agent to the gateway through MCP
 
 - **Goal:** an agent such as Claude Code reads projects and feedback from the gateway without the admin token in its hands, and Robin can end the connection.
 - **Steps:** Robin serves the gateway over https at `FK_PUBLIC_URL`. The standalone server then turns MCP on by itself. Robin adds the server in the client. The client finds the authorization server through the 401, registers itself and opens the consent page of the gateway. Robin checks the address and the host the tokens go to, types the `ADMIN_TOKEN` and clicks Allow. The agent lists projects and reads feedback. To end every connection Robin stops the service, deletes the grants and tokens, and starts it again.

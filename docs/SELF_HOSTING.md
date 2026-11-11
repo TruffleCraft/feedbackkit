@@ -6,6 +6,8 @@ The recommended install is a signed release tarball: no Git, pnpm or build on th
 
 What is verified and what is not: the server and its tests run on a developer machine and in CI on Node 24 and 26, and the steps below ran on a clean, unprivileged Debian 13 LXC without nesting, including systemd, a crash and a reboot. The release tarball path ran there too, first with fixture releases and throw-away keys (including a release whose server does not start, and a reboot), then with the real signed dev builds 0.1.19-dev.5 and 0.1.19-dev.6 from GitHub: install, `--check`, update, rollback, update again ([evidence](design/evidence/2026-11-10-real-release-lxc.md)). The signed stable release 0.2.0 then installed from GitHub on a clean LXC and survived a reboot ([evidence](design/evidence/2026-11-11-stable-release.md)). An update from one stable release to the next has not run, because no newer stable release exists yet. It has not been tested on a cloud VPS, and a real GitHub delivery has not been run from it. [Claims and their proof](design/claims.md) lists each statement with its test.
 
+Coming from Cloudflare? [Move from Cloudflare](#move-from-cloudflare) copies your data across.
+
 The server also serves MCP at `/mcp`, so an agent can read projects, feedback and the funnel through OAuth 2.1, with the same tools and read-only scopes as the Cloudflare installation ([Connect an agent](#connect-an-agent-through-mcp)). It ran with the MCP SDK's own client against the release tarball on a clean Debian 13 LXC behind https ([evidence](design/evidence/2026-11-11-standalone-mcp.md)). It has not run against Claude Code, claude.ai or ChatGPT.
 
 ## Node.js on a server or Proxmox LXC
@@ -152,6 +154,43 @@ Back up before an upgrade. Stop the service, copy the entire data directory, the
 To update a checkout install, fetch the chosen release, install with the lockfile, rebuild both bundles, then restart the service. A tarball install updates and rolls back with `feedbackkit-update` ([Updating](RELEASES.md#updating)).
 
 To go back on a checkout install, stop the service, restore the backup you took before the update and start the older checkout. Do not start an older checkout on the data of a newer one: migrations only add, which is a rule of the repository and not something a test proves. A release older than the data refuses to start when the data needs a newer delivery capability, and says so. Start the newer release again or restore the backup.
+
+## Move from Cloudflare
+
+You run FeedbackKit on Cloudflare and want it on your own host. `feedbackkit-migrate` copies a gateway from D1 and R2 into the standalone server's SQLite database. It ships in the release tarball and needs only Node.js 24. The export step also needs `wrangler`, signed in to your Cloudflare account, because it reads with your own login.
+
+**What moves:** projects with their settings and settings revisions; the public project keys, so the snippets already embedded in your sites keep their `data-project`; reports with their delivery state, error and retry count; inbox state (open, done, dismissed, note); attachments; the funnel events; the delivery capability.
+
+**What does not move:** rate-limit counters and the daily AI call count, which start at zero. Secrets: D1 holds the names of variables such as `GITHUB_PAT_<name>`, never their values, so you set those on the new host (the dry run lists them). OAuth and MCP: the standalone server has neither, so a coding agent connected through `/mcp` loses that connection, and the admin sign-in is the `ADMIN_TOKEN` because Cloudflare Access is not part of the standalone server.
+
+1. Install the release on the new host as described [above](#install-from-a-release-tarball) and do not start the service yet.
+2. Export. Unpack the same tarball on a machine where wrangler is signed in to your Cloudflare account. The tool reads the database and bucket names from your fork's `wrangler.toml` (`pnpm materialize` writes it), or you pass `--bucket <your R2 bucket>` and `--database <name>`. It starts wrangler with `npx --yes wrangler`; `--wrangler "pnpm exec wrangler"` uses another command.
+
+   ```bash
+   ./feedbackkit-migrate.mjs export --config /path/to/your-fork/wrangler.toml --out ./fk-export
+   ```
+
+   The export only reads: `wrangler d1 export --remote` and `wrangler r2 object get`. Cloudflare says that a running D1 export blocks other requests to that database, so run it when the gateway is quiet. The directory holds every report and screenshot, so treat it like the database and delete it after the move.
+3. Copy `fk-export` to the new host, stop the service if it runs, and import it as the service user. Run the dry run first:
+
+   ```bash
+   sudo -u feedbackkit /opt/feedbackkit/current/feedbackkit-migrate.mjs import --from ./fk-export --data-dir /var/lib/feedbackkit --dry-run
+   sudo -u feedbackkit /opt/feedbackkit/current/feedbackkit-migrate.mjs import --from ./fk-export --data-dir /var/lib/feedbackkit
+   ```
+4. Put the secrets the dry run named into `/etc/feedbackkit.env`, start the service, and check `/diag` and the System page. A report whose delivery failed because a token was missing can be retried from the project's history once the secret is set.
+5. Point your gateway's hostname at the new host. With the same hostname the embedded snippets keep working unchanged. With a new one, change the host in the snippets. Projects that deliver to GitHub issues keep their old screenshot links on your R2 public URL, so keep that bucket while those issues matter, and set the project's public attachment base to `https://<gateway>/attachments` for new reports.
+
+You can repeat steps 2 and 3 with `--replace-existing` as often as you like before the switch, because the new host has no reports of its own yet. Reports sent to Cloudflare after an export are not in it. After the switch, do not import again.
+
+What the import checks and refuses:
+
+- It refuses a data directory that already holds data. `--replace-existing` replaces it and keeps a copy of the old database next to it.
+- It refuses an export from a newer schema or delivery capability than the installed release knows, and brings an export from an older schema up with the migrations the server runs.
+- It refuses a damaged or edited export, and an attachment whose checksum or image type is wrong.
+- It writes in one transaction, compares the row count and a checksum of every table and the checksum of every attachment before it commits, and compares them again through a new connection after. A difference writes nothing.
+- `--dry-run` reads the export, applies the migrations to a copy and reports counts and secret names without writing anything.
+
+What was run: the tool, with the real wrangler, against a local D1 and R2 filled with fictional data by the Worker, then the standalone server started on the result ([evidence](design/evidence/2026-11-11-cloudflare-move.md)). It was not run against a remote Cloudflare account, because the tests never touch one. The import reads plain SQL, so run `--dry-run` on your own export first.
 
 ## Verification and troubleshooting
 
