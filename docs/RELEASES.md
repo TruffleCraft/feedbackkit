@@ -93,7 +93,7 @@ The standalone server ships as a tarball, so an operator installs a finished rel
 
 ### Updating
 
-`feedbackkit-update` is part of every release and needs nothing beyond Node and the tools above. It makes one plain read of the GitHub Releases API and sends nothing about the installation. Nothing updates unless you run it.
+`feedbackkit-update` is part of every release and needs nothing beyond Node and the tools above. It makes one plain read of the GitHub Releases API and sends nothing about the installation. Nothing updates unless you run it or subscribe to a channel (below).
 
 A tarball install also tells you on the System page when a newer release waits. The server asks the same API at most once a day (the browser never does), `FK_UPDATE_CHECK=off` turns it off ([SELF_HOSTING.md](SELF_HOSTING.md#configuration)), and the notice only points at this command.
 
@@ -103,6 +103,13 @@ A tarball install also tells you on the System page when a newer release waits. 
 | `feedbackkit-update` | Downloads the newest release of the channel, verifies signature and checksum, unpacks it, copies the data directory, switches `current`, restarts the service and waits for `/diag` to show the new release. Any failure restores the old release and its data |
 | `feedbackkit-update --channel dev` | Takes dev builds as well. The default is stable, or dev when a dev build is installed |
 | `feedbackkit-update --rollback` | Goes back to the previous release with the data copy taken before the update. What came in since stays in `<data dir>.after-rollback-<time>` |
+| `sudo feedbackkit-update --auto on [--channel dev] [--at HH:MM]` | Subscribes: a systemd timer runs the update every night, by default at 03:30 plus up to 30 minutes of random delay. The channel is the installed one unless you name it |
+| `feedbackkit-update --auto status` | Shows whether a subscription exists, its channel and time, and a release it skips |
+| `sudo feedbackkit-update --auto off` | Removes the timer. Nothing updates by itself after that |
+
+**Subscribing to a channel.** `--auto on` is off by default and changes nothing by itself. It writes `feedbackkit-update.service` and `.timer` to `/etc/systemd/system` and enables the timer. A run missed while the host was off happens at the next start. The timer calls `/opt/feedbackkit/current/feedbackkit-update --unattended`, so every update also brings the newer updater. Each run is the ordinary update: signature and checksum against the keys of the installed release, data copy, health check and automatic restore, and the dev key counts on the dev channel only. Two things differ. A release that did not start is noted in `/opt/feedbackkit/auto-skip` and not tried again every night; the next newer release is. And a failed run leaves the unit failed, so it shows in `systemctl --failed` and `journalctl -u feedbackkit-update`. A person can still run the skipped release by hand.
+
+A subscription to the dev channel puts every merge on the host within a day. That suits a staging host or an operator who accepts that a broken build costs a restart (about 30 seconds) before it is rolled back, and it does not suit a host whose sites must never see a half-tested build. The stable channel is the careful choice.
 
 The two newest releases stay on disk. The layout is `/opt/feedbackkit/releases/<version>/` with `current` and `previous` as links. [SELF_HOSTING.md](SELF_HOSTING.md#install-from-a-release-tarball) has the install steps.
 
