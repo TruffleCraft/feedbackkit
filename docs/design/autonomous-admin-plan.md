@@ -29,6 +29,7 @@ Measured at `3f3caba` on 2026-11-10 (static review, seven specialist passes, an 
 | Board, masks, previews | Not built | Not started |
 | Step A, runtime hardening | Implemented, in pull request #130 | Branch `feat/standalone-runtime-hardening` (six commits on top of `3f3caba`). R1 to R9 closed except R16. `pnpm test` runs the 32 durability tests on workerd and on SQLite, plus 366 unit tests. 17 Node server tests and the admin e2e specs pass. One settings e2e still fails, as it does at `3f3caba` (Step B) |
 | Step D, release tarball and updates | Implemented, in pull request #132, and the admin notice (J2) after it | The tarball, `bundle.json`, `/diag` release and channel, `feedbackkit-update` with check, update and rollback, signing in the dev and promote workflows (the keys and secrets exist, the dev builds are signed), the dev and stable comparison, a key rotation rehearsal. Ran under real systemd in a clean Debian 13 LXC with fixture releases ([evidence](evidence/2026-11-10-tarball-lxc.md)) and with the real signed dev builds ([evidence](evidence/2026-11-10-real-release-lxc.md)). The first stable release, 0.2.0, went through the promote workflow ([evidence](evidence/2026-11-11-stable-release.md)). Open: an update between two stable releases |
+| Step M, move from Cloudflare | Implemented in its own pull request | `feedbackkit-migrate export` and `import` in the tarball. The real wrangler on a local D1 and R2, then the standalone server answers as the Worker did ([evidence](evidence/2026-11-11-cloudflare-move.md)). Open: a run against a remote Cloudflare account |
 | Step C, documentation honesty | Implemented on the docs branch | [claims.md](claims.md) with a proof for each statement, a standalone section in `docs/SECURITY.md`, one Node wording, one inbox term (Open, Done, Dismissed), a corrected anchor and an honest status line in the README and `docs/SELF_HOSTING.md`. The rollback claim now says that no rollback command exists |
 | Step B, safe settings | Implemented, in pull request #130 | Five more commits on the same branch. The admin bundle is 14.9 kB gz (budget 15 kB) and the settings e2e passes. Decisions taken while building: removing a published type archives it (`templates[].archived`, `DELIVERY_CAPABILITY` 3), published field keys are not blocked from removal (only duplicates are refused), the retention minimum is the 7-day notice, and `pnpm deploy` records the capability after the deploy |
 
@@ -160,6 +161,18 @@ Release strategy for the tarball:
 | Skipping releases | `bundle.json` names the oldest release a data directory can update from. The update command walks through intermediate releases when needed |
 | Rollback | The two newest releases stay on disk. Migrations only add, so one release back works on the newer schema. Beyond that the update command restores the data copy |
 | Support | Only the latest stable release gets fixes. A bad stable release is pulled by marking it pre-release and publishing a fixed patch |
+
+### Step M: move a gateway from Cloudflare to the standalone server
+
+- **Why:** an operator who starts on Cloudflare must be able to leave without losing reports, attachments or the snippets embedded in sites (J19). Nothing in the plan covered it.
+- **Needs first:** Step D (the tarball), because the tool ships in it and imports into the server's own database.
+- **Capabilities:**
+  - `feedbackkit-migrate export` reads the D1 database and the attachments with the operator's own wrangler login (`wrangler d1 export`, `wrangler r2 object get`) and writes a directory: `d1.sql`, the objects and a manifest with counts and checksums.
+  - `feedbackkit-migrate import` loads the dump into a scratch SQLite file, brings it to the schema of the installed release with the same migrations the server runs, copies projects, reports, attachments, events and the idempotency table into the standalone database in one transaction, and checks counts and checksums before and after the commit. `--dry-run` writes nothing.
+  - `docs/SELF_HOSTING.md` has a section "Move from Cloudflare" with what stays different.
+- **Constraints:** read-only on the Cloudflare side. Never touch production in tests: they run against a local D1 and R2. Refuse a non-empty destination, a newer schema or capability, and a damaged export. Secrets are not in D1, so the guide names the variables to set on the new host. No credentials are asked for or stored.
+- **Non-goals:** a live sync, moving back to Cloudflare, rate-limit counters, OAuth and MCP grants (the standalone server has neither), Cloudflare Access settings.
+- **Success signals:** a Worker fills a local D1 and R2 with fictional data, the tool moves it, and the standalone server started on the result shows the same projects, public keys, inbox and attachments.
 
 ### Step 3: verification on a fresh host
 
