@@ -1,6 +1,6 @@
 # Gate 2: local accounts and recovery, as built
 
-Status: backend built on both runtimes, UI not built (it waits for the approved mock, see [mockups/accounts.md](mockups/accounts.md)). The plan and the decisions S11, S12, S14, S15 and S18 are in [autonomous-admin-plan.md](autonomous-admin-plan.md) and [scope.md](scope.md). This page records what the pull request decided where the plan left room, and how the pieces fit. The threat model is in [SECURITY.md](../SECURITY.md#accounts-and-sessions).
+Status: backend and screens built on both runtimes (the mock is [mockups/accounts.md](mockups/accounts.md), variants C, A, A; the screens are in [evidence/2026-11-11-gate2-ui.md](evidence/2026-11-11-gate2-ui.md)). The plan and the decisions S11, S12, S14, S15 and S18 are in [autonomous-admin-plan.md](autonomous-admin-plan.md) and [scope.md](scope.md). This page records what the pull request decided where the plan left room, and how the pieces fit. The threat model is in [SECURITY.md](../SECURITY.md#accounts-and-sessions).
 
 ## What exists
 
@@ -99,9 +99,31 @@ So it is not worth it now. **Revisit it at Step 6**, when OIDC arrives: compare 
 
 Found by searching `~/Repos` (rule: Make-vs-Buy). NORA's `cloud/webapp/src/webauthn.ts` is a hand-written WebAuthn (CBOR, COSE, signature check, no library). Its header gives two reasons: zero runtime dependencies, and no `nodejs_compat`. The second does not hold for this library (the 42 account tests pass in workerd without the flag), and the first costs about 88 kB gzipped here. `icloud-mcp` uses the Python `webauthn` package. This pull request follows the plan's "no hand-written protocol". NORA's choice is a finding for the owner: migrate it to `@simplewebauthn/server` or record the exception in `standards.md`.
 
+## The screens
+
+Michel approved the mock ([mockups/accounts.md](mockups/accounts.md)) with variants C (the name in the header opens the account area, with a side navigation), A (recovery folded under "Locked out?") and A (a new API token is shown in a dialog).
+
+| Piece | Where |
+|---|---|
+| Five static shells: `/admin/sign-in`, `/admin/setup`, `/admin/account`, `/admin/accounts`, `/admin/tokens` | `src/worker/admin/auth-pages.ts`, registered in `src/worker/app.ts` |
+| The module that runs them | `src/auth/main.ts`, built to `dist/auth.js` (6.4 kB gzipped, budget 9 kB) |
+| Session support in the existing admin | `src/admin/main.ts`: the name in the header links to `/admin/account`, writes carry `X-CSRF-Token`, **Sign out** posts to `/api/auth/signout`, and a missing session goes to `/admin/sign-in` |
+
+The shells follow ADR-014: public, no data, the nonce CSP of the other admin pages. The account module is a separate file so that `dist/admin.js` keeps its budget; the admin still grew by 0.3 kB gzipped for the session support, so its budget moved from 15.25 to 15.5 kB (ADR-014 amendment, 2026-11-11). The API it calls is the one the backend pull request built; the screens added only `GET /api/admin/accounts?removed=1` (for "Show removed"), `revokedAt` in the token list, and `ownerExists` in the anonymous `GET /api/admin/me` answer (so the sign-in page can tell "no owner yet" from "sign in").
+
+Michel's three answers to the open questions (2026-11-11) are in the screens and the tests: a member may use the whole admin except accounts and tokens until Step 4; a token limited to some projects can neither create projects nor open System; recovery revokes the API tokens by default. The last is built as "the tokens that account created", with `--keep-tokens` to opt out, so that recovering one person does not break the automation of the others.
+
+Where the screens differ from the approved mock, and why:
+
+- **The legacy token form stays on the sign-in page while no owner exists.** Without it an operator who opens `/admin` before running the host command would find no way in at all. It keeps the token in `sessionStorage` of the tab, as before, and disappears when the first owner exists.
+- **The access choice of a new token starts on Read.** The mock showed Write selected to demonstrate the dialog. Starting on the weaker access costs a click and is the safer default.
+- **"Make owner" and "Make member" confirm in a dialog that says what changes** (an owner can manage accounts and tokens and remove other owners; a member who was an owner stays signed in). The mock only showed the buttons.
+- **No passkey found and a cancelled prompt are told apart by time.** A browser with nothing to offer answers within a few milliseconds, one that showed a prompt that was closed takes longer. The page treats a refusal within 800 ms as "no passkey for this site on this device". WebAuthn does not expose the difference, so this is a heuristic, and the wording of both messages stays true if it guesses wrong.
+- **Pasting a new setup link into the tab that already shows the setup page starts over** with the new link (the browser only changes the fragment otherwise).
+- **The empty state of the projects page shows `$FEEDBACKKIT_TOKEN`**, not `$ADMIN_TOKEN`: after the first owner `ADMIN_TOKEN` grants nothing.
+
 ## Not built
 
-- The screens (first-owner setup, sign-in, passkey enrollment, accounts, tokens, recovery). They need the approved mock.
 - OIDC, roles beyond owner and member, authorization by project for members (Step 4 and Step 6).
 - Sign-in with a passkey on a plain http address that is not localhost. Browsers refuse WebAuthn there. Put TLS in front, or reach the server through `ssh -L` and `http://localhost`.
 

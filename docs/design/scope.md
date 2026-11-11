@@ -49,7 +49,7 @@ Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready)
 | Team board embedded in the host's own UI, opened with a signed link (S21) | yes | yes | planned |
 | Visitors follow their own local reports, identity signed by the host (S21) | yes | yes | planned |
 | Widget preview and theme tokens | yes | yes | planned |
-| MCP server with OAuth, and scoped API tokens as a bearer | yes | yes | shipped. Admin screens for sign-in and tokens are not |
+| MCP server with OAuth, and scoped API tokens as a bearer | yes | yes | shipped, with the admin screens for sign-in, accounts and tokens. No screen lists OAuth connections |
 
 ## What FeedbackKit does not do
 

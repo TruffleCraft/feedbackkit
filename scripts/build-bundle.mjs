@@ -62,7 +62,7 @@ export async function buildBundle({ root, outDir, release, commit = null, epoch 
   });
   entries.push({ path: `feedbackkit-v${release}/feedbackkit-migrate.mjs`, mode: 0o755, data: migrate.outputFiles[0].contents });
 
-  for (const name of ["widget.js", "admin.js", "urbanist.woff2", "widget.ver"]) {
+  for (const name of ["widget.js", "admin.js", "auth.js", "urbanist.woff2", "widget.ver"]) {
     if (existsSync(join(root, "dist", name))) entries.push(file(`dist/${name}`));
   }
   for (const name of readdirSync(join(root, "migrations")).filter((n) => n.endsWith(".sql")).sort()) entries.push(file(`migrations/${name}`));

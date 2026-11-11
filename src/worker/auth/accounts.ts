@@ -70,21 +70,22 @@ export async function findLiveAccountByName(env: Env, name: string): Promise<Acc
 }
 
 export interface AccountListItem extends Account {
+  removedAt: number | null;
   passkeys: number;
   /** An open invitation or recovery link: when it expires. */
   linkExpiresAt: number | null;
 }
 
-export async function listAccounts(env: Env, now = Date.now()): Promise<AccountListItem[]> {
+export async function listAccounts(env: Env, now = Date.now(), includeRemoved = false): Promise<AccountListItem[]> {
   const rows = await env.DB.prepare(
-    `SELECT a.id, a.name, a.role, a.state, a.created_at, a.last_seen_at,
+    `SELECT a.id, a.name, a.role, a.state, a.created_at, a.last_seen_at, a.removed_at,
             (SELECT COUNT(*) FROM passkeys p WHERE p.account_id = a.id) AS passkeys,
             (SELECT MAX(l.expires_at) FROM setup_links l WHERE l.account_id = a.id AND l.used_at IS NULL AND l.expires_at > ?1) AS link_expires_at
-     FROM accounts a WHERE a.state != 'removed' ORDER BY a.created_at, a.id`,
+     FROM accounts a WHERE (a.state != 'removed' OR ?2 = 1) ORDER BY (a.state = 'removed'), a.created_at, a.id`,
   )
-    .bind(now)
-    .all<AccountRow & { passkeys: number; link_expires_at: number | null }>();
-  return (rows.results ?? []).map((r) => ({ ...toAccount(r), passkeys: Number(r.passkeys), linkExpiresAt: r.link_expires_at === null ? null : Number(r.link_expires_at) }));
+    .bind(now, includeRemoved ? 1 : 0)
+    .all<AccountRow & { removed_at: number | null; passkeys: number; link_expires_at: number | null }>();
+  return (rows.results ?? []).map((r) => ({ ...toAccount(r), removedAt: r.removed_at === null ? null : Number(r.removed_at), passkeys: Number(r.passkeys), linkExpiresAt: r.link_expires_at === null ? null : Number(r.link_expires_at) }));
 }
 
 /** Creates an account that has no passkey yet. The invitation link comes from links.ts. */

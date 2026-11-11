@@ -1,88 +1,23 @@
-import { test, expect, type BrowserContext, type CDPSession, type Page } from "@playwright/test";
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { createServer } from "node:net";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { test, expect, type Browser, type Page } from "@playwright/test";
+import { api, newDevice, startServer, tokenOf } from "./accounts-harness";
 
-// Gate 2 in a real browser against the real standalone server: Chromium's WebAuthn
-// virtual authenticator (Chrome DevTools protocol) does the passkey ceremonies, a
-// child process runs scripts/server.mjs on a fresh data directory, and the host
-// command prints the links. No UI is involved yet (the screens come with the
-// approved mock); the page only calls the API with navigator.credentials, so what
-// is verified here is the protocol between a real browser and the server:
-// bootstrap, sign-in, sessions and CSRF, API tokens, the retired ADMIN_TOKEN, the
-// recovery drill, and one winner among concurrent first-owner claims.
+// The protocol between a real browser and the real standalone server, without the
+// screens (accounts-ui.spec.ts clicks those): Chromium's WebAuthn virtual
+// authenticator does the passkey ceremonies, and the page only calls the API with
+// navigator.credentials. Covered: bootstrap, sign-in, sessions and CSRF, API
+// tokens, the retired ADMIN_TOKEN, the recovery drill, and one winner among
+// concurrent first-owner claims.
 
 test.skip(({ isMobile }) => isMobile, "the ceremonies do not depend on the viewport");
 
-interface Server {
-  origin: string;
-  dir: string;
-  child: ChildProcess;
-  output: () => string;
-  stop: () => Promise<void>;
-  host: (...args: string[]) => string;
-}
-
-async function freePort(): Promise<number> {
-  const s = createServer();
-  await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
-  const port = (s.address() as { port: number }).port;
-  await new Promise((r) => s.close(r));
-  return port;
-}
-
-async function startServer(extra: Record<string, string> = {}): Promise<Server> {
-  const port = await freePort();
-  const dir = mkdtempSync(join(tmpdir(), "fk-e2e-accounts-"));
-  const origin = `http://localhost:${port}`;
-  const env = { PATH: process.env["PATH"] ?? "", HOME: dir, HOST: "127.0.0.1", PORT: String(port), FK_PUBLIC_URL: origin, FK_DATA_DIR: dir, FK_ENV_FILE: "/nonexistent", ...extra };
-  const child = spawn(process.execPath, ["scripts/server.mjs"], { env, stdio: ["ignore", "pipe", "pipe"] });
-  let out = "";
-  child.stdout?.on("data", (d) => (out += d));
-  child.stderr?.on("data", (d) => (out += d));
-  for (let i = 0; i < 200; i++) {
-    try {
-      if ((await fetch(`${origin}/diag`)).ok) break;
-    } catch {
-      /* not listening yet */
-    }
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  return {
-    origin,
-    dir,
-    child,
-    output: () => out,
-    stop: async () => {
-      child.kill("SIGTERM");
-      await new Promise((r) => child.once("exit", r));
-      rmSync(dir, { recursive: true, force: true });
-    },
-    host: (...args) => {
-      const r = spawnSync(process.execPath, ["scripts/server.mjs", "admin", ...args], { env, encoding: "utf8" });
-      if (r.status !== 0) throw new Error(`feedbackkit-admin ${args.join(" ")} failed: ${r.stderr}`);
-      return r.stdout.trim();
-    },
-  };
-}
-
-/** A browser context with a virtual authenticator that behaves like a platform passkey with user verification. */
-async function passkeyBrowser(browser: import("@playwright/test").Browser, origin: string): Promise<{ context: BrowserContext; page: Page; cdp: CDPSession; authenticatorId: string }> {
-  const context = await browser.newContext();
-  const page = await context.newPage();
+async function passkeyBrowser(browser: Browser, origin: string) {
+  const device = await newDevice(browser);
   // Any page of the origin will do, but the landing page has a CSP that blocks fetch(). The widget file has none.
-  await page.goto(`${origin}/widget.js`);
-  const cdp = await context.newCDPSession(page);
-  await cdp.send("WebAuthn.enable");
-  const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", {
-    options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
-  });
-  return { context, page, cdp, authenticatorId };
+  await device.page.goto(`${origin}/widget.js`);
+  return device;
 }
 
-// What the setup and sign-in screens will do, as plain calls: the same requests, with the browser's own WebAuthn API.
+// The same requests as the setup and sign-in screens, as plain calls with the browser's own WebAuthn API.
 const enroll = (page: Page, token: string, name?: string) =>
   page.evaluate(async ({ token, name }) => {
     const post = (path: string, body: unknown) => fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -108,13 +43,6 @@ const signIn = (page: Page) =>
     return { status: finish.status, body: await finish.json() };
   });
 
-const api = (page: Page, method: string, path: string, csrf?: string, body?: unknown) =>
-  page.evaluate(async ({ method, path, csrf, body }) => {
-    const res = await fetch(path, { method, headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...(csrf ? { "X-CSRF-Token": csrf } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
-    return { status: res.status, body: await res.json().catch(() => null) };
-  }, { method, path, csrf, body });
-
-const tokenOf = (url: string) => new URL(url).hash.slice(1);
 const LEGACY = "fictional-legacy-admin-token-0123456789abcdef";
 
 test("first owner, sign-in, CSRF, API tokens, the retired ADMIN_TOKEN and the recovery drill", async ({ browser }) => {

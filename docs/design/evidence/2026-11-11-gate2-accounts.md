@@ -47,7 +47,7 @@ Unprivileged Debian 13 LXC (VMID 531), `nesting=0`, 2 cores, 2 GB RAM, 8 GB disk
 - `feedbackkit-update` ran only in the automated tests, against a fake GitHub API and a model of the older release (the same bundle with schema 4 and capability 3, no migration 0005). Not in the LXC, and not between two real signed releases.
 - `pnpm admin:link` ran against a stand-in for wrangler, never against a real Cloudflare account or a deployed D1. The D1 design was exercised on the local D1 of workerd (Miniflare), not on Cloudflare's service.
 - Browsers: Chrome only. Safari, Firefox, a hardware security key and a phone passkey were not run. The `__Host-` cookie over https was tested at the header level, not in a browser.
-- No screens exist yet. The ceremonies were driven by calling the API from the page with `navigator.credentials`, which is what the screens will do.
+- This run had no screens: the ceremonies were driven by calling the API from the page with `navigator.credentials`. The screens came after, and their run is in [2026-11-11-gate2-ui.md](2026-11-11-gate2-ui.md).
 - A cloud VPS was not tested (the owner's decision, as before).
 
 Co-created by Michel with NORA (AI Agent)

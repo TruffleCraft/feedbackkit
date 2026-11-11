@@ -418,6 +418,13 @@ describe("recovery and invitations", () => {
     }
     const list = await call("GET", "/api/admin/accounts", { client: owner });
     expect(list.body.accounts.map((a: { name: string; state: string }) => `${a.name}:${a.state}`).sort()).toEqual(["Robin:active", "Taylor:active"]);
+    // A removed account is hidden until asked for.
+    const taylor = list.body.accounts.find((a: { name: string }) => a.name === "Taylor").id as string;
+    expect((await call("DELETE", `/api/admin/accounts/${taylor}`, { client: owner })).status).toBe(200);
+    expect((await call("GET", "/api/admin/accounts", { client: owner })).body.accounts.map((a: { name: string }) => a.name)).toEqual(["Robin"]);
+    const withRemoved = (await call("GET", "/api/admin/accounts?removed=1", { client: owner })).body.accounts;
+    expect(withRemoved.map((a: { name: string; state: string }) => `${a.name}:${a.state}`)).toEqual(["Robin:active", "Taylor:removed"]);
+    expect(withRemoved[1].removedAt).toEqual(expect.any(Number));
   });
 
   it("an expired invitation can be renewed; an owner's recovery needs the host", async () => {
@@ -720,6 +727,14 @@ describe("what the account system never writes to the log", () => {
 });
 
 describe("the public state route", () => {
+  it("tells an anonymous visitor of the admin whether to sign in or set up", async () => {
+    const before = await call("GET", "/api/admin/me");
+    expect([before.status, before.body.ownerExists]).toEqual([401, false]);
+    await bootstrap();
+    const after = await call("GET", "/api/admin/me", { client: newClient("203.0.113.130") });
+    expect([after.status, after.body.ownerExists]).toEqual([401, true]);
+  });
+
   it("says whether an owner exists and which relying party the passkeys bind to", async () => {
     expect((await call("GET", "/api/auth/state")).body).toMatchObject({ ownerExists: false, rpId: "localhost", origin: "http://localhost" });
     await bootstrap();

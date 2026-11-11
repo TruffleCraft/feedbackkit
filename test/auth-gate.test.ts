@@ -70,9 +70,34 @@ describe("/diag next steps on the standalone server", () => {
     expect(await steps(true)).not.toContain("setup-link");
   });
 
-  it("the Cloudflare Worker still names the admin secret", async () => {
-    const e = gate({ owner: false }, { ADMIN_TOKEN: undefined });
-    expect(((await (await app.request("/diag", {}, e)).json()) as { nextSteps: string[] }).nextSteps.join("\n")).toContain("wrangler secret put ADMIN_TOKEN");
+  const worker = async (owner: boolean, extra: Record<string, unknown>) => ((await (await app.request("http://gateway.example.test/diag", {}, gate({ owner }, extra))).json()) as { nextSteps: string[] }).nextSteps.join("\n");
+
+  it("the Cloudflare Worker names the first owner, and still the older admin secret", async () => {
+    const steps = await worker(false, { ADMIN_TOKEN: undefined });
+    expect(steps).toContain("pnpm admin:link --url http://gateway.example.test");
+    expect(steps).toContain("wrangler secret put ADMIN_TOKEN");
+  });
+
+  it("the Worker asks for nothing while ADMIN_TOKEN is the way in, and to delete it once an owner exists", async () => {
+    expect(await worker(false, {})).not.toContain("admin:link"); // the older way is in use
+    expect(await worker(true, {})).toContain("wrangler secret delete ADMIN_TOKEN");
+    expect(await worker(true, { ADMIN_TOKEN: undefined })).not.toContain("ADMIN_TOKEN");
+  });
+});
+
+describe("the landing page checklist", () => {
+  const landing = async (owner: boolean, extra: Record<string, unknown>) => (await app.request("http://gateway.example.test/", {}, gate({ owner }, extra))).text();
+
+  it("asks for the first owner on both runtimes, and shows it done once there is one", async () => {
+    expect(await landing(false, { ADMIN_TOKEN: undefined })).toContain("pnpm admin:link --url http://gateway.example.test");
+    expect(await landing(false, { FK_RUNTIME: "node", ADMIN_TOKEN: undefined })).toContain("sudo feedbackkit-admin setup-link");
+    const done = await landing(true, { ADMIN_TOKEN: undefined });
+    expect(done).toContain("First owner created");
+    expect(done).not.toContain("ADMIN_TOKEN secret");
+  });
+
+  it("does not count an ADMIN_TOKEN as setup on the standalone server", async () => {
+    expect(await landing(false, { FK_RUNTIME: "node", ADMIN_TOKEN: LEGACY })).toContain("No owner yet");
   });
 });
 
