@@ -43,4 +43,8 @@ regexes = [
   # test/widget.test.ts: the textbook JWT with the payload {"sub":"1234567890"} that the PII
   # redaction test has to hide
   '''^eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxMjM0NTY3ODkwIn0\.dozjgNryP4J3jVmNHl0$''',
+  # scripts/build-bundle.mjs: the name of a file the release carries, written next to "auth.js" in
+  # the list of dist files. The generic rule reads "auth" as a key name and the next entry as its
+  # value. A file name is public by design.
+  '''^urbanist\.woff2$''',
 ]
