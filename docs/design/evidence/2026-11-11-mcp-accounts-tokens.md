@@ -1,6 +1,6 @@
 # MCP with accounts and scoped tokens, 2026-11-11
 
-What was run: the consent page of the OAuth provider wired to the account sessions of Gate 2, scoped API tokens as a bearer on `/mcp`, and MCP on by default for an https `FK_PUBLIC_URL`. Automated suites on workerd and on Node, the MCP SDK's own client against the bundled application, a real Chromium with a WebAuthn virtual authenticator against the real server process, and the release tarball on a clean Debian 13 LXC. Cut from `main` at `401502f` (the merge of the accounts change).
+What was run: the consent page of the OAuth provider wired to the account sessions of Gate 2, scoped API tokens as a bearer on `/mcp`, and MCP on by default for an https `FK_PUBLIC_URL`. Automated suites on workerd and on Node, the MCP SDK's own client against the bundled application, a real Chromium with a WebAuthn virtual authenticator against the real server process, and the release tarball on a clean Debian 13 LXC. Cut from `main` at `401502f` (the merge of the accounts change), with `main` merged in again at `638898e` (the Gate 2 screens). The suites below ran on the merged tree; the LXC drill ran on the tarball built before that merge.
 
 This replaces the statements in [`2026-11-11-standalone-mcp.md`](2026-11-11-standalone-mcp.md) that MCP is off by default and that nobody can approve a connection. The first three items of that file's "does not cover" list are covered here.
 
@@ -20,14 +20,14 @@ This replaces the statements in [`2026-11-11-standalone-mcp.md`](2026-11-11-stan
 | Suite | Result |
 |---|---|
 | `pnpm typecheck` | clean |
-| `vitest run` (Node, fake D1) | 30 files, 397 tests, includes `test/consent-identity.test.ts` (7: no identity without Access, a session or a binding; the account behind a live session, with its id as `accountId`; a binding's answer taken as it is, nobody included; Access ahead of a session; the sign-in the page names; the MCP status line) |
-| `vitest run -c vitest.workers.config.ts` (workerd, local D1) | 8 files, 148 tests |
-| `vitest run -c vitest.conformance.config.ts` (the same files on SQLite) | 8 files, 148 tests |
+| `vitest run` (Node, fake D1) | 31 files, 409 tests, includes `test/consent-identity.test.ts` (7: no identity without Access, a session or a binding; the account behind a live session, with its id as `accountId`; a binding's answer taken as it is, nobody included; Access ahead of a session; the sign-in the page names; the MCP status line) |
+| `vitest run -c vitest.workers.config.ts` (workerd, local D1) | 8 files, 149 tests |
+| `vitest run -c vitest.conformance.config.ts` (the same files on SQLite) | 8 files, 149 tests |
 | `test/durable/mcp-oauth-flow.test.ts` | 25 tests on each runtime, ten of them new: a valid token (read and write access), `whoami` for a token, revoked, ended and removed-account tokens, unknown and non-`fk_tok_` bearers, a token in the URL ignored, a project-limited token across all nine tools, the per-token limit, the failure throttle with a valid token still answering, no token in logs or counters, a grant ending with its account |
 | `pnpm test:server` (Node server tests) | 130 tests; includes `server-mcp-accounts` (10 tests, real sessions and tokens in SQLite, the real consent page, the SDK client with a token bearer, an unpacked release process with a restart) and `server-mcp-e2e` (8) |
-| `pnpm check:bundle` | pass |
+| `pnpm check:bundle` | pass (widget 22.8 kB gz of 23.0, admin 15.2 kB gz of 15.3) |
 | `pnpm exec playwright test e2e/accounts-real-server.spec.ts e2e/mcp-real-server.spec.ts` | 4 passed. Playwright's Chromium with a WebAuthn virtual authenticator against a real `scripts/server.mjs` process. `mcp-real-server.spec.ts` is new: a real passkey makes the owner, a real click on **Allow** ends the OAuth flow, a member made by invitation approves their own connection, a token created through the API reads and then stops when revoked, and removing the member ends the connection they approved |
-| `pnpm materialize` with placeholder ids, then `wrangler deploy --dry-run` | the Worker bundles: 2208 KiB, 431 KiB gzipped (it was 2198 and 429 before). A bare `wrangler deploy --dry-run` without the materialized `wrangler.toml` fails to resolve `@simplewebauthn/server`; that is the missing config, not the change |
+| `pnpm materialize` with placeholder ids, then `wrangler deploy --dry-run` | the Worker bundles: 2229 KiB, 436 KiB gzipped (2198 and 429 before the accounts screens and this change). A bare `wrangler deploy --dry-run` without the materialized `wrangler.toml` fails to resolve `@simplewebauthn/server`; that is the missing config, not the change |
 
 ## Controls that show the tests can fail
 
