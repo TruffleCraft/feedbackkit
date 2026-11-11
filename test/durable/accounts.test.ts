@@ -219,7 +219,7 @@ describe("sign-in and sessions", () => {
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ status: "signed_in", account: { name: "Robin", role: "owner" } });
     const cookie = r.res.headers.get("Set-Cookie")!;
-    expect(cookie).toMatch(/^fk_session=fk_ses_[A-Za-z0-9_-]{43}; Path=\/; HttpOnly; SameSite=Lax; Max-Age=2592000$/);
+    expect(cookie).toMatch(/^fk_session=fk_ses_[A-Za-z0-9_-]{43}; Max-Age=2592000; Path=\/; HttpOnly; SameSite=Lax$/);
     expect(cookie).not.toMatch(/Domain=/i);
     expect(cookie).not.toMatch(/Secure/);
     expect(r.res.headers.get("Cache-Control")).toBe("no-store");
@@ -234,7 +234,7 @@ describe("sign-in and sessions", () => {
     const again = newClient("203.0.113.11", base);
     const r = await signIn(auth, again);
     expect(r.status).toBe(200);
-    expect(r.res.headers.get("Set-Cookie")).toMatch(/^__Host-fk_session=fk_ses_[A-Za-z0-9_-]{43}; Path=\/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000$/);
+    expect(r.res.headers.get("Set-Cookie")).toMatch(/^__Host-fk_session=fk_ses_[A-Za-z0-9_-]{43}; Max-Age=2592000; Path=\/; HttpOnly; Secure; SameSite=Lax$/);
     expect((await call("GET", "/api/admin/me", { client: again })).status).toBe(200);
   });
 

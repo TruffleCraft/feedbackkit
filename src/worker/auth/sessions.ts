@@ -1,3 +1,4 @@
+import { generateCookie } from "hono/cookie";
 import type { Env } from "../env.js";
 import type { Role } from "./accounts.js";
 import { bytesToB64url, hmacSha256, randomB64url, sha256Hex, timingSafeEqual } from "./crypto.js";
@@ -31,8 +32,10 @@ const TOUCH_AFTER_MS = 10 * 60_000;
 export const CSRF_HEADER = "X-CSRF-Token";
 const TOKEN_PREFIX = "fk_ses_";
 
+const SESSION_COOKIE = "fk_session";
+
 export function sessionCookieName(request: Request): string {
-  return new URL(request.url).protocol === "https:" ? "__Host-fk_session" : "fk_session";
+  return new URL(request.url).protocol === "https:" ? `__Host-${SESSION_COOKIE}` : SESSION_COOKIE;
 }
 
 export function readSessionToken(request: Request): string | null {
@@ -49,9 +52,10 @@ export function readSessionToken(request: Request): string | null {
   return null;
 }
 
+// Attribute assembly and the __Host- rules (Secure, Path=/, no Domain) are Hono's cookie helper, not code of ours.
 export function sessionCookie(request: Request, token: string, maxAgeSeconds: number): string {
   const secure = new URL(request.url).protocol === "https:";
-  return `${sessionCookieName(request)}=${token}; Path=/; HttpOnly; ${secure ? "Secure; " : ""}SameSite=Lax; Max-Age=${maxAgeSeconds}`;
+  return generateCookie(SESSION_COOKIE, token, { path: "/", httpOnly: true, secure, sameSite: "Lax", maxAge: maxAgeSeconds, ...(secure ? { prefix: "host" as const } : {}) });
 }
 
 /** Max-Age=0 with the same attributes: the browser drops the cookie. */
