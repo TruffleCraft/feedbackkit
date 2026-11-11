@@ -86,7 +86,6 @@ Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready)
 ## Decisions
 
 Settled decisions. [Claims and their proof](claims.md) lists every statement the user documents make about the runtimes, updates, rollback and deletion, with its test or its step.
-
 | ID | Decision | Source |
 |---|---|---|
 | S1 | Three deliveries per type: issue, project draft, local. GitHub owns ticket state | `admin-inbox-plan.md`, 2026-10-24 |
@@ -111,6 +110,7 @@ Settled decisions. [Claims and their proof](claims.md) lists every statement the
 | S20 | Masking follows the concept in [privacy-masking.md](privacy-masking.md). A project has a `privacy.profile` of `strict` or `standard`. New projects start strict, and a public or unreadable destination forces strict. In strict a screenshot keeps layout and covers text and images, console capture keeps errors and warnings with objects dropped, and host context values are filtered | Owner, 2026-11-10 (D-07) |
 | S21 | Projects without GitHub get two embeds, both after Gate 2 and Step 5 and both for local-delivery reports only. First a team board in an iframe that opens with a short-lived signed link, minted by the host backend with a scoped token. Then an own-reports view whose identity is signed by the host backend. A public board of other people's reports stays out. Comments, assignees and SLAs stay out | Owner, 2026-11-10 (D-11) |
 | S22 | MCP on the standalone server ships together with accounts. The identity at `/oauth/authorize` is the signed-in account session. Until Gate 2 the server carries the plumbing, off by default, and consent refuses everyone: `authenticateConsent(request, env)` is the one seam. No token typed into a consent form. Recorded as the amendment of ADR-015 | Owner, 2026-11-11 |
+| S23 | Accounts, three answers: until Step 4 a member may use the whole admin except accounts and tokens. A token limited to some projects can neither create projects nor open the system page. Recovery revokes the API tokens that account created by default (`--keep-tokens` opts out), because recovery is also the path after a lost or exposed credential | Owner, 2026-11-11 ("Ja, wie empfohlen", relayed by the review session) |
 
 No decision is open. The open points that belong to single pull requests are listed at the end of [privacy-masking.md](privacy-masking.md).
 

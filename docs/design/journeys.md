@@ -141,11 +141,11 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 ## J11 Robin is locked out and recovers
 
 - **Goal:** Robin regains access without a vendor and without opening the instance to others.
-- **Steps:** run a recovery command on the host (on Cloudflare a script with the operator's Cloudflare credentials), receive a one-time link, set up a new passkey, old sessions are revoked.
+- **Steps:** run a recovery command on the host (on Cloudflare a script with the operator's Cloudflare credentials), receive a one-time link, set up a new passkey, old sessions are revoked, and so are the API tokens that account created (the owner makes new ones).
 - **Guarantees:** recovery needs host access, or on Cloudflare the operator's Cloudflare credentials. A valid login is never blocked by the failed-login counter of other people.
 - **Failure paths:** all passkeys lost, the identity provider is down, a flood of wrong tokens from other visitors.
 - **Evidence:** a test with and without a reverse proxy that 25 wrong tokens do not block the right one. A recovery drill on a clean instance.
-- **Today:** the account system never refuses a valid credential because of failed attempts. Failures are counted per hashed address and per account and answered `429` over the limit. `recovery-link` (or `pnpm admin:link --recovery`) issues a link that replaces the passkeys and signs out the sessions. The legacy `ADMIN_TOKEN` keeps its old lockout until the first owner exists. No recovery screen yet.
+- **Today:** the account system never refuses a valid credential because of failed attempts. Failures are counted per hashed address and per account and answered `429` over the limit. `recovery-link` (or `pnpm admin:link --recovery`) issues a link that replaces the passkeys, signs out the sessions and revokes the API tokens the account created (`--keep-tokens` opts out); the setup page reports how many ended. The legacy `ADMIN_TOKEN` keeps its old lockout until the first owner exists. No recovery screen yet.
 - **Verified:** `test` "failed sign-ins are throttled without refusing a valid one" and the token variant (both runtimes), and `test/server-accounts.test.mjs` on the real server with `FK_TRUSTED_PROXY_HOPS=1` and without it. `live` the recovery drill in Chrome (`e2e/accounts-real-server.spec.ts`) and on a clean LXC ([evidence](evidence/2026-11-11-gate2-accounts.md)).
 
 ## J12 Upgrade and roll back

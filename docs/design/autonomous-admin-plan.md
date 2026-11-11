@@ -130,7 +130,7 @@ Each step is one reviewable PR (or a small series) with its own tests and docs. 
 
 ![First owner bootstrap](diagrams/gate2-bootstrap-sequence.png)
 
-[Open the bootstrap sequence](diagrams/gate2-bootstrap-sequence.html). The other Gate 2 flows are [sign-in](diagrams/gate2-signin-sequence.html), [recovery](diagrams/gate2-recovery-sequence.html), [scoped tokens](diagrams/gate2-token-sequence.html) and [account states](diagrams/gate2-account-lifecycle.html). They were the design. The backend follows them and the decisions S11, S12, S14 and S15. Token lifetime, command name and cookie attributes were decided in the pull request and are written down in [gate2-accounts.md](gate2-accounts.md).
+[Open the bootstrap sequence](diagrams/gate2-bootstrap-sequence.html). The other Gate 2 flows are [sign-in](diagrams/gate2-signin-sequence.html), [recovery](diagrams/gate2-recovery-sequence.html), [scoped tokens](diagrams/gate2-token-sequence.html) and [account states](diagrams/gate2-account-lifecycle.html). Decided by the owner on 2026-11-11 ([S23](scope.md)): a member may use the whole admin except accounts and tokens until Step 4, a token limited to some projects can neither create projects nor open System, and recovery revokes the API tokens that account created (`--keep-tokens` opts out). The mock variants were approved the same day: the account area as a name link with side navigation (C), recovery folded under "Locked out?" (A), a new API token in a dialog (A). They were the design. The backend follows them and the decisions S11, S12, S14 and S15. Token lifetime, command name and cookie attributes were decided in the pull request and are written down in [gate2-accounts.md](gate2-accounts.md).
 
 ### Step D: release tarball, version and updates
 

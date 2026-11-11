@@ -138,7 +138,7 @@ export function registerAuthRoutes(app: AppT): void {
           : await completeLinked(c.env, { link, account: { id: who.accountId, name: who.name, role: who.role }, registration, passkeyName, userAgent });
       const { csrf } = await openSession(c, enrolled.session);
       console.log("feedbackkit auth", { event: link.purpose === "bootstrap" ? "owner_created" : link.purpose === "recovery" ? "recovered" : "invitation_accepted", accountId: enrolled.account.id });
-      return c.json({ v: WIRE_VERSION, status: "signed_in", purpose: link.purpose, account: publicAccount(enrolled.account), csrf }, 201);
+      return c.json({ v: WIRE_VERSION, status: "signed_in", purpose: link.purpose, account: publicAccount(enrolled.account), csrf, tokensRevoked: enrolled.tokensRevoked }, 201);
     }),
   );
 

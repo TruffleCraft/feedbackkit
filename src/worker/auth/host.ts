@@ -29,7 +29,7 @@ export async function hostSetupLink(env: Env, input: { origin: string; minutes?:
  * A recovery link for an active account. With no name it picks the owner when
  * there is exactly one; with several it asks for a name.
  */
-export async function hostRecoveryLink(env: Env, input: { origin: string; account?: string; minutes?: number }): Promise<{ url: string; expiresAt: number; account: string }> {
+export async function hostRecoveryLink(env: Env, input: { origin: string; account?: string; minutes?: number; keepTokens?: boolean }): Promise<{ url: string; expiresAt: number; account: string }> {
   if (!(await ownerExists(env))) throw new AuthError(409, "FK_NO_OWNER", "There is no owner yet. Run setup-link to create the first one.");
   const accounts = (await listAccounts(env)).filter((a) => a.state === "active");
   let target = input.account ? await findLiveAccountByName(env, input.account) : null;
@@ -39,7 +39,7 @@ export async function hostRecoveryLink(env: Env, input: { origin: string; accoun
     if (owners.length !== 1) throw new AuthError(400, "FK_BODY_INVALID", `Name the account with --account. Owners: ${owners.map((a) => a.name).join(", ") || "none"}.`);
     target = owners[0]!;
   }
-  const link = await issueLink(env, { purpose: "recovery", accountId: target.id, createdBy: "host", ttlMs: ttl(input.minutes) });
+  const link = await issueLink(env, { purpose: "recovery", accountId: target.id, createdBy: "host", ttlMs: ttl(input.minutes), keepTokens: input.keepTokens });
   return { url: setupUrl(input.origin, link.token), expiresAt: link.expiresAt, account: target.name };
 }
 

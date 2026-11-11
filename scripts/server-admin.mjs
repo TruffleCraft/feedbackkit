@@ -17,8 +17,9 @@ import { hostAccounts, hostRecoveryLink, hostSetupLink } from "../dist-server/au
 const USAGE = `Usage: feedbackkit-admin <command>
 
   setup-link [--minutes N]                    print a one-time link for the first owner
-  recovery-link [--account NAME] [--minutes N]
+  recovery-link [--account NAME] [--minutes N] [--keep-tokens]
                                               print a one-time link that replaces the passkeys of an account
+                                              and revokes the API tokens it created (--keep-tokens keeps them)
   accounts                                    list the accounts
 
 Run it with sudo (for example: sudo feedbackkit-admin setup-link). It reads /etc/feedbackkit.env as root and then
@@ -44,6 +45,7 @@ function options(args) {
     const a = args[i];
     if (a === "--minutes") out.minutes = Number(args[++i]);
     else if (a === "--account") out.account = args[++i];
+    else if (a === "--keep-tokens") out.keepTokens = true;
     else if (a === "-h" || a === "--help") out.help = true;
     else if (a.startsWith("-")) throw new Error(`Unknown option ${a}.`);
     else out._.push(a);
@@ -100,10 +102,10 @@ export async function runAdmin(args, { root, processEnv = process.env, stdout = 
     const minutes = opts.minutes;
     const result = command === "setup-link"
       ? await hostSetupLink(env, { origin: origin.origin, minutes })
-      : await hostRecoveryLink(env, { origin: origin.origin, account: opts.account, minutes });
+      : await hostRecoveryLink(env, { origin: origin.origin, account: opts.account, minutes, keepTokens: opts.keepTokens });
     stderr(command === "setup-link"
       ? "Open this link in the browser you will sign in with. It creates the first owner, works once and expires at " + new Date(result.expiresAt).toISOString() + "."
-      : `Open this link to set up a new passkey for ${result.account}. It replaces the passkeys and signs out every session of that account, works once and expires at ${new Date(result.expiresAt).toISOString()}.`);
+      : `Open this link to set up a new passkey for ${result.account}. It replaces the passkeys, signs out every session and ${opts.keepTokens ? "keeps" : "revokes"} the API tokens of that account, works once and expires at ${new Date(result.expiresAt).toISOString()}.`);
     stdout(result.url);
     return 0;
   } catch (e) {

@@ -94,6 +94,12 @@ test('it refuses once an owner exists, and recovery then needs a name only when 
     const links = rows(t.db, 'SELECT account_id, expires_at - created_at AS ttl FROM setup_links ORDER BY account_id');
     assert.deepEqual(links, [{ account_id: 'a1', ttl: 30 * 60_000 }, { account_id: 'a2', ttl: 600_000 }]);
     assert.match(run(t.dir, ['--url', 'https://gw.example.org', '--recovery', '--account', 'Nobody'], t.db).err, /No active account named "Nobody"/);
+    // The default revokes the account's API tokens at redemption; --keep-tokens writes the opt-out into the link.
+    const keep = (db) => rows(db, "SELECT keep_tokens FROM setup_links WHERE account_id = 'a2'")[0].keep_tokens;
+    assert.equal(keep(t.db), 0);
+    assert.match(run(t.dir, ['--url', 'https://gw.example.org', '--recovery', '--account', "sam o'neil", '--keep-tokens'], t.db).err, /keeps the API tokens/);
+    assert.equal(keep(t.db), 1);
+    assert.equal(run(t.dir, ['--url', 'https://gw.example.org', '--keep-tokens'], t.db).code, 1, '--keep-tokens needs --recovery');
   } finally { t.done(); }
 });
 

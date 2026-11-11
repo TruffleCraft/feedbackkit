@@ -45,6 +45,8 @@ function mapConstraint(e: unknown): never {
 export interface Enrolled {
   account: Pick<Account, "id" | "name" | "role">;
   session: NewSession;
+  /** Recovery only: how many API tokens of the account were revoked. */
+  tokensRevoked: number;
 }
 
 export function defaultPasskeyName(now: number): string {
@@ -73,7 +75,7 @@ export async function completeBootstrap(env: Env, input: { link: LinkRow; accoun
   }
   if (!results[1]?.meta?.changes) throw new AuthError(410, "FK_SETUP_LINK_INVALID", "This link was already used or has expired. Ask for a new one.");
   if (!results[5]?.meta?.changes) throw new AuthError(409, "FK_OWNER_EXISTS", "This instance already has an owner.");
-  return { account: { id: input.accountId, name: input.name, role: "owner" }, session };
+  return { account: { id: input.accountId, name: input.name, role: "owner" }, session, tokensRevoked: 0 };
 }
 
 /**
@@ -94,7 +96,12 @@ export async function completeLinked(env: Env, input: { link: LinkRow; account: 
     ["link", env.DB.prepare("UPDATE setup_links SET used_at = ?3, used_by = ?2 WHERE id = ?1 AND account_id = ?4 AND used_at IS NULL AND expires_at > ?3").bind(input.link.id, stamp, now, accountId)],
     ["sessions", env.DB.prepare(`DELETE FROM sessions WHERE account_id = ?3 AND ${ours}`).bind(input.link.id, stamp, accountId)],
   ];
-  if (recovery) steps.push(["replace", env.DB.prepare(`DELETE FROM passkeys WHERE account_id = ?3 AND ${ours}`).bind(input.link.id, stamp, accountId)]);
+  if (recovery) {
+    steps.push(["replace", env.DB.prepare(`DELETE FROM passkeys WHERE account_id = ?3 AND ${ours}`).bind(input.link.id, stamp, accountId)]);
+    // Recovery is also the path after a lost or exposed credential, so the tokens that account created end with it
+    // (the owner makes new ones afterwards). `--keep-tokens` on the host command opts out.
+    steps.push(["tokens", env.DB.prepare(`UPDATE api_tokens SET revoked_at = ?4 WHERE account_id = ?3 AND revoked_at IS NULL AND ${ours} AND NOT EXISTS (SELECT 1 FROM setup_links WHERE id = ?1 AND keep_tokens = 1)`).bind(input.link.id, stamp, accountId, now)]);
+  }
   steps.push(
     ["passkey", insertPasskey(env, input.registration, accountId, input.passkeyName, now, `${ours.replace("?1", "?10").replace("?2", "?11")} AND EXISTS (SELECT 1 FROM accounts WHERE id = ?12 AND state IN ('invited', 'active'))`, [input.link.id, stamp, accountId])],
     ["activate", env.DB.prepare("UPDATE accounts SET state = 'active', last_seen_at = ?2 WHERE id = ?1 AND state IN ('invited', 'active') AND EXISTS (SELECT 1 FROM passkeys WHERE id = ?3 AND account_id = ?1)").bind(accountId, now, credential)],
@@ -109,7 +116,7 @@ export async function completeLinked(env: Env, input: { link: LinkRow; account: 
   const at = (name: string) => results[steps.findIndex(([n]) => n === name)]?.meta?.changes ?? 0;
   if (!at("link")) throw new AuthError(410, "FK_SETUP_LINK_INVALID", "This link was already used or has expired. Ask for a new one.");
   if (!at("session")) throw new AuthError(409, "FK_ACCOUNT_STATE", "This account was removed. Ask an owner for a new invitation.");
-  return { account: input.account, session };
+  return { account: input.account, session, tokensRevoked: at("tokens") };
 }
 
 /** A signed-in person adds another passkey to their own account. */

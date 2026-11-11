@@ -72,6 +72,7 @@ CREATE TABLE setup_links (
   created_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL,
   created_by TEXT,
+  keep_tokens INTEGER NOT NULL DEFAULT 0,                    -- recovery only: 1 keeps the account's API tokens (the default revokes them)
   used_at    INTEGER,
   used_by    TEXT
 );

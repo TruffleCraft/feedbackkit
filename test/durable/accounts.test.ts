@@ -451,6 +451,46 @@ describe("recovery and invitations", () => {
   });
 });
 
+describe("recovery and API tokens", () => {
+  const useToken = (token: string) => call("GET", "/api/admin/projects", { client: newClient("198.18.9.1"), headers: { Authorization: `Bearer ${token}` }, origin: null });
+  const mint = async (client: Client) => (await call("POST", "/api/admin/tokens", { client, body: { name: "ci", access: "write", projects: null } })).body.token as string;
+
+  it("recovery revokes the API tokens the account created, and says how many", async () => {
+    const { client } = await bootstrap();
+    const one = await mint(client);
+    const two = await mint(client);
+    expect((await useToken(one)).status).toBe(200);
+    const recovery = await hostRecoveryLink(gw, { origin: BASE });
+    const done = await enroll(tokenOf(recovery.url), newClient("203.0.113.120"));
+    expect(done.finish.status).toBe(201);
+    expect(done.finish.body.tokensRevoked).toBe(2);
+    for (const t of [one, two]) {
+      const r = await useToken(t);
+      expect([r.status, r.body.code]).toEqual([401, "FK_TOKEN_REVOKED"]);
+    }
+    // The owner makes new ones afterwards, with the new session.
+    const fresh = newClient("203.0.113.121");
+    expect((await signIn(done.auth, fresh)).status).toBe(200);
+    expect((await useToken(await mint(fresh))).status).toBe(200);
+  });
+
+  it("--keep-tokens (keepTokens) opts out, and tokens of other accounts are not touched", async () => {
+    const { client: a } = await bootstrap();
+    const invite = await call("POST", "/api/admin/accounts", { client: a, body: { name: "Sam", role: "owner" } });
+    const b = newClient("203.0.113.122");
+    await enroll(tokenOf(invite.body.link.url), b);
+    const ownerToken = await mint(a);
+    const samToken = await mint(b);
+    const recovery = await hostRecoveryLink(gw, { origin: BASE, account: "Robin", keepTokens: true });
+    expect((await enroll(tokenOf(recovery.url), newClient("203.0.113.123"))).finish.body.tokensRevoked).toBe(0);
+    expect((await useToken(ownerToken)).status).toBe(200);
+    const again = await hostRecoveryLink(gw, { origin: BASE, account: "Robin" });
+    expect((await enroll(tokenOf(again.url), newClient("203.0.113.124"))).finish.body.tokensRevoked).toBe(1);
+    expect((await useToken(ownerToken)).status).toBe(401);
+    expect((await useToken(samToken)).status).toBe(200); // Sam's own tokens stay: only the recovered account's end
+  });
+});
+
 describe("last owner and last passkey", () => {
   it("the last owner cannot be demoted or removed", async () => {
     const { client, accountId } = await bootstrap();

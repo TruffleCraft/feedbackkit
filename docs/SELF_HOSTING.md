@@ -126,7 +126,7 @@ The command reads `FK_DATA_DIR` and `FK_PUBLIC_URL` from `/etc/feedbackkit.env` 
 
 **First owner.** Run `setup-link`, open the link in the browser you will sign in with, enter a name and create a passkey. From then on `ADMIN_TOKEN` grants nothing, the server logs that it is ignored, and you can remove it from the environment file. Two browsers that open the link at the same time produce one owner.
 
-**Recovery.** If every passkey is lost, run `recovery-link` on the host. The link replaces the account's passkeys and signs out all its sessions. API tokens stay; review them in the admin after recovery. Recovery needs host access by design: there is no mail and no vendor to ask. Owners can invite members and renew a member's link from the admin; an owner is only ever recovered from the host.
+**Recovery.** If every passkey is lost, run `recovery-link` on the host. The link replaces the account's passkeys, signs out all its sessions and **revokes the API tokens that account created**, because recovery is also the path after a lost or exposed credential; the owner creates new tokens afterwards, and the setup page says how many ended. `--keep-tokens` opts out. Tokens of other accounts are not touched. Recovery needs host access by design: there is no mail and no vendor to ask. Owners can invite members and renew a member's link from the admin; an owner is only ever recovered from the host.
 
 **API tokens** are created by an owner in the admin. A token is shown once, is read-only or can write, covers all projects or a list, and ends after 1 to 365 days (90 by default). Use it as `Authorization: Bearer fk_tok_...`. A token cannot create tokens or accounts. Revoking takes effect on the next request.
 

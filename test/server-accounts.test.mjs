@@ -148,6 +148,14 @@ test('feedbackkit-admin: recovery-link needs an owner, picks the only one, asks 
     assert.match(list.out, /Sam\towner\tactive/);
     assert.ok(!/fk_link_/.test(list.out), 'the list shows no secret');
     assert.equal(admin(dir, ['bogus']).code, 1);
+    // Recovery revokes the account's API tokens unless --keep-tokens says otherwise, and says which it does.
+    const flag = () => { const s = openStorage(join(dir, 'feedbackkit.sqlite'), 'migrations'); try { return s.sqlite.prepare("SELECT keep_tokens FROM setup_links WHERE purpose = 'recovery' ORDER BY created_at DESC LIMIT 1").get().keep_tokens; } finally { s.close(); } };
+    const revoking = admin(dir, ['recovery-link', '--account', 'Robin']);
+    assert.match(revoking.err, /revokes the API tokens of that account/);
+    assert.equal(flag(), 0);
+    const keeping = admin(dir, ['recovery-link', '--account', 'Robin', '--keep-tokens']);
+    assert.match(keeping.err, /keeps the API tokens of that account/);
+    assert.equal(flag(), 1);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

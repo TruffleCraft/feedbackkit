@@ -6,12 +6,13 @@
 // the link. Nothing is sent anywhere else, and it never asks for a credential.
 //
 //   pnpm admin:link --url https://feedbackkit.example.org            first owner
-//   pnpm admin:link --url https://… --recovery                       recovery link for the only owner
+//   pnpm admin:link --url https://… --recovery                       recovery link for the only owner (revokes the API tokens it created)
 //   pnpm admin:link --url https://… --recovery --account "Robin"     recovery link for one account
 //   pnpm admin:link --url https://… --print-sql                      print the SQL instead of running it
 //
 // Options: --minutes N (1 to 240, default 30), --database NAME (default
-// feedbackkit), --local (the local D1 of `wrangler dev`).
+// feedbackkit), --local (the local D1 of `wrangler dev`), --keep-tokens (recovery
+// only: keep the account's API tokens instead of revoking them).
 //
 // The link goes to stdout and nothing else does. The token is generated here and
 // only its SHA-256 reaches the database, as on the standalone server. With
@@ -21,7 +22,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
-const USAGE = `Usage: pnpm admin:link --url <public url> [--recovery [--account NAME]] [--minutes N] [--database NAME] [--local] [--print-sql]`;
+const USAGE = `Usage: pnpm admin:link --url <public url> [--recovery [--account NAME] [--keep-tokens]] [--minutes N] [--database NAME] [--local] [--print-sql]`;
 const sql = (text) => `'${String(text).replaceAll("'", "''")}'`;
 
 export function parseArgs(argv) {
@@ -31,6 +32,7 @@ export function parseArgs(argv) {
     if (a === "--url") out.url = argv[++i];
     else if (a === "--recovery") out.recovery = true;
     else if (a === "--account") out.account = argv[++i];
+    else if (a === "--keep-tokens") out.keepTokens = true;
     else if (a === "--minutes") out.minutes = Number(argv[++i]);
     else if (a === "--database") out.database = argv[++i];
     else if (a === "--local") out.local = true;
@@ -50,6 +52,7 @@ export function buildLink(opts, now = Date.now(), token = `fk_link_${randomBytes
     if (!["http:", "https:"].includes(origin.protocol) || origin.pathname !== "/" || origin.search || origin.hash || origin.username || origin.password) throw new Error("bad");
   } catch { throw new Error(`--url must be the public address of the gateway, for example https://feedbackkit.example.org (an http(s) origin without path).\n${USAGE}`); }
   if (opts.account !== undefined && !opts.recovery) throw new Error("--account only goes with --recovery.");
+  if (opts.keepTokens && !opts.recovery) throw new Error("--keep-tokens only goes with --recovery.");
   const id = createHash("sha256").update(token).digest("hex");
   const expires = now + opts.minutes * 60_000;
   const base = `${sql(id)}`;
@@ -65,7 +68,7 @@ export function buildLink(opts, now = Date.now(), token = `fk_link_${randomBytes
       : "a.role = 'owner' AND (SELECT COUNT(*) FROM accounts o WHERE o.role = 'owner' AND o.state = 'active') = 1";
     statements = [
       `DELETE FROM setup_links WHERE purpose IN ('recovery', 'invite') AND used_at IS NULL AND account_id IN (SELECT a.id FROM accounts a WHERE a.state = 'active' AND ${who})`,
-      `INSERT INTO setup_links (id, purpose, account_id, created_at, expires_at, created_by) SELECT ${base}, 'recovery', a.id, ${now}, ${expires}, 'cloudflare' FROM accounts a WHERE a.state = 'active' AND ${who}`,
+      `INSERT INTO setup_links (id, purpose, account_id, created_at, expires_at, created_by, keep_tokens) SELECT ${base}, 'recovery', a.id, ${now}, ${expires}, 'cloudflare', ${opts.keepTokens ? 1 : 0} FROM accounts a WHERE a.state = 'active' AND ${who}`,
     ];
   }
   return { statements, url: `${origin.origin}/admin/setup#${token}`, expires };
@@ -107,7 +110,7 @@ export function main(argv, io = { out: (s) => console.log(s), err: (s) => consol
     return 1;
   }
   io.err(opts.recovery
-    ? `Open this link to set up a new passkey. It replaces the passkeys and signs out every session of the account, works once and expires at ${new Date(link.expires).toISOString()}.`
+    ? `Open this link to set up a new passkey. It replaces the passkeys, signs out every session and ${opts.keepTokens ? "keeps" : "revokes"} the API tokens of the account, works once and expires at ${new Date(link.expires).toISOString()}.`
     : `Open this link in the browser you will sign in with. It creates the first owner, works once and expires at ${new Date(link.expires).toISOString()}.`);
   io.out(link.url);
   return 0;

@@ -222,7 +222,7 @@ Local accounts (Gate 2) work the same on the standalone server and on Cloudflare
 | Replay of a captured ceremony | Challenges are signed, expire after 5 minutes and are recorded as used. A counter that goes back is refused |
 | A stolen API token | Hashed at rest, shown once, read-only or write, limited to projects, 1 to 365 days, revoked on the next request. A token cannot create tokens or accounts. A token limited to projects reaches only routes that name one of them, and is refused on `/api/admin/system`, config import and project creation |
 | An owner locks everyone out | The last active owner cannot be demoted or removed, and two owners who demote or remove each other at the same time leave one. The last passkey of an account cannot be removed |
-| A lost device | Recovery by a host command: the link replaces the account's passkeys and ends its sessions. Recovery needs host access, or on Cloudflare the operator's own Cloudflare credentials |
+| A lost device | Recovery by a host command: the link replaces the account's passkeys, ends its sessions and revokes the API tokens that account created (a stolen session could have made one that outlives it; `--keep-tokens` opts out). Recovery needs host access, or on Cloudflare the operator's own Cloudflare credentials |
 | A removed person keeps access | Removing an account deletes its sessions and passkeys and revokes its tokens in one batch |
 
 ### Sessions and cookies
