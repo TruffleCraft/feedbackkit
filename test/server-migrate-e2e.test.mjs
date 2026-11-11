@@ -131,12 +131,14 @@ WIDGET_VERSION = "test"
       projects: (await (await get('/api/admin/projects')).json()).projects.map((p) => ({ id: p.id, publicKey: p.publicKey, configVersion: p.configVersion })),
       config: await Promise.all(['harborline', 'pantry-planner'].map(async (id) => (await get(`/api/admin/projects/${id}/config`)).json())),
       feedback: await Promise.all(['harborline', 'pantry-planner'].map(async (id) => (await get(`/api/admin/projects/${id}/feedback`)).json())),
-      funnel: (await (await get('/api/admin/projects/harborline/funnel')).json()).steps ?? null,
+      funnel: await (async () => { const f = await (await get('/api/admin/projects/harborline/funnel')).json(); return { events: f.events, feedback: f.feedback }; })(),
     });
     const publicConfig = async (b, key, o) => (await fetch(`${b}/api/config?project=${key}`, { headers: { Origin: o } })).json();
     const before = await ask((path) => admin(path));
     const publicBefore = await publicConfig(base, keys.harborline, origin.harborline);
     assert.equal(before.feedback[0].items.length, 6, 'five reports and a test report');
+    assert.equal(before.funnel.events.opened, 1);
+    assert.equal(before.funnel.feedback.total, 5, 'the test report is not in the funnel');
     await stop(worker); worker = undefined;
 
     // ── export with the real wrangler, then import ──
@@ -147,6 +149,7 @@ WIDGET_VERSION = "test"
     const manifest = JSON.parse(readFileSync(join(exportDir, 'manifest.json'), 'utf8'));
     assert.equal(manifest.source.bucket, 'fk-fictional-bucket', 'the bucket name came from wrangler.toml');
     assert.deepEqual(manifest.rows, { projects: 2, feedback: 7, assets: 2, events: 4, dedup: 6 }, 'six submissions, one test report, two uploads, four funnel events');
+    assert.deepEqual(manifest.missing, [], 'no attachment is missing');
     assert.deepEqual(manifest.objects.map((o) => [o.key, o.sha256]).sort(), Object.entries(uploaded).sort(), 'the attachments left the bucket byte for byte');
     assert.equal(manifest.schemaVersion, 4);
 

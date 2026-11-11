@@ -97,6 +97,13 @@ function run(command, args, cwd) {
   });
 }
 
+const ABSENT = /does not exist|not found|NoSuchKey|10007/i;
+/** The line of wrangler's output that says what went wrong, not its pointer to a log file. */
+function usefulLine(output) {
+  const lines = output.split("\n").map((l) => l.trim()).filter((l) => l && !/Logs were written/.test(l));
+  return (lines.find((l) => /error|failed|not exist|not found|locked/i.test(l)) ?? lines.at(-1) ?? "").slice(0, 160);
+}
+
 /** `[[r2_buckets]]` and `[[d1_databases]]` names from a wrangler.toml, or null. */
 export function namesFromWranglerToml(text) {
   const block = (header, binding) => text.split(/^\s*(?=\[\[)/m).find((b) => b.startsWith(`[[${header}]]`) && new RegExp(`binding\\s*=\\s*"${binding}"`).test(b));
@@ -153,13 +160,20 @@ export async function exportFromCloudflare({ out, database, bucket, config, loca
         for (let key = queue.shift(); key !== undefined; key = queue.shift()) {
           const file = join(out, "objects", key);
           mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
-          const got = await run(command, [...base, "r2", "object", "get", `${bucket}/${key}`, "--file", file, where, ...withConfig], cwd);
-          if (got.code !== 0 || !existsSync(file)) { manifest.missing.push({ key, error: got.output.trim().split("\n").slice(-1)[0]?.slice(0, 160) ?? "" }); continue; }
+          let got;
+          // A bucket that lacks the object answers at once. Anything else may pass, so try again.
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            got = await run(command, [...base, "r2", "object", "get", `${bucket}/${key}`, "--file", file, where, ...withConfig], cwd);
+            if ((got.code === 0 && existsSync(file)) || ABSENT.test(got.output)) break;
+            await new Promise((r) => setTimeout(r, 300 * attempt));
+          }
+          if (got.code !== 0 || !existsSync(file)) { manifest.missing.push({ key, error: usefulLine(got.output) }); continue; }
           const data = readFileSync(file);
           manifest.objects.push({ key, bytes: data.length, sha256: sha256(data) });
         }
       };
-      await Promise.all(Array.from({ length: Math.max(1, Math.min(jobs, 16)) }, worker));
+      // Wrangler's local R2 is one SQLite state: two readers at once lock it. A remote bucket takes several.
+      await Promise.all(Array.from({ length: local ? 1 : Math.max(1, Math.min(jobs, 16)) }, worker));
       manifest.objects.sort((a, b) => (a.key < b.key ? -1 : 1));
       manifest.missing.sort((a, b) => (a.key < b.key ? -1 : 1));
       if (keys.length && manifest.missing.length === keys.length) throw new Error(`no attachment could be downloaded. Is the bucket name "${bucket}" right and wrangler logged in? First error: ${manifest.missing[0].error}`);

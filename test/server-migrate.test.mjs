@@ -338,7 +338,7 @@ test('the release tarball carries the command, and it imports with Node alone, r
 // ── export, with a stand-in for wrangler (the real one runs in server-migrate-e2e.test.mjs) ──────
 
 /** A wrangler stand-in: `d1 export` copies a prepared dump, `r2 object get` writes a file or fails. */
-function fakeWrangler(dir, { sql, objects, failExport = false }) {
+function fakeWrangler(dir, { sql, objects, failExport = false, flaky = false }) {
   writeFileSync(join(dir, 'dump.sql'), sql);
   mkdirSync(join(dir, 'bucket'), { recursive: true });
   for (const [key, data] of Object.entries(objects)) { mkdirSync(dirname(join(dir, 'bucket', key)), { recursive: true }); writeFileSync(join(dir, 'bucket', key), data); }
@@ -355,6 +355,10 @@ if (a[0] === 'd1' && a[1] === 'export') {
   const [bucket, ...key] = a[3].split('/');
   const source = join(${JSON.stringify(join(dir, 'bucket'))}, ...key);
   if (bucket !== 'my-bucket' || !existsSync(source)) { console.error('The specified key does not exist.'); process.exit(1); }
+  if (${flaky}) {
+    const mark = join(${JSON.stringify(dir)}, 'tried-' + key.join('-'));
+    if (!existsSync(mark)) { appendFileSync(mark, 'x'); console.error('database is locked: SQLITE_BUSY'); console.error('Logs were written to "/tmp/x.log"'); process.exit(1); }
+  }
   mkdirSync(dirname(at('--file')), { recursive: true });
   copyFileSync(source, at('--file'));
 } else process.exit(2);
@@ -395,6 +399,23 @@ test('export reads the dump and every attachment, records what is missing, and w
     await assert.rejects(exportFromCloudflare({ out, bucket: 'my-bucket', wrangler, log: quiet }), /is not empty/);
     // The bucket is required unless attachments are skipped.
     await assert.rejects(exportFromCloudflare({ out: join(dir, 'out5'), wrangler, log: quiet }), /bucket name is needed/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('export tries an object again when wrangler fails for another reason than a missing key, and says what went wrong', async () => {
+  const dir = temporary();
+  try {
+    const objects = { 'harborline/aaaa-1111.png': png(100), 'harborline/bbbb-2222.webp': webp(100) };
+    const wrangler = fakeWrangler(dir, { sql: dump(4, rowsV4()), objects, flaky: true });
+    const manifest = await exportFromCloudflare({ out: join(dir, 'out'), bucket: 'my-bucket', wrangler, local: true, log: quiet });
+    assert.deepEqual([manifest.objects.length, manifest.missing.length], [2, 0], 'each object failed once and then came');
+    const calls = readFileSync(join(dir, 'calls.log'), 'utf8').split('\n').filter((l) => l.startsWith('r2 object get'));
+    assert.equal(calls.length, 4);
+    // A key that is not in the bucket is not tried again, and the reason is the useful line.
+    rmSync(join(dir, 'bucket/harborline/bbbb-2222.webp'));
+    const partial = await exportFromCloudflare({ out: join(dir, 'out2'), bucket: 'my-bucket', wrangler, local: true, log: quiet });
+    assert.deepEqual(partial.missing, [{ key: 'harborline/bbbb-2222.webp', error: 'The specified key does not exist.' }]);
+    assert.equal(readFileSync(join(dir, 'calls.log'), 'utf8').split('\n').filter((l) => l.includes('bbbb-2222')).length, 3, 'two attempts in the first export, one in the second: a key that is not in the bucket is not tried again');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
