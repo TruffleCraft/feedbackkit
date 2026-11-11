@@ -9,6 +9,7 @@
 // time) every OAuth and MCP path answers 404 and the rest of the gateway runs
 // as before, so forks without a KV namespace still deploy.
 import { OAuthProvider } from "@cloudflare/workers-oauth-provider";
+import { resolveApiToken } from "../mcp/api-token.js";
 import { mcpApi } from "../mcp/server.js";
 import { SCOPES } from "../mcp/scopes.js";
 import { ACCESS_TOKEN_TTL_S, REFRESH_TOKEN_TTL_S } from "./ttl.js";
@@ -51,11 +52,17 @@ export interface ProviderOptions {
    * register through /oauth/register instead.
    */
   clientIdMetadataDocuments?: boolean;
+  /**
+   * Accept a scoped API token (auth/tokens.ts) as a bearer on /mcp, beside OAuth access tokens (default true;
+   * mcp/api-token.ts, ADR-015 second amendment). A gateway without the accounts tables answers every such token 401.
+   */
+  apiTokens?: boolean;
 }
 
 function providerFor(origin: string, app: Handler, options: ProviderOptions): OAuthProvider<Env> | null {
   const cimd = options.clientIdMetadataDocuments ?? true;
-  const cacheKey = `${origin} cimd=${cimd}`;
+  const tokens = options.apiTokens ?? true;
+  const cacheKey = `${origin} cimd=${cimd} tokens=${tokens}`;
   if (providers.has(cacheKey)) return providers.get(cacheKey)!;
   let p: OAuthProvider<Env> | null;
   try {
@@ -71,6 +78,7 @@ function providerFor(origin: string, app: Handler, options: ProviderOptions): OA
       clientIdMetadataDocumentEnabled: cimd,
       scopesSupported: [...SCOPES],
       resourceMetadata: { resource: `${origin}/mcp`, resource_name: "FeedbackKit" },
+      ...(tokens ? { resolveExternalToken: resolveApiToken(`${origin}/mcp`) } : {}),
       accessTokenTTL: ACCESS_TOKEN_TTL_S,
       refreshTokenTTL: REFRESH_TOKEN_TTL_S,
       onError: ({ code, description, status }) => {

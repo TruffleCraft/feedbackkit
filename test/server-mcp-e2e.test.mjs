@@ -16,11 +16,11 @@ import { ORIGIN, PERSON, gateway } from './oauth-harness.mjs';
 // The standalone server's MCP side, from the outside. Two halves.
 //
 // The MCP SDK's own client does the whole OAuth flow (discovery, registration, PKCE, consent, token, tools) against the
-// bundled application with a stub sign-in, because a standalone server has no sign-in for approving a connection yet:
-// accounts are not built, and the stub exists in test code only (test/oauth-harness.mjs).
+// bundled application. A browser cannot be driven here, so the consent step uses a stub sign-in that exists in test code only
+// (test/oauth-harness.mjs); test/server-mcp-accounts.test.mjs runs the same consent with a real account's session cookie.
 //
-// The unpacked release tarball, started with Node alone, is the other half: what an operator gets. MCP is off by default,
-// says so at start and in /diag, serves only plumbing when FK_MCP=on, and approves nothing, because nobody can sign in.
+// The unpacked release tarball, started with Node alone, is the other half: what an operator gets. MCP is on for an https address and
+// says so at start and in /diag, off otherwise or with FK_MCP=off, and an account's session or a token (test/server-mcp-accounts.test.mjs) is what lets anyone in.
 
 const root = new URL('..', import.meta.url).pathname;
 const token = 'fictional-test-token-'.repeat(3);
@@ -164,8 +164,8 @@ for (const [label, negotiation, era] of [['the default (2025 initialize handshak
   });
 }
 
-test('MCP is off by default: the start log and /diag say why, and every OAuth and MCP path answers 404 with a hint', async () => {
-  for (const env of [{}, { FK_PUBLIC_URL: 'https://feedback.example.test' }, { FK_MCP: 'off', FK_PUBLIC_URL: 'https://feedback.example.test' }]) {
+test('MCP is off for an http address or FK_MCP=off: the start log and /diag say why, and every OAuth and MCP path answers 404 with a hint', async () => {
+  for (const env of [{}, { FK_MCP: 'off', FK_PUBLIC_URL: 'https://feedback.example.test' }]) {
     const server = await start(env);
     try {
       assert.equal(server.exited, false, server.output);
@@ -177,7 +177,7 @@ test('MCP is off by default: the start log and /diag say why, and every OAuth an
         assert.equal(response.status, 404, path);
         const body = await response.json();
         assert.equal(body.error, 'not_found');
-        assert.match(body.error_description, /accounts are not built/);
+        assert.match(body.error_description, /FK_PUBLIC_URL/);
       }
       // Everything else is untouched.
       assert.equal((await fetch(`${server.base}/diag`)).status, 200);
@@ -186,12 +186,12 @@ test('MCP is off by default: the start log and /diag say why, and every OAuth an
   }
 });
 
-test('FK_MCP=on serves the plumbing and approves nothing: issuer and resource from FK_PUBLIC_URL, a 401 challenge, registration, and a consent page that refuses everyone', async () => {
-  const server = await start({ FK_MCP: 'on', FK_PUBLIC_URL: 'https://feedback.example.test' });
+test('with an https FK_PUBLIC_URL MCP is on by itself: issuer and resource come from it, a client can register, nobody without a session can approve', async () => {
+  const server = await start({ FK_PUBLIC_URL: 'https://feedback.example.test' });
   try {
     assert.equal(server.exited, false, server.output);
-    assert.match(server.output(), /MCP on, but no connection can be approved yet: accounts are not built \(issuer https:\/\/feedback\.example\.test, resource https:\/\/feedback\.example\.test\/mcp\)/);
-    assert.match((await (await fetch(`${server.base}/diag`)).json()).mcp, /^on, but no connection can be approved yet/);
+    assert.match(server.output(), /MCP on \(issuer https:\/\/feedback\.example\.test, resource https:\/\/feedback\.example\.test\/mcp\)/);
+    assert.match((await (await fetch(`${server.base}/diag`)).json()).mcp, /^on \(issuer https:\/\/feedback\.example\.test/);
     // A hostile Host header moves nothing.
     const meta = await (await fetch(`${server.base}/.well-known/oauth-authorization-server`, { headers: { Host: 'evil.example' } })).json();
     assert.equal(meta.issuer, 'https://feedback.example.test');
@@ -201,19 +201,21 @@ test('FK_MCP=on serves the plumbing and approves nothing: issuer and resource fr
     assert.equal(resource.resource, 'https://feedback.example.test/mcp');
     const challenge = (await fetch(`${server.base}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json', Host: 'evil.example' }, body: '{}' })).headers.get('WWW-Authenticate');
     assert.ok(challenge.includes('https://feedback.example.test/.well-known/oauth-protected-resource/mcp'), challenge);
-    // A client can register, but nobody can approve it, whatever the request claims to be.
+    // A client can register. Without a session nobody can approve it, whatever else the request carries, and there is no owner yet to hold a token.
     const registered = await fetch(`${server.base}/oauth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'probe', redirect_uris: ['https://client.example/cb'], token_endpoint_auth_method: 'none' }) });
     assert.equal(registered.status, 201);
     const { client_id } = await registered.json();
     const q = new URLSearchParams({ response_type: 'code', client_id, redirect_uri: 'https://client.example/cb', scope: 'feedback:read', state: 's', code_challenge: 'x'.repeat(43), code_challenge_method: 'S256', resource: 'https://feedback.example.test/mcp' });
-    for (const headers of [{}, { 'X-Test-Identity': PERSON }, { Authorization: `Bearer ${token}`, 'Cf-Access-Jwt-Assertion': 'a.b.c' }]) {
+    for (const headers of [{}, { 'X-Test-Identity': 'robin@example.org' }, { Authorization: `Bearer ${token}`, 'Cf-Access-Jwt-Assertion': 'a.b.c' }]) {
       const page = await fetch(`${server.base}/oauth/authorize?${q}`, { headers });
       assert.equal(page.status, 403);
       assert.equal(page.headers.getSetCookie().length, 0);
-      assert.match(await page.text(), /Connecting apps is not available yet/);
+      assert.match(await page.text(), /Sign-in required/);
     }
-    const post = await fetch(`${server.base}/oauth/authorize`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: server.base.replace(/^http:\/\/127\.0\.0\.1:\d+/, 'https://feedback.example.test') }, body: new URLSearchParams({ handle: 'x', decision: 'allow', admin_token: token }) });
-    assert.equal(post.status, 403);
+    for (const bearer of [token, `fk_tok_${'a'.repeat(43)}`]) {
+      const refused = await fetch(`${server.base}/mcp`, { method: 'POST', headers: { Authorization: `Bearer ${bearer}`, 'Content-Type': 'application/json' }, body: '{}' });
+      assert.equal(refused.status, 401);
+    }
   } finally { await server.stop?.(); }
 });
 
@@ -253,18 +255,19 @@ test('the start sweep removes expired OAuth rows and keeps live ones, with MCP o
 
 test('planMcp: the whole table', () => {
   const plan = (url, setting, host) => planMcp({ origin: new URL(url), setting, host });
-  // Off unless asked for, whatever the address says: nobody can approve a connection yet.
-  assert.equal(plan('https://fb.example.test', undefined).enabled, false);
-  assert.equal(plan('https://fb.example.test', '').enabled, false);
-  assert.equal(plan('http://localhost:8787', undefined).enabled, false);
-  assert.match(plan('https://fb.example.test', undefined).note, /accounts, which are not built yet/);
-  assert.equal(plan('https://fb.example.test', 'off').enabled, false);
+  // On for an https address, off for anything else, unless asked.
+  assert.equal(plan('https://fb.example.test', undefined).enabled, true);
+  assert.equal(plan('https://fb.example.test', '').enabled, true);
   assert.equal(plan('https://fb.example.test', 'ON ').enabled, true);
-  assert.match(plan('https://fb.example.test', 'on').note, /^on, but no connection can be approved yet/);
+  assert.equal(plan('https://fb.example.test', 'off').enabled, false);
+  assert.equal(plan('http://localhost:8787', undefined).enabled, false);
+  assert.match(plan('http://localhost:8787', undefined).note, /not an https address/);
+  assert.match(plan('https://fb.example.test', undefined).note, /^on \(issuer https:\/\/fb\.example\.test, resource https:\/\/fb\.example\.test\/mcp\)$/);
   assert.equal(plan('http://localhost:8787', 'on', '127.0.0.1').enabled, true);
   assert.equal(plan('http://127.0.0.1:8787', 'on', 'localhost').enabled, true);
   assert.equal(plan('http://[::1]:8787', 'on', '::1').enabled, true);
   assert.equal(plan('https://fb.example.test', 'on', '0.0.0.0').enabled, true, 'behind https the listen address is the proxy\'s business');
+  assert.equal(plan('https://fb.example.test', undefined, '0.0.0.0').enabled, true);
   assert.throws(() => plan('http://fb.example.test', 'on'), /needs an https/);
   assert.throws(() => plan('http://192.168.1.5:8787', 'on'), /needs an https/);
   assert.throws(() => plan('http://localhost:8787', 'on', '0.0.0.0'), /clear text/);

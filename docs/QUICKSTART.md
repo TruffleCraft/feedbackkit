@@ -548,9 +548,12 @@ The link works once and expires after 30 minutes (`--minutes 1` to `240`). It go
 The gateway can run an MCP server at `/mcp`, so Claude Code, claude.ai, ChatGPT
 or Hermes can read projects, feedback, the funnel and project configs. It is
 read-only and optional. Clients connect with OAuth 2.1, and a person approves
-each connection on a consent page after signing in through Cloudflare Access.
-The admin token does not work here. Set up [Access](#sign-in-with-cloudflare-access)
-first. (A server install cannot do this yet: see
+each connection on a consent page after signing in through Cloudflare Access
+(or with an account's passkey session, if you use accounts). A scoped API token
+that an owner created also works as a bearer, for a gateway such as LiteLLM
+(`auth_type: bearer_token`). The admin token does not work here. Set up
+[Access](#sign-in-with-cloudflare-access) first, or accounts. (A server install
+turns MCP on by itself for an https address: see
 [MCP for agents](SELF_HOSTING.md#mcp-for-agents).)
 
 1. Create a KV namespace for OAuth clients, grants and tokens:

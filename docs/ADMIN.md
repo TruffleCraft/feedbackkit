@@ -46,7 +46,7 @@ The last owner cannot be demoted or removed, and an account always keeps one pas
 
 ## Agents
 
-On Cloudflare an agent can read projects, feedback and the funnel through the gateway's MCP server, without the admin token in its hands. Whoever approves a connection signs in through Cloudflare Access first, and the agent gets read-only scopes ([setup](QUICKSTART.md#mcp-for-agents)). A server installation cannot approve connections yet, because that needs the accounts of a later release ([MCP for agents](SELF_HOSTING.md#mcp-for-agents)).
+On Cloudflare an agent can read projects, feedback and the funnel through the gateway's MCP server, without the admin token in its hands. Whoever approves a connection signs in through Cloudflare Access first, and the agent gets read-only scopes ([setup](QUICKSTART.md#mcp-for-agents)). On a server installation a person signed in with a passkey approves them, and an owner can create a scoped API token that an agent or gateway sends as a bearer ([MCP for agents](SELF_HOSTING.md#mcp-for-agents)). Removing an account ends the connections it approved and revokes its tokens.
 
 ## Credentials and hosting
 

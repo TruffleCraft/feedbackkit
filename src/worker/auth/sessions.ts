@@ -153,7 +153,7 @@ export async function listSessions(env: Env, accountId: string, now = Date.now()
  * step (the Allow button) must bring its own CSRF protection, for example the
  * single-use handle of the consent form, or check `csrfValid` itself.
  */
-export async function authenticateAccount(request: Request, env: Env): Promise<{ accountId: string; role: Role } | null> {
+export async function authenticateAccount(request: Request, env: Env): Promise<{ accountId: string; role: Role; name: string } | null> {
   const s = await sessionFromRequest(env, request);
-  return s ? { accountId: s.accountId, role: s.role } : null;
+  return s ? { accountId: s.accountId, role: s.role, name: s.name } : null;
 }

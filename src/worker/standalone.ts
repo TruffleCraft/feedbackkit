@@ -3,11 +3,11 @@
 // of ADR-015: the OAuth provider and the MCP server, with the provider's storage in
 // the server's SQLite file (scripts/server-kv.mjs).
 //
-// Who may approve a connection is the one thing a standalone server cannot answer yet:
-// it has no Cloudflare Access, and accounts (Gate 2) are not built. The consent route
-// asks `consentAuthenticator` (oauth/consent-identity.ts), which has no identity to
-// give, so nothing can be approved and the plumbing stays off by default
-// (scripts/server-mcp.mjs). The account session replaces it when Gate 2 ships.
+// Who may approve a connection is the account system's answer (src/worker/auth/): a
+// standalone server has no Cloudflare Access, so the session cookie of the passkey
+// sign-in is the identity at /oauth/authorize (oauth/consent-identity.ts). A scoped
+// API token works as a bearer on /mcp (mcp/api-token.ts). scripts/server.mjs sends the
+// OAuth and MCP paths to createMcpFetch when MCP is on (scripts/server-mcp.mjs).
 import { app } from "./app.js";
 import { registerOAuthRoutes } from "./oauth/authorize.js";
 import type { ConsentAuthenticator } from "./oauth/consent-identity.js";
@@ -19,9 +19,6 @@ export { app };
 export { OAUTH_PATH_RE } from "./oauth/provider.js";
 export { ACCESS_TOKEN_TTL_S, REFRESH_TOKEN_TTL_S } from "./oauth/ttl.js";
 registerOAuthRoutes(app);
-
-/** No sign-in exists on a standalone server yet, so nobody is an identity. Replaced by the account session (Gate 2). */
-export const consentAuthenticator: ConsentAuthenticator = async () => null;
 
 /** Client registrations one address may make per hour: /oauth/register is open by design (RFC 7591). */
 export const REGISTRATIONS_PER_HOUR = 30;
@@ -35,14 +32,14 @@ const tooMany = () =>
 /**
  * The fetch for every OAuth and MCP path of a standalone server whose public
  * origin is `origin` (FK_PUBLIC_URL). `env` carries OAUTH_KV, the SQLite adapter.
- * `authenticate` says who is signing in at /oauth/authorize; the server passes nothing,
- * which means `consentAuthenticator`. Tests pass a stub of their own.
+ * `authenticate` replaces the sign-in at /oauth/authorize: the server passes nothing,
+ * which means the account session, and tests pass a stub of their own.
  *
  * Issuer and resource come from `origin`: a request whose URL names another
  * origin is refused, so a Host header can never move them (the server rewrites
  * every request to the public origin first; this is the second lock).
  */
-export function createMcpFetch(origin: string, { authenticate = consentAuthenticator }: { authenticate?: ConsentAuthenticator } = {}) {
+export function createMcpFetch(origin: string, { authenticate }: { authenticate?: ConsentAuthenticator } = {}) {
   return async function mcpFetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (url.origin !== origin) return new Response("Wrong origin", { status: 400 });
@@ -54,6 +51,6 @@ export function createMcpFetch(origin: string, { authenticate = consentAuthentic
       const hit = await hitRateLimit(env, await ipKey(env, "oauthreg", ip), hourWindow(), REGISTRATIONS_PER_HOUR);
       if (!hit.allowed) return tooMany();
     }
-    return workerFetch(app, request, { ...env, CONSENT_AUTHENTICATOR: authenticate }, own, { clientIdMetadataDocuments: false });
+    return workerFetch(app, request, authenticate ? { ...env, CONSENT_AUTHENTICATOR: authenticate } : env, own, { clientIdMetadataDocuments: false });
   };
 }

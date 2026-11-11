@@ -304,7 +304,7 @@ describe("sign-in and sessions", () => {
   it("authenticateAccount returns the account behind a cookie, and null for anything else", async () => {
     const { client, accountId } = await bootstrap();
     const request = (cookie: string | null) => new Request(`${BASE}/oauth/authorize`, { headers: cookie ? { Cookie: cookie } : {} });
-    expect(await authenticateAccount(request(client.cookie), gw)).toEqual({ accountId, role: "owner" });
+    expect(await authenticateAccount(request(client.cookie), gw)).toEqual({ accountId, role: "owner", name: "Robin" });
     expect(await authenticateAccount(request(null), gw)).toBeNull();
     expect(await authenticateAccount(request("fk_session=fk_ses_" + "B".repeat(43)), gw)).toBeNull();
     // A bearer token is not a session.

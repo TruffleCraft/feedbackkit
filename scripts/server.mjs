@@ -32,8 +32,8 @@ if (process.argv[2] === "admin") process.exit(await runAdmin(process.argv.slice(
 if (process.env.ADMIN_TOKEN && process.env.ADMIN_TOKEN.length < 32) throw new Error("ADMIN_TOKEN is set but shorter than 32 characters. Use a random secret of at least 32 characters, or remove it and create the first owner with feedbackkit-admin setup-link.");
 const origin = new URL(process.env.FK_PUBLIC_URL || "http://localhost:8787");
 if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new Error("FK_PUBLIC_URL must be an http(s) origin, without credentials, path, query or fragment.");
-// MCP (ADR-015): decided before anything is opened, so an unsafe combination stops the start. It is off unless FK_MCP=on,
-// and even then no connection can be approved until accounts exist (scripts/server-mcp.mjs).
+// MCP (ADR-015): decided before anything is opened, so an unsafe combination stops the start. It is on for an https FK_PUBLIC_URL
+// unless FK_MCP=off (scripts/server-mcp.mjs). Who may connect is the account system's business: a session approves, a token reads.
 const mcp = planMcp({ origin, setting: process.env.FK_MCP, host: process.env.HOST || "127.0.0.1" });
 const storage = openStorage(join(process.env.FK_DATA_DIR || join(root, "data"), "feedbackkit.sqlite"), join(root, "migrations"));
 // The capability only ever rises. A database that a newer release raised past
