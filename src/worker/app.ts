@@ -20,6 +20,7 @@ import { registerAdminRoutes } from "./admin/routes.js";
 import { checkConfigForWrite, parseStoredConfig } from "./admin/config-write.js";
 import { embedSnippet } from "./admin/snippet.js";
 import { registerAdminPages } from "./admin/pages.js";
+import { registerAuthRoutes } from "./auth/index.js";
 import type { Env } from "./env.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -330,7 +331,9 @@ app.post("/api/upload", async (c) => {
 // GDPR delete (P1.8): remove all attachments for a feedback id. Admin-authed.
 // Registered before the /api/admin/* catch-all so it isn't shadowed by the stub.
 app.delete("/api/admin/assets", async (c) => {
-  const denied = await adminGate(c);
+  const denied = await adminGate(c, {
+    project: async () => (await c.env.DB.prepare("SELECT project_id FROM assets WHERE feedback_id = ?1 LIMIT 1").bind(c.req.query("feedbackId") ?? "").first<{ project_id: string }>())?.project_id ?? null,
+  });
   if (denied) return denied;
   const feedbackId = c.req.query("feedbackId") ?? "";
   if (!UUID_RE.test(feedbackId)) return c.json({ v: WIRE_VERSION, status: "error", error: "missing or invalid feedbackId" }, 400);
@@ -615,6 +618,8 @@ app.get("/t/:key", (c) => {
 registerAdminRoutes(app);
 // Admin shell pages (P2, step 3): /admin, /admin/projects/:id, /admin/system.
 registerAdminPages(app);
+// Accounts (Gate 2): passkey sign-in, one-time setup links, the account page, accounts and API tokens.
+registerAuthRoutes(app);
 // MCP consent (ADR-015): GET/POST /oauth/authorize. The OAuth provider in
 // index.ts serves the other OAuth paths and /mcp before a request gets here.
 

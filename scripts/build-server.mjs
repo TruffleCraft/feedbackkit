@@ -3,3 +3,4 @@ import { build } from "esbuild";
 // attached only by the Worker entry; the standalone server deliberately omits it.
 await build({ entryPoints: ["src/worker/app.ts"], outfile: "dist-server/app.mjs", platform: "node", format: "esm", bundle: true, target: "node24" });
 await build({ entryPoints: ["src/worker/storage/r2.ts", "src/worker/storage/retention.ts"], outdir: "dist-server", outExtension: { ".js": ".mjs" }, platform: "node", format: "esm", bundle: true, target: "node24" });
+await build({ entryPoints: { auth: "src/worker/auth/host.ts" }, outdir: "dist-server", outExtension: { ".js": ".mjs" }, platform: "node", format: "esm", bundle: true, target: "node24" });

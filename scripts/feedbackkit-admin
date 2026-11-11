@@ -1,0 +1,20 @@
+#!/bin/sh
+# feedbackkit-admin: the host commands for accounts on the standalone server
+# (docs/SELF_HOSTING.md). POSIX sh, runs the server file of the release it sits in.
+#
+#   feedbackkit-admin setup-link [--minutes N]                      link for the first owner
+#   feedbackkit-admin recovery-link [--account NAME] [--minutes N]  link that replaces an account's passkeys
+#   feedbackkit-admin accounts                                      list the accounts
+#
+# Run it as the user that owns the data directory:
+#   sudo -u feedbackkit feedbackkit-admin setup-link
+set -eu
+self="$0"
+# Follow a symlink such as /usr/local/bin/feedbackkit-admin to the release directory.
+while [ -L "$self" ]; do
+  target="$(readlink "$self")"
+  case "$target" in /*) self="$target" ;; *) self="$(dirname "$self")/$target" ;; esac
+done
+here="$(cd "$(dirname "$self")" && pwd -P)"
+command -v node >/dev/null 2>&1 || { echo "feedbackkit-admin: node is required" >&2; exit 1; }
+exec node "$here/server.mjs" admin "$@"

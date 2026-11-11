@@ -40,7 +40,7 @@ test('an older database without auto_vacuum is converted once', () => {
   store = openStorage(file, 'migrations');
   try {
     assert.equal(Object.values(store.sqlite.prepare('PRAGMA auto_vacuum').get())[0], 2);
-    assert.equal((store.sqlite.prepare("SELECT value FROM meta WHERE key='schema_version'").get()).value, '4', 'data survived the VACUUM');
+    assert.equal((store.sqlite.prepare("SELECT value FROM meta WHERE key='schema_version'").get()).value, '5', 'data survived the VACUUM');
   } finally { store.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 

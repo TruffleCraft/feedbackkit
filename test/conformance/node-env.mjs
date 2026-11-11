@@ -19,16 +19,10 @@ process.on("exit", () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-// Besides the calls the gateway makes, the tests use D1's batch and R2's list
-// and multi-key delete to empty the storage between tests.
-const DB = {
-  prepare: store.DB.prepare,
-  async batch(statements) {
-    const results = [];
-    for (const statement of statements) results.push(await statement.run());
-    return results;
-  },
-};
+// Besides the calls the gateway makes, the tests use R2's list and multi-key
+// delete to empty the storage between tests. D1's batch is the storage's own:
+// one transaction, rolled back as a whole on an error, like D1.
+const DB = store.DB;
 const UPLOADS = {
   ...store.UPLOADS,
   async delete(keys) {

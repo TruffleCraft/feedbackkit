@@ -3,7 +3,7 @@ import type { Env } from "../../src/worker/env.js";
 
 /** Empty the tables and the bucket the durability tests write to. */
 export async function resetStorage(): Promise<void> {
-  await env.DB.batch(["feedback", "assets", "projects", "dedup", "events", "counters"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
+  await env.DB.batch(["feedback", "assets", "projects", "dedup", "events", "counters", "accounts", "owner_claim", "passkeys", "sessions", "setup_links", "used_challenges", "api_tokens"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
   const listed = await env.UPLOADS.list();
   if (listed.objects.length) await env.UPLOADS.delete(listed.objects.map((o) => o.key));
 }

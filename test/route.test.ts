@@ -75,7 +75,7 @@ describe("GET /api/config", () => {
 
 describe("GET /diag", () => {
   it("is green when schema matches and bindings exist", async () => {
-    const res = await app.request("/diag", {}, env((sql) => (sql.includes("meta") ? { value: "4" } : null)));
+    const res = await app.request("/diag", {}, env((sql) => (sql.includes("meta") ? { value: "5" } : null)));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: boolean; schema: { ok: boolean } };
     expect(body.ok).toBe(true);

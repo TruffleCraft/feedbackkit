@@ -104,7 +104,7 @@ function handler(s: Store) {
     if (sql.includes("FROM counters WHERE key LIKE 'llm:%'")) {
       return [...s.counters].filter(([k, v]) => k.startsWith("llm:") && v.window_start === params[0]).map(([key, v]) => ({ key, count: v.count }));
     }
-    if (sql.includes("FROM meta")) return { value: "4" };
+    if (sql.includes("FROM meta")) return { value: "5" };
     if (sql.startsWith("INSERT INTO projects")) {
       const [id, publicKey, config, updatedAt] = params as [string, string, string, number];
       const cur = s.projects.get(id);
@@ -445,7 +445,7 @@ describe("GET /api/admin/system", () => {
     expect(body).toMatchObject({
       version: "0.2.0-dev.1",
       channel: "dev",
-      schema: { ok: true, expected: 4, version: 4 },
+      schema: { ok: true, expected: 5, version: 5 },
       bindings: { DB: true, UPLOADS: true, ASSETS: true },
       secrets: { adminToken: true, githubPat: true, llmKey: true },
     });
