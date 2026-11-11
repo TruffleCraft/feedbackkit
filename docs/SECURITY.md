@@ -44,7 +44,7 @@ cannot create a real issue.
 
 ## Secrets
 
-- All secrets live **only** in Worker env (`ADMIN_TOKEN`, `GITHUB_PAT_<name>`,
+- All secrets live **only** in Worker env (`ADMIN_TOKEN` until the first owner exists, `GITHUB_PAT_<name>`,
   `LLM_API_KEY`, and the optional `FK_ACCESS_TEAM_DOMAIN` / `FK_ACCESS_AUD`) — never in the client bundle, never in the public config
   projection (`/api/config` whitelists fields; PAT/LLM/origins/prompt internals
   never ship to the browser).
@@ -111,19 +111,21 @@ an object from R2 does **not** guarantee GitHub's cached copy is gone. Therefore
 The standalone Node server (`scripts/server.mjs`) runs the same application as the Worker, so everything above applies. These points are specific to it. Each one has a test, listed in [claims and their proof](design/claims.md).
 
 - **Trust boundary.** TLS and the reverse proxy are the operator's. The server builds every request URL from `FK_PUBLIC_URL` and never from the `Host` header, and answers 400 to a path that starts with `//` or `/\`. The client address comes from the socket, or from `X-Forwarded-For` read from the right through `FK_TRUSTED_PROXY_HOPS` proxies. Without that setting every client behind a proxy shares one address and one failed-login limit, and the server logs a warning once.
-- **Admin credential.** `ADMIN_TOKEN` of at least 32 characters is the only credential. After 20 failed attempts per client address and hour the admin API answers 429 even to the right token. Cloudflare Access headers are discarded.
+- **Admin credential.** Accounts with passkeys and scoped API tokens ([below](#accounts-and-sessions)). `ADMIN_TOKEN` is optional: the server starts without it, it works only until the first owner exists, and when it is set it must be at least 32 characters. Before the first owner, 20 failed attempts per client address and hour make the admin API answer 429 even to the right token. Cloudflare Access headers are discarded.
 - **Environment.** The application receives `ADMIN_TOKEN`, `LLM_API_KEY`, `GITHUB_PAT_*`, `TURNSTILE_SECRET_*` and `FK_RELEASE`, not the whole process environment. A project's settings can name only `GITHUB_PAT_<name>` secrets, so they cannot point at `ADMIN_TOKEN` or another variable.
 - **Attachments.** Only attachments of reports delivered as GitHub issues are served at `/attachments/<key>`, because an issue image needs a public URL. They carry `Content-Security-Policy: default-src 'none'; sandbox` and `nosniff`. Screenshots of inbox reports and Project drafts are served at `/admin/assets/<key>` and need the admin sign-in. The admin page fetches them with the `Authorization` header.
 - **Deletion.** The database runs with `secure_delete=ON` and `auto_vacuum=INCREMENTAL`. After attachments or reports are deleted the server hands the freed pages back and truncates the write-ahead log, so the deleted content is in neither the database file nor the log. This covers those files only. Snapshots of the disk or the LXC, backups and copies of the data directory keep what they held, and GitHub keeps issue text and may cache images (see camo above).
 - **Durability.** The database runs in WAL mode with `synchronous=NORMAL`. A crash of the process loses nothing that was confirmed. A power loss or kernel crash can lose the last few reports but does not corrupt the database.
 - **Files.** The server sets `umask 077`, so the data directory and the database are readable by its user only.
 - **Update check.** On a release tarball install the server makes one `GET` to the GitHub Releases API at most once a day (once an hour after a failure) so the System page can say that a newer release exists. The request carries a fixed `User-Agent` (`feedbackkit-update-check`) and an `Accept` header: no credential, cookie, installed version or host name. GitHub sees the server's IP address, as it does for any client. The browser never calls GitHub, and the admin CSP stays `connect-src 'self'`. The link to the release notes is built from the validated version, never taken from the answer. A failed or rate-limited check shows a short fixed reason on the System page and changes nothing else. `FK_UPDATE_CHECK=off` removes it, and a checkout install and Cloudflare make no such request. Test: `test/server-update-notice.test.mjs`.
-- **Not built yet.** Accounts, passkeys and scoped API tokens (Gate 2), masking of screenshots before upload (Gate 1) and signed release artifacts (Step D). See the [plan](design/autonomous-admin-plan.md).
+- **Not built yet.** The sign-in, setup and account screens of Gate 2 (the account API and the host commands exist), and masking of screenshots before upload (Gate 1). See the [plan](design/autonomous-admin-plan.md).
 
 ## Admin endpoints
 
 Admin routes (`/api/admin/*`, `/admin/assets/*`, and the `/diag?project=` deep
-check) accept one of two credentials:
+check) accept these credentials ([accounts and sessions](#accounts-and-sessions) describes the first two):
+
+- **A session** of a person who signed in with a passkey, and **a scoped API token** that an owner created.
 
 - **A Cloudflare Access identity.** Only when both `FK_ACCESS_TEAM_DOMAIN` and
   `FK_ACCESS_AUD` are set. The gateway reads the JWT from the
@@ -135,9 +137,11 @@ check) accept one of two credentials:
   `nbf` with 60 s of skew. The token needs an `email` claim, so an Access
   service token on its own does not open the admin. Any failure means "no
   identity"; the check never throws. Plain WebCrypto, no JWT dependency.
-- **`Authorization: Bearer <ADMIN_TOKEN>`**, compared in constant time. The
-  token is a Worker secret — never commit it, never put it in `NEXT_PUBLIC_*`
-  or any client bundle. This is the way in for curl and scripts.
+- **`Authorization: Bearer <ADMIN_TOKEN>`**, compared in constant time, **only until the
+  first owner exists**. From then on it grants nothing and the answer says
+  `FK_ADMIN_TOKEN_RETIRED`. The token is a Worker secret — never commit it, never
+  put it in `NEXT_PUBLIC_*` or any client bundle. Delete the secret once the first
+  owner exists.
 
 Access sets its cookie with `SameSite=None` by default and turns it into the
 JWT header at the edge, so a cross-site form post would arrive with a valid
@@ -147,10 +151,12 @@ origin (or, without `Origin`, `Sec-Fetch-Site: same-origin`). Bearer requests
 need no such check: browsers never attach that header on their own. The admin
 API sends no CORS headers, so other sites can't read its responses either.
 
-Every `/api/admin/*` route counts failed token logins per client (`adm401`
-counter, keyed by the HMAC of the IP, never the address). After 20 failures in
-an hour that client gets `429` for every token request, including one with the
-right token, until the hour is over. A valid Access identity is not a guess and
+Before the first owner exists, every `/api/admin/*` route counts failed
+`ADMIN_TOKEN` logins per client (`adm401` counter, keyed by the HMAC of the IP,
+never the address). After 20 failures in an hour that client gets `429` for every
+token request, including one with the right token, until the hour is over. The
+account system never refuses a valid credential for that reason
+([failed attempts](#failed-attempts)). A valid Access identity is not a guess and
 passes regardless. `GET /api/admin/me` answers a request with no credentials
 at all with a `401` that is not counted, because the admin UI calls it on every
 page load. Admin responses carry `Cache-Control: no-store`.
@@ -196,6 +202,47 @@ with a per-response nonce CSP (`default-src 'none'; script-src 'self'
 connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action
 'self'`), `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`
 and `Cache-Control: no-store` (ADR-014).
+
+## Accounts and sessions
+
+Local accounts (Gate 2) work the same on the standalone server and on Cloudflare: `src/worker/auth/`, migration `0005_accounts.sql`, one conformance suite on SQLite and D1. How the pieces fit, and the D1 design for the atomic owner claim, is in [design/gate2-accounts.md](design/gate2-accounts.md). Every statement below has a test (`test/durable/accounts.test.ts`, `test/auth-gate.test.ts`, `test/server-accounts.test.mjs`, `e2e/accounts-real-server.spec.ts`); [claims.md](design/claims.md) lists them.
+
+### What it defends against
+
+| Threat | Control |
+|---|---|
+| Someone reaches a fresh instance first and becomes owner | There is no public first-user route. The first owner needs a one-time link that only the host command (`feedbackkit-admin setup-link`) or `pnpm admin:link` with the operator's Cloudflare credentials can issue. Two simultaneous attempts produce one owner |
+| A leaked or guessed shared admin secret | After the first owner exists `ADMIN_TOKEN` grants nothing. Scripts use scoped API tokens that an owner can revoke, and that end by themselves |
+| Phishing and credential stuffing | Passkeys only: no password exists. The browser signs the origin into every assertion and the server checks it, so a passkey made for one address cannot sign in at another. User verification is required |
+| A copy of the database | Session tokens, link tokens and API tokens are stored as SHA-256 only. Passkeys hold public keys. The instance secret that keys challenges and address hashes is in the database, which is no worse than the rows it protects |
+| Cross-site request forgery | `SameSite=Lax` cookies, a CSRF token on every state-changing request of a session, and a same-origin check on `Origin` or `Sec-Fetch-Site`. The ceremonies check the origin too |
+| Session fixation | A new random session token at every sign-in and enrollment. A session cookie that arrives with the request is deleted and replaced, never adopted |
+| Replay of a captured ceremony | Challenges are signed, expire after 5 minutes and are recorded as used. A counter that goes back is refused |
+| A stolen API token | Hashed at rest, shown once, read-only or write, limited to projects, 1 to 365 days, revoked on the next request. A token cannot create tokens or accounts. A token limited to projects reaches only routes that name one of them, and is refused on `/api/admin/system`, config import and project creation |
+| An owner locks everyone out | The last active owner cannot be demoted or removed, and two owners who demote or remove each other at the same time leave one. The last passkey of an account cannot be removed |
+| A lost device | Recovery by a host command: the link replaces the account's passkeys and ends its sessions. Recovery needs host access, or on Cloudflare the operator's own Cloudflare credentials |
+| A removed person keeps access | Removing an account deletes its sessions and passkeys and revokes its tokens in one batch |
+
+### Sessions and cookies
+
+The cookie is `__Host-fk_session` with `Secure` when the public URL is https, and `fk_session` without `Secure` on `http://localhost`. It is `HttpOnly`, `SameSite=Lax`, `Path=/`, has no `Domain`, and lives 30 days; the server also ends a session after 7 days without use. `Lax` is deliberate: the consent page of the MCP authorization server is opened by an agent's client from another site and must see the signed-in person. Cross-site writes are stopped by the CSRF token and the origin check, not by the cookie attribute. Responses of the admin API carry `Cache-Control: no-store`. `authenticateAccount(request, env)` in `src/worker/auth/` is the one function other code uses to learn who is signed in; it reads the session cookie and nothing else.
+
+### Secrets in transit, logs and comparisons
+
+- A one-time link is `<origin>/admin/setup#<token>`. The token sits in the URL fragment, so no server, proxy or `Referer` header sees it. No other secret is ever put in a URL.
+- Log lines carry identifiers (account ID, token ID, event name) and never a token, a cookie, a name or a link. A test scans every log line of a full run for the token prefixes.
+- A secret that is compared directly (the CSRF token, the legacy `ADMIN_TOKEN`) goes through a constant-time comparison. Stored secrets are looked up by their SHA-256 and never compared in application code.
+
+### Failed attempts
+
+Failed sign-ins, link redemptions and API-token attempts are counted per hashed client address (30 an hour) and, when the attempt names an account, per account (10 an hour). **A valid credential is never refused because of a counter.** The server verifies first. Over a limit, a failed attempt gets `429` with `Retry-After` instead of `401`. The counters bound what a flood can write and tell a client or an upstream limiter to stop. They are not the defense against guessing, because a passkey signature and a 256-bit token cannot be guessed. Without `FK_TRUSTED_PROXY_HOPS` every client behind a proxy shares one address: failures there read as `429`, and a valid credential still works. Set it to the number of proxies in front of the server so that counters are per client. The tests run both cases on a real server.
+
+### Operating notes
+
+- **Passkeys need a secure context.** Browsers allow WebAuthn only on https or on `localhost`. The relying party ID is the host name of `FK_PUBLIC_URL`, and a passkey belongs to that name. Changing `FK_PUBLIC_URL` to another host orphans every passkey: use recovery links to enroll again. An IP address cannot be a relying party ID. Reach a server without TLS through `ssh -L 8787:127.0.0.1:8787 host` and `http://localhost:8787`.
+- **Cloudflare:** the relying party follows the request URL or the optional `FK_PUBLIC_URL` variable. A passkey made on the `workers.dev` address does not work on a custom domain. After the first owner exists, delete the `ADMIN_TOKEN` secret: `wrangler rollback` to a release without accounts would honor it again.
+- **Cloudflare Access** stays an accepted identity for the admin routes (S15). It is not an account, so it cannot create tokens, manage accounts or use the account page.
+- **Backups of the data directory hold the session hashes and passkey public keys.** Restoring an old copy brings back sessions that were revoked after it was taken. Revoke or recover after a restore.
 
 ## MCP server (`/mcp`)
 

@@ -52,7 +52,7 @@ account settings read, user details and memberships read); variables `CLOUDFLARE
 **Delivery capability** (#109): after the smoke check, the promote workflow writes the
 release's `DELIVERY_CAPABILITY` (`src/shared/contract.ts`) to `meta.delivery_capability`.
 Config writers accept new delivery shapes only up to that level, because stable reads the
-same configs. Level 3 covers archived types (`templates[].archived`). A rollback with `wrangler rollback` does not lower the value: before rolling
+same configs. Level 3 covers archived types (`templates[].archived`). Level 4 means the data knows accounts (schema 5): once the first owner exists `ADMIN_TOKEN` grants nothing, and an older release would honor it again, so the standalone server refuses to start below 4. No config shape needs 4. A rollback with `wrangler rollback` does not lower the value: before rolling
 back past a release that raised it, check that no stored config needs the higher level
 (`noIssue: true` next to `delivery` keeps older releases from opening issues).
 
@@ -76,7 +76,7 @@ the update (see [SELF_HOSTING.md](SELF_HOSTING.md#data-backups-and-updates)).
 
 The standalone server ships as a tarball, so an operator installs a finished release without Git, pnpm or a compiler. Every dev build and every stable release carries three files on its GitHub release: `feedbackkit-vX.Y.Z.tar.gz`, `SHA256SUMS` and `SHA256SUMS.sig`. They are published only when the signing key of the channel is configured (see Release keys). An unsigned tarball is never attached.
 
-- **Contents:** a single-file `server.mjs` without `node_modules`, the widget and admin assets, the migrations, the systemd unit, `feedbackkit-update`, the public release keys and `bundle.json` (release, channel, schema version, delivery capability, file list). It is about 190 kB. `/diag` shows the release and channel from `bundle.json`.
+- **Contents:** a single-file `server.mjs` without `node_modules`, the widget and admin assets, the migrations, the systemd unit, `feedbackkit-update`, `feedbackkit-admin` (the host commands for accounts), the public release keys and `bundle.json` (release, channel, schema version, delivery capability, file list). It is about 360 kB. `/diag` shows the release and channel from `bundle.json`.
 - **Build:** `pnpm build:widget && pnpm build:server && pnpm build:bundle` writes `dist-bundle/`. Two builds of one release are byte-identical (`test/server-bundle.test.mjs`).
 - **What was tested is what ships:** promoting a dev build rebuilds the same commit under the stable version and compares the two tarballs. They must be equal except `bundle.json` and the widget with its version stamp (`scripts/compare-bundles.mjs`), or the promotion stops before anything is deployed.
 - **Target:** Node.js 24 or newer and the standard tools curl, tar, sha256sum and ssh-keygen. One tarball serves every Linux target.

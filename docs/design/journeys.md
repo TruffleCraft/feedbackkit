@@ -12,20 +12,20 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 |---|---|---|---|
 | J1 | Install on a Linux host (LXC, Hetzner, any VPS) | partly | autonomy |
 | J2 | Robin sees which release runs and that a newer one exists | works | autonomy |
-| J3 | Bootstrap the first owner | planned | autonomy |
+| J3 | Bootstrap the first owner | partly (API and host command, no screens) | autonomy |
 | J4 | Create a project and receive a first report | partly | autonomy |
 | J5 | Define feedback types, fields and destinations | partly | none |
 | J6 | Sam sends a report with a screenshot | works, unmasked | privacy |
 | J7 | Sam attaches an own image | gap | privacy |
 | J8 | Robin triages the local inbox | partly | none |
 | J9 | Robin follows a GitHub delivery | works on Cloudflare, unverified standalone | none |
-| J10 | Taylor signs in | planned | autonomy |
-| J11 | Robin is locked out and recovers | planned | autonomy |
+| J10 | Taylor signs in | partly (invitation and passkey API, no screens, no OIDC) | autonomy |
+| J11 | Robin is locked out and recovers | partly (host command, no screens) | autonomy |
 | J12 | Upgrade and roll back | partly | autonomy |
 | J13 | Reports expire | partly | privacy |
 | J14 | A setup agent installs and verifies | draft | autonomy |
 | J15 | Robin changes the widget look and previews it | partly | none |
-| J16 | Robin creates a scoped token for an agent or script | planned | autonomy |
+| J16 | Robin creates a scoped token for an agent or script | partly (API, no screens) | autonomy |
 | J17 | Robin embeds the team board in the product's own admin UI | planned | autonomy |
 | J18 | Sam follows their own reports | planned | autonomy |
 
@@ -63,8 +63,8 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Guarantees:** two simultaneous attempts produce one owner. No public first-user route exists. The last owner cannot be removed or demoted.
 - **Failure paths:** a second browser races the first, the passkey ceremony fails halfway, the public URL changes after enrollment (passkeys bind to it).
 - **Evidence:** integration tests with concurrent requests, a Playwright virtual authenticator, a threat model section in `docs/SECURITY.md`.
-- **Today:** not built. The only credential is the static `ADMIN_TOKEN`.
-- **Verified:** `code` `src/worker/admin/auth.ts` accepts a bearer token (or Cloudflare Access on the Worker) and nothing else.
+- **Today:** the backend is built on both runtimes: `feedbackkit-admin setup-link` (or `pnpm admin:link` on Cloudflare) issues a 30-minute link, `/api/auth/setup/*` creates the owner with a passkey, and two simultaneous claims yield one owner. `ADMIN_TOKEN` stops working and the server starts without it. The page the link opens is not built: it needs the approved mock ([mockups/accounts.md](mockups/accounts.md)), so a real person cannot finish the ceremony in the UI yet.
+- **Verified:** `test` `test/durable/accounts.test.ts` on workerd with D1 and on SQLite (the claim, the link, the refused `ADMIN_TOKEN`), `test/server-accounts.test.mjs` (the host command and a start without `ADMIN_TOKEN`). `live` 2026-11-11: `e2e/accounts-real-server.spec.ts` in Chrome with a virtual authenticator, including two browsers racing for the link; the clean-LXC drill in the [evidence](evidence/2026-11-11-gate2-accounts.md). Repeat: `pnpm test` and `pnpm exec playwright test e2e/accounts-real-server.spec.ts`.
 
 ## J4 Create a project and receive a first report
 
@@ -133,8 +133,8 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Guarantees:** invitations are single use and expire. OIDC identities bind by `iss` and `sub`. Sessions can be revoked. Taylor sees only the invited projects.
 - **Failure paths:** reused or expired invitation, an identity provider that returns an unverified email, a deleted passkey.
 - **Evidence:** tests for state, nonce and PKCE, for cross-project denial and for revocation. Libraries for WebAuthn and OIDC, no hand-written protocol.
-- **Today:** not built. Every credential holder is a full admin.
-- **Verified:** `code` as J3: one token, no roles.
+- **Today:** an owner invites a member (or another owner) and gets a 7-day single-use link. The person enrolls a passkey and signs in. A member uses every admin route except accounts and tokens until Step 4 adds authorization by project. OIDC is not built (Step 6), and the invitation screen is not built.
+- **Verified:** `test` `test/durable/accounts.test.ts` ("an owner invites a member ...", "an expired invitation can be renewed ...", "removing an account signs it out and revokes its tokens"), both runtimes.
 
 ## J11 Robin is locked out and recovers
 
@@ -143,8 +143,8 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Guarantees:** recovery needs host access, or on Cloudflare the operator's Cloudflare credentials. A valid login is never blocked by the failed-login counter of other people.
 - **Failure paths:** all passkeys lost, the identity provider is down, a flood of wrong tokens from other visitors.
 - **Evidence:** a test with and without a reverse proxy that 25 wrong tokens do not block the right one. A recovery drill on a clean instance.
-- **Today:** 21 wrong tokens from one address make the correct token return 429 (reproduced). Behind a proxy that address is shared by everyone.
-- **Verified:** `live` 25 wrong tokens, then the correct one: 401 until the 21st, then 429 for the correct token too. The proxy case follows from `scripts/server.mjs` setting the client address from the socket (`code`) and was not run behind a real proxy.
+- **Today:** the account system never refuses a valid credential because of failed attempts. Failures are counted per hashed address and per account and answered `429` over the limit. `recovery-link` (or `pnpm admin:link --recovery`) issues a link that replaces the passkeys and signs out the sessions. The legacy `ADMIN_TOKEN` keeps its old lockout until the first owner exists. No recovery screen yet.
+- **Verified:** `test` "failed sign-ins are throttled without refusing a valid one" and the token variant (both runtimes), and `test/server-accounts.test.mjs` on the real server with `FK_TRUSTED_PROXY_HOPS=1` and without it. `live` the recovery drill in Chrome (`e2e/accounts-real-server.spec.ts`) and on a clean LXC ([evidence](evidence/2026-11-11-gate2-accounts.md)).
 
 ## J12 Upgrade and roll back
 
@@ -173,7 +173,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Guarantees:** the guide names what it could not verify. Secrets never appear in output. An agent never completes a passkey ceremony or holds an owner's credentials. The create response contains the snippet.
 - **Failure paths:** a local AI endpoint that needs no key but the gateway insists on one, an agent that claims a planned feature.
 - **Evidence:** an agent run on a clean host with a transcript, each claim in the guide linked to a test or a step.
-- **Today:** the guide is a draft. It describes a placeholder key for local AI and a snippet the API does not return.
+- **Today:** the guide is a draft. It describes a placeholder key for local AI and a snippet the API does not return. It now describes the account handoff (the bootstrap link goes to the operator, the agent never completes a passkey ceremony, a scoped token comes back) and the two checks that say whether a release has accounts. No agent run has used that part yet.
 - **Verified:** `doc` `docs/AGENT_SETUP.md:45` (install the returned snippet) and `:51` (placeholder key). `code` the create route returns no snippet (J4).
 
 ## J15 Robin changes the widget look and previews it
@@ -193,8 +193,8 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Guarantees:** the token is hashed at rest and shown once. A request outside its scope is refused with 403. A revoked token gets 401. The old `ADMIN_TOKEN` is refused once the first owner exists.
 - **Failure paths:** a leaked token (revoke it), a token with too wide a scope, an agent that stores the token in a log.
 - **Evidence:** tests for scope, revocation and the refused `ADMIN_TOKEN` on both runtimes, and a setup-agent run that uses a scoped token (J14).
-- **Today:** not built. `ADMIN_TOKEN` is the only credential for scripts and agents.
-- **Verified:** `code` as J3: one token, no roles, no scopes.
+- **Today:** an owner creates tokens through `POST /api/admin/tokens`. A token is read-only or write, covers all projects or a list, ends after 1 to 365 days, is shown once and stored hashed. A request outside its scope is 403, a revoked token 401, and the old `ADMIN_TOKEN` is refused once the first owner exists. No screen yet.
+- **Verified:** `test` "scoped API tokens (J16)" (both runtimes), `test/auth-gate.test.ts`, `e2e/accounts-real-server.spec.ts`.
 
 ## J17 Robin embeds the team board in the product's own admin UI
 

@@ -41,8 +41,8 @@ Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready)
 | Create-only project API and New project dialog | yes | yes | branch |
 | Local AI endpoint without a placeholder key | yes | yes | planned |
 | Masked images only, uploaded after review | yes | yes | planned |
-| Local accounts, passkeys, recovery | yes | yes | planned |
-| Scoped API tokens for scripts and agents, replacing `ADMIN_TOKEN` | yes | yes | planned |
+| Local accounts, passkeys, recovery | yes | yes | planned (backend built, screens pending) |
+| Scoped API tokens for scripts and agents, replacing `ADMIN_TOKEN` | yes | yes | planned (backend built, screens pending) |
 | OIDC sign-in (Pocket ID or any provider) | yes | yes | planned |
 | Board view of the local inbox | yes | yes | planned |
 | Team board embedded in the host's own UI, opened with a signed link (S21) | yes | yes | planned |

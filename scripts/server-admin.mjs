@@ -21,7 +21,8 @@ const USAGE = `Usage: feedbackkit-admin <command>
                                               print a one-time link that replaces the passkeys of an account
   accounts                                    list the accounts
 
-Run it as the user that owns the data directory (for example: sudo -u feedbackkit feedbackkit-admin setup-link).
+Run it with sudo (for example: sudo feedbackkit-admin setup-link). It reads /etc/feedbackkit.env as root and then
+continues as the user that owns the data directory, so the files it touches stay readable for the service.
 The link works once and expires: 30 minutes by default.`;
 
 /** Reads KEY=value lines in the format systemd's EnvironmentFile uses. Comments and blank lines are skipped, matching quotes are removed. */
@@ -61,15 +62,23 @@ export async function runAdmin(args, { root, processEnv = process.env, stdout = 
   const envFile = processEnv.FK_ENV_FILE || "/etc/feedbackkit.env";
   let fromFile = {};
   if (existsSync(envFile)) {
-    try { fromFile = parseEnvFile(readFileSync(envFile, "utf8")); } catch { stderr(`Could not read ${envFile}. Run this command as root or as the service user, or set FK_DATA_DIR and FK_PUBLIC_URL yourself.`); return 1; }
+    try { fromFile = parseEnvFile(readFileSync(envFile, "utf8")); } catch { stderr(`Could not read ${envFile}. Run this command with sudo, or set FK_DATA_DIR and FK_PUBLIC_URL in its environment.`); return 1; }
   }
   const setting = (name) => processEnv[name] || fromFile[name];
-  const dataDir = setting("FK_DATA_DIR") || join(root, "data");
+  // The systemd unit sets FK_DATA_DIR itself, so the environment file may not name it: the unit's default is the next guess.
+  const dataDir = setting("FK_DATA_DIR") || (existsSync("/var/lib/feedbackkit/feedbackkit.sqlite") ? "/var/lib/feedbackkit" : join(root, "data"));
   const database = join(dataDir, "feedbackkit.sqlite");
   if (!existsSync(database)) { stderr(`No database at ${database}. Check FK_DATA_DIR in ${envFile}, and start the service once so that it creates the database.`); return 1; }
-  if (typeof process.getuid === "function" && statSync(dataDir).uid !== process.getuid()) {
-    stderr(`${dataDir} belongs to another user. Running as ${process.getuid()} would leave files there that the service cannot write. Run it as the owner of that directory, for example: sudo -u feedbackkit feedbackkit-admin ${args.join(" ")}`);
-    return 1;
+  if (typeof process.getuid === "function") {
+    const owner = statSync(dataDir);
+    if (process.getuid() === 0 && owner.uid !== 0) {
+      // Root read the environment file; from here on act as the service user, so that the database files this
+      // command creates or rewrites (the write-ahead log) belong to the service and not to root.
+      try { process.setgroups([owner.gid]); process.setgid(owner.gid); process.setuid(owner.uid); } catch (e) { stderr(`Could not switch to the owner of ${dataDir}: ${e.message}`); return 1; }
+    } else if (process.getuid() !== owner.uid) {
+      stderr(`${dataDir} belongs to another user. Running as ${process.getuid()} would leave files there that the service cannot write. Run it with sudo, for example: sudo feedbackkit-admin ${args.join(" ")}`);
+      return 1;
+    }
   }
 
   let origin;

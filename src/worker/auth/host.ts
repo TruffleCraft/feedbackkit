@@ -1,7 +1,10 @@
 import type { Env } from "../env.js";
 import { AuthError, findLiveAccountByName, listAccounts, ownerExists } from "./accounts.js";
-import { issueLink, setupUrl } from "./links.js";
+import { issueLink, openLink, setupUrl } from "./links.js";
 import { SESSION_IDLE_MS } from "./sessions.js";
+
+// openLink is exported for tests that check links written by another path (scripts/admin-link.mjs).
+export { openLink };
 
 // What the host commands run (scripts/server-admin.mjs on the standalone server,
 // scripts/admin-link.mjs for Cloudflare share the same rules through the SQL in

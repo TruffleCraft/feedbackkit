@@ -38,6 +38,12 @@ Only reports delivered to the **FeedbackKit inbox** have a local Open/Done/Dismi
 
 Retention applies to log records, inbox reports and attachments whether handled or not. It is not an indefinite audit archive. Retention must be at least 7 days, the notice period for unhandled reports; the gateway refuses a shorter value when settings are written. When a review changes the retention, it states how many stored reports and attachments the next daily cleanup deletes, and you cannot publish before you have seen it. Deleting a FeedbackKit record or attachment does not close or delete its GitHub ticket.
 
+## Accounts and tokens
+
+People sign in with passkeys. An **owner** can invite members and other owners, renew a link, change roles, remove accounts and create **API tokens**; a **member** can use every other admin route (authorization by project comes with Step 4). Scripts and agents use an API token, never a person's session: it is shown once, is read-only or can write, covers all projects or a list, and ends after 1 to 365 days (90 by default). A token cannot create tokens or accounts, and a token limited to projects cannot open the system page, import settings or create projects. Revoking a token or removing an account takes effect on the next request.
+
+The last owner cannot be demoted or removed, and an account always keeps one passkey. If every passkey is lost, an operator with host access issues a recovery link (`feedbackkit-admin recovery-link`, or `pnpm admin:link --recovery` on Cloudflare): it replaces the account's passkeys and signs out its sessions. API tokens survive recovery, so review the list afterwards. How to set it up: [SELF_HOSTING.md](SELF_HOSTING.md#accounts-and-recovery) and [QUICKSTART.md](QUICKSTART.md#accounts). The API errors are in [ERRORS.md](ERRORS.md#accounts-sessions-and-tokens). **Status:** the screens for all of this come with the approved mock; the API and the host commands exist now.
+
 ## Credentials and hosting
 
 On Cloudflare, use Worker secrets. On a server or LXC, use the protected environment file used by the service; for a foreground run use `.env`. Restart the standalone service after changing credentials. Project settings can be edited and published without restarting.
