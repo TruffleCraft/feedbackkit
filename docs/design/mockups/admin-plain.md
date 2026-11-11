@@ -1,6 +1,6 @@
 # Plain admin layout
 
-Status: waiting for a pick. This is a mock only. Nothing in `src/admin/` or `src/worker/admin/` has changed.
+Status: variant B picked by the owner on 2026-11-11, with the system font and native controls as drawn. This PR stays a mock. The build is in the follow-up PR.
 
 The owner finds the admin too loud and wants it as quiet as the NORA Web and iCloud-MCP dashboards. Open [admin-plain/index.html](admin-plain/index.html) for the three variants side by side, or open one variant and click through it: [A](admin-plain/a-top-bar.html), [B](admin-plain/b-sidebar.html), [C](admin-plain/c-drill-down.html). Each file stands alone, follows the system light or dark setting (or the switch in the bar on top) and turns into one column below 640 px. A button that is not drawn says so in a short message. All names and numbers are invented.
 
