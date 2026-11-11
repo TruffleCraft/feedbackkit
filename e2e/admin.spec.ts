@@ -593,11 +593,15 @@ test.describe("project detail", () => {
   });
 
   test("send a real test report from the setup page", async ({ page }) => {
-    const { writes } = await installAdminMocks(page);
+    const { writes, requests } = await installAdminMocks(page);
     await signedIn(page);
     await page.goto("/admin/projects/harborline#setup");
+    await expect(page.locator("#rows .report").first()).toBeAttached();
+    const before = requests.length;
     await page.getByRole("button", { name: "Send test report" }).click();
     await expect(page.locator("#test-report-msg")).toContainText("Delivered: Issues.");
+    // The list is read again, so the new report is there when Reports opens.
+    await expect.poll(() => requests.length).toBeGreaterThan(before);
     await expect(page.locator("#test-report-msg").getByRole("link", { name: "Open" })).toHaveAttribute("href", "https://github.com/harborline/web/issues/300");
     expect(writes.at(-1)).toMatchObject({ method: "POST", path: "/api/admin/projects/harborline/test-report" });
   });

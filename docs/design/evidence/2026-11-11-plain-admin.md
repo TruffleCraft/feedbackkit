@@ -10,7 +10,7 @@ Run on 2026-11-11 against the build of this branch, in Google Chrome 157 driven 
 | `pnpm test` | 411 passed (Node), 149 passed (workerd), 149 passed (conformance) |
 | `pnpm test:server` | 130 passed |
 | Playwright, all specs, both projects (1280 px desktop and Pixel 5) | 158 passed, 12 skipped by design (tests that only make sense at one viewport) |
-| `pnpm check:bundle` | widget 22.8 of 23.0 kB, auth 6.7 of 9.0 kB, admin 16,695 bytes of 17,152 (budget raised from 15,872, see the PR) |
+| `pnpm check:bundle` | widget 22.8 of 23.0 kB, auth 6.7 of 9.0 kB, admin 16,725 bytes of 17,152 (budget raised from 15,872, see the PR) |
 
 ## Every changed button, clicked once
 
@@ -44,7 +44,7 @@ The Admin rows use the e2e fixtures with the API mocked per request. The Account
 | Admin, desktop 1280 px | Dismiss | PATCH /api/admin/feedback/loc-1 | still in the Inbox: open list: 0 rows |
 | Admin, desktop 1280 px | Delete report… | DELETE /api/admin/feedback/loc-1 | rows with that title: 0 |
 | Admin, desktop 1280 px | Copy snippet | none | message: Copied; clipboard: <script src="http://localhost:8797/w… |
-| Admin, desktop 1280 px | Send test report | POST /api/admin/projects/harborline/test-report | Delivered: Issues. Open |
+| Admin, desktop 1280 px | Send test report | POST /api/admin/projects/harborline/test-report<br>GET /api/admin/projects/harborline/feedback | Delivered: Issues. Open |
 | Admin, desktop 1280 px | Settings: AI & follow-ups | none | tab pressed: true |
 | Admin, desktop 1280 px | Settings: General | none | fields: 10 |
 | Admin, desktop 1280 px | Set (Rate limit) | none | Rate limit now a field: 1 |
@@ -72,14 +72,14 @@ The Admin rows use the e2e fixtures with the API mocked per request. The Account
 | Accounts, real server | Revoke all other sessions (disabled with one session) | none | disabled: true |
 | Accounts, real server | Sidebar: Users | GET /api/admin/projects<br>GET /api/admin/accounts | Users: 1 user · 1 owner |
 | Accounts, real server | Invite user | none | dialog: Invite user |
-| Accounts, real server | Create invitation | POST /api/admin/accounts<br>GET /api/admin/accounts | Invite user; link starts: http://localhost:50098/admin/setup#fk_… |
+| Accounts, real server | Create invitation | POST /api/admin/accounts<br>GET /api/admin/accounts | Invite user; link starts: http://localhost:52382/admin/setup#fk_… |
 | Accounts, real server | Copy link | none | button reads: Copied |
 | Accounts, real server | Done (invitation) | none | Taylor listed: Taylor MemberInvitedNo passkey yet · Invitation expires 18 N |
-| Accounts, real server | New link | POST /api/admin/accounts/7dfa459f-ff3d-4dc6-a929-b30284f8a595/link | dialog: New link for Taylor |
+| Accounts, real server | New link | POST /api/admin/accounts/8ab25a31-dc2e-4eaa-845a-c92c761a89a5/link | dialog: New link for Taylor |
 | Accounts, real server | Done (new link) | none | dialog closed: true |
 | Accounts, real server | Make owner | none | (an invited user shows New link, not Make owner) |
 | Accounts, real server | Remove (Taylor) | none | dialog: Remove Taylor? |
-| Accounts, real server | Remove Taylor | DELETE /api/admin/accounts/7dfa459f-ff3d-4dc6-a929-b30284f8a595<br>GET /api/admin/accounts | users: 1 user · 1 owner |
+| Accounts, real server | Remove Taylor | DELETE /api/admin/accounts/8ab25a31-dc2e-4eaa-845a-c92c761a89a5<br>GET /api/admin/accounts | users: 1 user · 1 owner |
 | Accounts, real server | Show removed | GET /api/admin/accounts?removed=1 | aria-pressed true, rows: 2 |
 | Accounts, real server | Sidebar: API tokens | GET /api/admin/projects<br>GET /api/admin/tokens | API tokens |
 | Accounts, real server | Create token | GET /api/admin/projects | dialog: Create an API token; project boxes: 2 |
@@ -87,7 +87,7 @@ The Admin rows use the e2e fixtures with the API mocked per request. The Account
 | Accounts, real server | Copy token | none | button reads: Copied |
 | Accounts, real server | Done (token) | none | tokens listed: 1; token field empty: true |
 | Accounts, real server | Revoke (token) | none | dialog: Revoke Setup agent? |
-| Accounts, real server | Revoke token | DELETE /api/admin/tokens/748c23dd-2013-4534-8f40-f194bb0598f4<br>GET /api/admin/tokens | token row: Setup agent ReadAll projectsRevoked fk_tok_rsCsvM… · Revoked 11 Nov 2026 |
+| Accounts, real server | Revoke token | DELETE /api/admin/tokens/e2e73547-fb49-4bd5-b60c-0426aa29350d<br>GET /api/admin/tokens | token row: Setup agent ReadAll projectsRevoked fk_tok_5tZf2R… · Revoked 11 Nov 2026 |
 | Accounts, real server | Sign out | POST /api/auth/signout | sign-in page: Sign in |
 | Accounts, real server | Sign in with a passkey | POST /api/auth/signin/begin<br>POST /api/auth/signin/finish<br>GET /api/admin/projects | Projects page, who: Signed in as Robin |
 

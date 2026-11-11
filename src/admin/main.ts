@@ -766,7 +766,7 @@ function initHistory(id: string, typeLabels: Map<string, string>) {
   });
   more.addEventListener("click", () => void load(false));
   void load(true);
-  return { open: showReport };
+  return { open: showReport, reload: () => load(true) };
 }
 
 const SECTIONS = [["history", "Reports"], ["setup", "Setup"], ["types", "Types"], ["config", "Settings"]] as const;
@@ -894,7 +894,7 @@ async function loadProject() {
   const id = decodeURIComponent(location.pathname.split("/")[3] ?? "");
   $("p-crumb").textContent = id;
   document.title = `${id} · FeedbackKit admin`;
-  const reports = { open: (_id: string | null): void => undefined };
+  const reports = { open: (_id: string | null): void => undefined, reload: (): void => undefined };
   const applyRoute = initSections((report) => reports.open(report));
   applyRoute();
   const base = `/api/admin/projects/${encodeURIComponent(id)}`;
@@ -911,7 +911,9 @@ async function loadProject() {
   }
   $("p-meta").textContent = `${cfg.publicKey} · settings revision ${cfg.configVersion}`;
   renderTypes(cfg);
-  reports.open = initHistory(id, new Map(cfg.templates.map((t) => [t.type, labelText(t.label, cfg.locale) || t.type]))).open;
+  const history = initHistory(id, new Map(cfg.templates.map((t) => [t.type, labelText(t.label, cfg.locale) || t.type])));
+  reports.open = history.open;
+  reports.reload = () => void history.reload();
   applyRoute();
 
   const exp = $<HTMLButtonElement>("p-export");
@@ -931,7 +933,7 @@ async function loadProject() {
     fail(err, "the funnel");
   }
   renderSetup(cfg, funnel);
-  initTestReport(base);
+  initTestReport(base, () => reports.reload());
   initConfigEditor(id, base, (v) => ($("p-meta").textContent = `${cfg.publicKey} · settings revision ${v}`));
 }
 
@@ -1122,7 +1124,7 @@ function initConfigEditor(id: string, base: string, onPublished: (version: numbe
   })();
 }
 
-function initTestReport(base: string) {
+function initTestReport(base: string, onSent: () => void) {
   const btn = $<HTMLButtonElement>("test-report");
   const msg = $("test-report-msg");
   btn.addEventListener("click", async () => {
@@ -1131,6 +1133,7 @@ function initTestReport(base: string) {
     msg.textContent = "Sending…";
     const r = await send("POST", `${base}/test-report`, {});
     btn.disabled = false;
+    if (r.status === 200) onSent();
     const state = r.json["deliveryState"];
     const where = DELIVERY_WORD[r.json["delivery"] as Delivery] ?? "the history";
     const url = safeUrl((r.json["projectUrl"] as string) || (r.json["issueUrl"] as string));
