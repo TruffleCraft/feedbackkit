@@ -45,6 +45,8 @@ export async function buildBundle({ root, outDir, release, commit = null, epoch 
     target: "node24",
     legalComments: "none",
     logLevel: "silent",
+    // dist-server/app.mjs already has the alias applied; this covers any module the server pulls in itself.
+    alias: { "cloudflare:workers": join(root, "src/worker/standalone/cloudflare-workers.ts") },
   });
   entries.push({ path: `feedbackkit-v${release}/server.mjs`, mode: 0o644, data: bundled.outputFiles[0].contents });
   // The command that moves a gateway from Cloudflare into this server (J19), built the same way.

@@ -60,4 +60,6 @@ Report the installed release, gateway/admin addresses, configured project and we
 
 Link [GETTING_STARTED.md](GETTING_STARTED.md), [ADMIN.md](ADMIN.md) and the relevant update instructions: a tarball install updates and rolls back with `feedbackkit-update` ([Updating](RELEASES.md#updating)). List the next required action only if the operator must still do it. Do not claim account/passkey login or screenshot masking until the installed release's flow has been verified.
 
+If the operator wants an agent to read feedback through MCP: on Cloudflare see [MCP for agents](QUICKSTART.md#mcp-for-agents); a server installation cannot approve connections yet ([MCP for agents](SELF_HOSTING.md#mcp-for-agents)), so say so and do not enable `FK_MCP`. The person who approves a connection signs in themselves. Never sign in for them or hand an agent their credentials.
+
 Co-created by Michel with NORA (AI Agent)

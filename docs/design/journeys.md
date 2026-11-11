@@ -29,6 +29,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 | J17 | Robin embeds the team board in the product's own admin UI | planned | autonomy |
 | J18 | Sam follows their own reports | planned | autonomy |
 | J19 | Robin moves a gateway from Cloudflare to the standalone server | works | autonomy |
+| J20 | Robin connects an agent to the gateway through MCP | works on Cloudflare. Standalone: plumbing built, off, blocked on accounts | autonomy (consent through accounts) |
 
 ## Diagrams
 
@@ -226,5 +227,15 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Evidence:** the tool run against a local D1 and R2 that a Worker filled with fictional data, then the standalone server started on the result: `/diag`, the inbox, an attachment download, the public config through the old project key. A unit test for each refusal.
 - **Today:** built. `feedbackkit-migrate` ships in the release tarball with `export` and `import`, and `import` takes `--dry-run`, `--replace-existing` and `--json`. It moves projects, public keys, settings revisions, reports with their delivery state, inbox state, attachments, funnel events, the idempotency table and the delivery capability. `docs/SELF_HOSTING.md` has the section "Move from Cloudflare", including what stays different: no OAuth or MCP, no Cloudflare Access, counters start at zero, secrets are set on the new host. A remote export was not run, because the tests never touch a Cloudflare account.
 - **Verified:** `test` `test/server-migrate.test.mjs` (every refusal, old schemas with their backfills, the dry run, missing attachments, a copy that does not match the export, export with a stand-in wrangler, and the command from the tarball through a link) and `test/server-migrate-e2e.test.mjs` (the real wrangler on a local D1 and R2: the standalone server on the result answers exactly as the Worker did, and the attachments download byte for byte). `live` 2026-11-11: the run in the [evidence](evidence/2026-11-11-cloudflare-move.md). Repeat: `pnpm build:widget && pnpm build:server && node --test test/server-migrate.test.mjs test/server-migrate-e2e.test.mjs`.
+
+## J20 Robin connects an agent to the gateway through MCP
+
+- **Goal:** an agent such as Claude Code reads projects and feedback from the gateway without the admin token in its hands, and Robin decides who may connect.
+- **Steps:** Robin adds the gateway's `/mcp` address in the client. The client finds the authorization server through the 401, registers itself and opens the consent page of the gateway. Robin is signed in (Cloudflare Access on Cloudflare, the account session on a standalone server once Gate 2 ships), checks the app name and the host the tokens go to, and clicks Allow. The agent lists projects and reads feedback.
+- **Guarantees:** nothing is granted without a sign-in and the click. The handle works once and only in the browser that opened the page. A grant carries read scopes at most, and a call outside them is refused. Issuer and resource come from `FK_PUBLIC_URL`. Where MCP is off every path answers 404 and says why.
+- **Failure paths:** no sign-in (a page that says so, nothing stored), a replayed or foreign handle (400), a wrong redirect URI or resource (an error page or `invalid_target`), a client that needs Client ID Metadata Documents (not offered on a standalone server).
+- **Evidence:** on Cloudflare the existing tests. On a standalone server the MCP SDK client does the whole flow against the bundled app with a stub identity, and a clean Debian 13 LXC ran an earlier version of the change behind https, through a restart, a reboot and a rollback to 0.2.0 ([evidence](evidence/2026-11-11-standalone-mcp.md)).
+- **Today:** works on Cloudflare. On a standalone server the plumbing exists and is off by default, and with `FK_MCP=on` it refuses every consent request, because there is no identity: accounts are not built. No operator can connect an agent to a standalone server yet.
+- **Verified:** `test` `test/server-oauth.test.mjs`, `test/server-mcp-e2e.test.mjs`, `test/consent-identity.test.ts`, `test/durable/mcp-oauth-flow.test.ts` (workerd and Node), `test/durable/kv-contract.test.ts`, and the Worker's `test/mcp-oauth.test.ts`. Not run: Claude Code, claude.ai, ChatGPT or Hermes against a public address.
 
 Co-created by Michel with NORA (AI Agent)

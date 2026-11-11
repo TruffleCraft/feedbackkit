@@ -175,6 +175,8 @@ app.get("/diag", async (c) => {
       firstRun,
       nextSteps,
       checks: { tracker, llm, r2, retention, project: projectCheck },
+      // Only the standalone server says (it sets MCP_STATUS); the Worker has no such line.
+      ...(c.env.MCP_STATUS ? { mcp: c.env.MCP_STATUS } : {}),
       ok,
     },
     ok ? 200 : 503,

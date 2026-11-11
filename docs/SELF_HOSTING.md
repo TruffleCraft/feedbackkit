@@ -8,7 +8,7 @@ What is verified and what is not: the server and its tests run on a developer ma
 
 Coming from Cloudflare? [Move from Cloudflare](#move-from-cloudflare) copies your data across.
 
-The Cloudflare installation additionally supports OAuth/MCP through its Worker OAuth provider. Those endpoints are explicitly unavailable in the standalone server; admin and widget operation do not depend on them.
+The server carries the plumbing for MCP (the OAuth provider and the MCP server at `/mcp`), off by default, because approving a connection needs the account sign-in of Gate 2, which is not built. Agents cannot connect to a standalone server yet ([MCP for agents](#mcp-for-agents)).
 
 ## Node.js on a server or Proxmox LXC
 
@@ -81,6 +81,14 @@ sudo systemctl daemon-reload && sudo systemctl enable --now feedbackkit
 
 Both checks must pass before you extract anything. The unit expects Node at `/usr/bin/node`; change `ExecStart` if yours is elsewhere. `/diag` shows the release and channel, and the System page tells you when a newer release exists (`FK_UPDATE_CHECK` turns that off). To update, run `/opt/feedbackkit/current/feedbackkit-update --check`, then without `--check`. [Updating](RELEASES.md#updating) lists the commands.
 
+## MCP for agents
+
+Not available yet. On Cloudflare an agent such as Claude Code connects to `/mcp` with OAuth 2.1 after a person approves it on a consent page behind Cloudflare Access. A standalone server has no Access, and the sign-in that replaces it is the account system of Gate 2, which is not built. Until then nobody can approve a connection, so no agent can connect, and the server does not pretend otherwise.
+
+What is there: the OAuth provider and the MCP server run in the same server with the same tools and read-only scopes as on Cloudflare, and their state lives in the table `_fk_kv` of `feedbackkit.sqlite`, so backups and a rollback carry it and an older release ignores it. The plumbing is off. The start log says so (`MCP off (approving a connection needs accounts, which are not built yet)`), `/diag` shows the same line as `mcp`, and every `/mcp`, `/oauth/*` and `/.well-known/oauth-*` path answers 404 and names the reason.
+
+`FK_MCP=on` serves the plumbing anyway, for people who build on it: the metadata, the client registration and `/mcp` answer, and `/oauth/authorize` refuses every request because no identity exists. It needs an https `FK_PUBLIC_URL` (or `http://localhost` with `HOST=127.0.0.1` for a test), and the server refuses to start where a sign-in would travel in clear text. Leave it unset otherwise. What the plumbing exposes: [SECURITY.md](SECURITY.md#identity-on-the-standalone-server).
+
 ## Configuration
 
 | Variable | Purpose |
@@ -92,6 +100,7 @@ Both checks must pass before you extract anything. The unit expects Node at `/us
 | `LLM_API_KEY`, `GITHUB_PAT_<name>`, `TURNSTILE_SECRET_<name>` | Optional integration secrets; project settings reference the variable names |
 | `FK_UPDATE_CHECK` | Default `on`. On a release tarball install the System page tells you when a newer release exists. The server asks the GitHub Releases API at most once a day (once an hour after a failed check) and sends nothing about your installation. `off` turns the check and the notice off. Any other value stops the start. A checkout install never checks |
 | `FK_UPDATE_API` | The releases API the notice asks. Default: this project's GitHub API. Set it for a mirror or a test |
+| `FK_MCP` | Unset or `off`: MCP is off. `on` serves the OAuth plumbing, but nothing can be approved until accounts exist ([MCP for agents](#mcp-for-agents)). Any other value stops the start, and so does `on` with an address that would carry a sign-in in clear text |
 | `FK_TRUSTED_PROXY_HOPS` | Default 0. The number of reverse proxies in front of this server, for example 1 for one nginx or Caddy. The visitor address for rate limits and the failed-login limit is then read from `X-Forwarded-For` through that many proxies, counted from the right. With 0 every client behind a proxy shares the proxy's address, and the server logs a warning once |
 
 Never expose a plain HTTP admin endpoint to the internet. Use HTTPS through your own reverse proxy and preserve the external Host/Origin. Incoming Cloudflare Access assertion headers are discarded by the standalone server; login uses the admin token. `FK_TRUSTED_PROXY_HOPS` is a network trust decision, not an automatic detector: set it to the real number of proxies, or a client can pick its own address. The earlier `FK_TRUST_PROXY=true` is refused at start. Request paths that start with two slashes are answered with 400, and the server builds every request URL from `FK_PUBLIC_URL`, never from the `Host` header.

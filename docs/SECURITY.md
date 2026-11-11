@@ -111,13 +111,14 @@ an object from R2 does **not** guarantee GitHub's cached copy is gone. Therefore
 The standalone Node server (`scripts/server.mjs`) runs the same application as the Worker, so everything above applies. These points are specific to it. Each one has a test, listed in [claims and their proof](design/claims.md).
 
 - **Trust boundary.** TLS and the reverse proxy are the operator's. The server builds every request URL from `FK_PUBLIC_URL` and never from the `Host` header, and answers 400 to a path that starts with `//` or `/\`. The client address comes from the socket, or from `X-Forwarded-For` read from the right through `FK_TRUSTED_PROXY_HOPS` proxies. Without that setting every client behind a proxy shares one address and one failed-login limit, and the server logs a warning once.
-- **Admin credential.** `ADMIN_TOKEN` of at least 32 characters is the only credential. After 20 failed attempts per client address and hour the admin API answers 429 even to the right token. Cloudflare Access headers are discarded.
+- **Admin credential.** `ADMIN_TOKEN` of at least 32 characters is the only credential. After 20 failed attempts per client address and hour the admin API answers 429 even to the right token. Cloudflare Access headers are discarded. 
 - **Environment.** The application receives `ADMIN_TOKEN`, `LLM_API_KEY`, `GITHUB_PAT_*`, `TURNSTILE_SECRET_*` and `FK_RELEASE`, not the whole process environment. A project's settings can name only `GITHUB_PAT_<name>` secrets, so they cannot point at `ADMIN_TOKEN` or another variable.
 - **Attachments.** Only attachments of reports delivered as GitHub issues are served at `/attachments/<key>`, because an issue image needs a public URL. They carry `Content-Security-Policy: default-src 'none'; sandbox` and `nosniff`. Screenshots of inbox reports and Project drafts are served at `/admin/assets/<key>` and need the admin sign-in. The admin page fetches them with the `Authorization` header.
 - **Deletion.** The database runs with `secure_delete=ON` and `auto_vacuum=INCREMENTAL`. After attachments or reports are deleted the server hands the freed pages back and truncates the write-ahead log, so the deleted content is in neither the database file nor the log. This covers those files only. Snapshots of the disk or the LXC, backups and copies of the data directory keep what they held, and GitHub keeps issue text and may cache images (see camo above).
 - **Durability.** The database runs in WAL mode with `synchronous=NORMAL`. A crash of the process loses nothing that was confirmed. A power loss or kernel crash can lose the last few reports but does not corrupt the database.
 - **Files.** The server sets `umask 077`, so the data directory and the database are readable by its user only.
 - **Update check.** On a release tarball install the server makes one `GET` to the GitHub Releases API at most once a day (once an hour after a failure) so the System page can say that a newer release exists. The request carries a fixed `User-Agent` (`feedbackkit-update-check`) and an `Accept` header: no credential, cookie, installed version or host name. GitHub sees the server's IP address, as it does for any client. The browser never calls GitHub, and the admin CSP stays `connect-src 'self'`. The link to the release notes is built from the validated version, never taken from the answer. A failed or rate-limited check shows a short fixed reason on the System page and changes nothing else. `FK_UPDATE_CHECK=off` removes it, and a checkout install and Cloudflare make no such request. Test: `test/server-update-notice.test.mjs`.
+- **MCP.** Off, and nobody can approve a connection yet: the consent step needs an account sign-in, and accounts are not built. `FK_MCP=on` serves the OAuth endpoints anyway and approves nothing. See [Identity on the standalone server](#identity-on-the-standalone-server). Tests: `test/server-oauth.test.mjs`, `test/server-mcp-e2e.test.mjs`.
 - **Move from Cloudflare.** `feedbackkit-migrate export` reads D1 and R2 with the operator's own wrangler login and writes every report and screenshot into a directory, so that directory is as sensitive as the database: keep it private and delete it after the import. The export holds no secrets, because D1 stores variable names only. The import refuses a damaged or edited export (checksums), writes in one transaction and checks counts and checksums before and after it commits. Tests: `test/server-migrate.test.mjs` and `test/server-migrate-e2e.test.mjs`.
 - **Not built yet.** Accounts, passkeys and scoped API tokens (Gate 2), masking of screenshots before upload (Gate 1) and signed release artifacts (Step D). See the [plan](design/autonomous-admin-plan.md).
 
@@ -200,9 +201,11 @@ and `Cache-Control: no-store` (ADR-014).
 
 ## MCP server (`/mcp`)
 
-Optional, read-only, off unless the operator binds a KV namespace as
-`OAUTH_KV` (build variable `FK_OAUTH_KV_ID`). Without it, `/mcp`, `/oauth/*`
-and `/.well-known/oauth-*` answer 404 (ADR-015).
+Optional and read-only (ADR-015). On the Worker it is off unless the operator
+binds a KV namespace as `OAUTH_KV` (build variable `FK_OAUTH_KV_ID`). On the
+standalone server it is off, and it stays off for operators until accounts exist
+(`FK_MCP=on` serves the plumbing, see [below](#identity-on-the-standalone-server)).
+Where it is off, `/mcp`, `/oauth/*` and `/.well-known/oauth-*` answer 404.
 
 ### OAuth 2.1
 
@@ -210,19 +213,26 @@ The gateway is its own authorization server and the resource server, both from
 `@cloudflare/workers-oauth-provider`: authorization code with S256 PKCE only,
 dynamic client registration and Client ID Metadata Documents, RFC 8414 and
 RFC 9728 metadata, tokens bound to the resource `https://<gateway>/mcp`
-(RFC 8707), rotating refresh tokens. KV stores tokens as hashes and the grant
-props encrypted. Access tokens live one hour, refresh tokens 30 days. `/mcp`
+(RFC 8707), rotating refresh tokens. Storage (the Worker's KV namespace, or the
+table `_fk_kv` in the standalone server's SQLite file) holds tokens as hashes
+and the grant props encrypted. Access tokens live one hour, refresh tokens 30 days. `/mcp`
 takes nothing else: no `ADMIN_TOKEN`, no Access JWT, no cookie.
 
 Fetching a Client ID Metadata Document is a request to a URL the client
 chooses. The Worker runs with the `global_fetch_strictly_public` compatibility
 flag, so such a fetch can't reach an origin inside the operator's zone; the
-provider adds its own size and time limits.
+provider adds its own size and time limits. The standalone server turns
+Client ID Metadata Documents off: Node has no such flag, so the fetch could
+reach private addresses, and clients register through `/oauth/register`
+instead.
 
 ### Consent
 
-`/oauth/authorize` is the only route the application owns. A grant needs two
-things:
+`/oauth/authorize` is the only route the application owns. It asks one function
+who is signing in, `authenticateConsent()` (`src/worker/oauth/consent-identity.ts`).
+On the Worker that is Cloudflare Access, and a grant needs two things (the
+standalone server has no identity to give yet, see
+[below](#identity-on-the-standalone-server)):
 
 - A Cloudflare Access identity, checked with the same `verifyAccess()` as the
   admin. The operator adds `/oauth/authorize` to the admin's Access
@@ -257,6 +267,41 @@ the page's origin.
 The grant stores the Access email and subject, the client id and name, and
 the scopes. The provider's user id is the URL-encoded email.
 
+### Identity on the standalone server
+
+Not available yet. A standalone server has no Cloudflare Access, and accounts
+arrive with Gate 2, so there is nobody who can approve a connection. The consent
+route is the Worker's, and it asks the same function who is signing in. The
+standalone server's answer is "nobody" (`consentAuthenticator` in
+`src/worker/standalone.ts`): the page says that accounts are not built, sets no
+cookie, stores no transaction and creates no grant, whatever the request carries
+(an Access header, a bearer token, a cookie, a form field). The account session
+replaces that function when Gate 2 ships, and the signed-in account becomes the
+identity of a grant, as the Access email is on the Worker.
+
+A secret typed into the consent form (the `ADMIN_TOKEN`) was built for this and
+dropped. It would hand the one secret that opens everything to a page an app sent
+the operator to, and the check cannot tell the real page from a copy of it.
+
+What exists today, and what it exposes when `FK_MCP=on` is set:
+
+- The OAuth endpoints and `/mcp` answer. Metadata names the issuer and resource
+  from `FK_PUBLIC_URL`, never from the request. A request that names another
+  origin is refused.
+- `/oauth/register` accepts clients and is open by design (RFC 7591). It is
+  limited to 30 registrations an hour per client address, because each one
+  writes to the database that holds the feedback.
+- Nothing can be approved, so no token, no grant and no tool call exists.
+- The server refuses to start with MCP on where a sign-in would travel in clear
+  text: an http `FK_PUBLIC_URL` that is not localhost, or `HOST` open to other
+  addresses with an http address.
+- The start log and `/diag` (`mcp`) say whether MCP is on.
+
+The tests give consent an identity with a stub that exists in test code only. The
+production build has no way to receive one: `createMcpFetch` takes the function as
+an argument and the server passes none. A test checks that the built server does
+not contain the stub.
+
 ### Scopes and tools
 
 | Scope | Tools |
@@ -288,6 +333,6 @@ trust with a stranger's text.
 ### Rate limit
 
 `/mcp` counts requests per grant (Access email plus client id) and hour in the
-D1 `counters` table, keyed by an HMAC like the IP limiter, so the table holds no
+`counters` table (D1, or SQLite on the standalone server), keyed by an HMAC like the IP limiter, so the table holds no
 email. Above 1000 requests an hour the endpoint answers `429` with
 `Retry-After` until the hour is over.
