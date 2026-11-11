@@ -552,6 +552,9 @@ first. (A server install cannot do this yet: see
    access it asks for and the email you are signed in with. **Allow** connects
    it, **Cancel** sends it away with nothing.
 
+The server speaks MCP revision 2026-07-28 and still answers clients of 2025-11-25
+and earlier ([details](SECURITY.md#protocol-revisions)).
+
 An agent gets one of two scopes or both. `feedback:read` covers projects,
 feedback items, search and the funnel. `config:read` covers the project config
 export. A client that asks for neither gets `feedback:read`. Tokens last an
