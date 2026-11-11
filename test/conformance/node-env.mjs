@@ -11,6 +11,7 @@ import { createRequire } from "node:module";
 // Vite 5 does not know node:sqlite as a built-in module, so Node loads the
 // storage module itself (require of an ES module, Node 24) instead of vite.
 const { openStorage } = createRequire(import.meta.url)("../../scripts/server-storage.mjs");
+const { createKv } = createRequire(import.meta.url)("../../scripts/server-kv.mjs");
 
 const dir = mkdtempSync(join(tmpdir(), "fk-conformance-"));
 const store = openStorage(join(dir, "feedbackkit.sqlite"), "migrations");
@@ -39,7 +40,8 @@ const UPLOADS = {
   },
 };
 
-export const env = { DB, UPLOADS, FK_ENV: "test", WIDGET_VERSION: "test" };
+// OAUTH_KV is the OAuth provider's storage: Cloudflare KV in workerd, the SQLite adapter here.
+export const env = { DB, UPLOADS, OAUTH_KV: createKv(store.sqlite), FK_ENV: "test", WIDGET_VERSION: "test" };
 export async function applyD1Migrations() {
   /* openStorage applied the migrations */
 }

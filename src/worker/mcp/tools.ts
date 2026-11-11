@@ -79,7 +79,7 @@ export const TOOLS: ToolDef[] = [
         {
           title: "Who am I",
           description:
-            "The person and app behind this connection: the Cloudflare Access email that approved it, the app name, " +
+            "The person and app behind this connection: who approved it (the Cloudflare Access email, or `admin` on a standalone server, which has no accounts yet), the app name, " +
             "the granted scopes, the tools this grant can call and the token lifetimes. Call it first to orient yourself.",
           annotations: RO,
         },

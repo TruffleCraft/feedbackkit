@@ -17,9 +17,9 @@ export const isScope = (s: unknown): s is Scope => typeof s === "string" && (SCO
 
 /** What consent stores in the grant; the provider hands it back on every /mcp request. */
 export interface AuthProps {
-  /** The Cloudflare Access email of the person who clicked Allow. */
+  /** Who clicked Allow: the Cloudflare Access email, or "admin" on a standalone server (until accounts exist). */
   email: string;
-  /** The Access subject (stable user id) of that person. */
+  /** The Access subject (stable user id) of that person, or "admin-token" on a standalone server. */
   sub: string;
   clientId: string;
   /** The client's name as shown on the consent page. */
