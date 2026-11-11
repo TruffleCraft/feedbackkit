@@ -20,7 +20,7 @@ Inspect the current version, service and stored configuration before changing an
 
 ## 2. Install and start
 
-For direct Linux/LXC, install Node.js 24 or newer, clone the chosen release, run `pnpm install --frozen-lockfile`, `pnpm build:widget` and `pnpm build:server`. Follow [the systemd instructions](SELF_HOSTING.md#keep-it-running-with-systemd) for persistent operation. Cloudflare uses its own resource and migration workflow.
+For direct Linux/LXC, install Node.js 24 or newer and the newest stable release tarball with the steps in [SELF_HOSTING.md](SELF_HOSTING.md#install-from-a-release-tarball): download the tarball, `SHA256SUMS` and `SHA256SUMS.sig`, and verify the signature against the stable key in [RELEASES.md](RELEASES.md#release-keys) and the checksum before you extract anything. A tarball needs no Git, pnpm or build. Use the checkout path (`git clone`, `pnpm install --frozen-lockfile`, `pnpm build:widget`, `pnpm build:server`) only when the operator wants a commit that is not released. Follow [the systemd instructions](SELF_HOSTING.md#keep-it-running-with-systemd) for persistent operation. A tarball install asks GitHub once a day whether a newer release exists and sends nothing about the installation; set `FK_UPDATE_CHECK=off` if the operator wants no such request. Cloudflare uses its own resource and migration workflow.
 
 Generate a random `ADMIN_TOKEN` in the target's approved secret/environment store. Never print it, put it in an issue, or ask the operator to paste it into chat. The standalone service refuses tokens shorter than 32 characters. Set `FK_PUBLIC_URL` to the actual external origin, and verify data-directory permissions before startup.
 
@@ -58,6 +58,6 @@ Privacy verification must cover the transmitted bytes. Do not use real personal 
 
 Report the installed release, gateway/admin addresses, configured project and website origins, data/backup location and the observed result of each test. Explain how the operator signs in through the approved access path without exposing credentials. State any gaps plainly: a successful Node test is not an observed Proxmox deployment; a successful image transfer is not an observed GitHub issue.
 
-Link [GETTING_STARTED.md](GETTING_STARTED.md), [ADMIN.md](ADMIN.md) and the relevant update instructions. List the next required action only if the operator must still do it. Do not claim account/passkey login or screenshot masking until the installed release's flow has been verified.
+Link [GETTING_STARTED.md](GETTING_STARTED.md), [ADMIN.md](ADMIN.md) and the relevant update instructions: a tarball install updates and rolls back with `feedbackkit-update` ([Updating](RELEASES.md#updating)). List the next required action only if the operator must still do it. Do not claim account/passkey login or screenshot masking until the installed release's flow has been verified.
 
 Co-created by Michel with NORA (AI Agent)
