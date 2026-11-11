@@ -200,7 +200,7 @@ describe("POST /api/admin/config/import — delivery shape gate", () => {
 
 describe("GET /diag first-run visibility", () => {
   const migrated = (sql: string) => {
-    if (sql.includes("meta")) return { value: "4" };
+    if (sql.includes("meta")) return { value: "5" };
     if (sql.includes("COUNT(*)")) return { n: 0 };
     return null;
   };
@@ -230,7 +230,7 @@ describe("GET /diag first-run visibility", () => {
 
   it("clears firstRun and shrinks nextSteps once configured", async () => {
     const handler = (sql: string) => {
-      if (sql.includes("meta")) return { value: "4" };
+      if (sql.includes("meta")) return { value: "5" };
       if (sql.includes("COUNT(*)")) return { n: 2 };
       return null;
     };
@@ -244,7 +244,7 @@ describe("GET /diag first-run visibility", () => {
   it("asks for a GitHub PAT only when a project has a tracker (#109)", async () => {
     const steps = async (configs: object[]) => {
       const handler = (sql: string) => {
-        if (sql.includes("meta")) return { value: "4" };
+        if (sql.includes("meta")) return { value: "5" };
         if (sql.includes("COUNT(*)")) return { n: configs.length };
         if (sql.includes("SELECT config FROM projects")) return configs.map((c) => ({ config: JSON.stringify(c) }));
         return null;
@@ -258,7 +258,7 @@ describe("GET /diag first-run visibility", () => {
 
   it("reports Access sign-in config as presence booleans and flags a half-done setup", async () => {
     const handler = (sql: string) => {
-      if (sql.includes("meta")) return { value: "4" };
+      if (sql.includes("meta")) return { value: "5" };
       if (sql.includes("COUNT(*)")) return { n: 2 };
       return null;
     };
@@ -279,7 +279,7 @@ describe("GET /diag first-run visibility", () => {
 describe("GET / landing page", () => {
   it("renders the setup checklist with fixes on a fresh deploy", async () => {
     const bare = {
-      DB: fakeD1((sql: string) => (sql.includes("meta") ? { value: "4" } : sql.includes("COUNT(*)") ? { n: 0 } : null)),
+      DB: fakeD1((sql: string) => (sql.includes("meta") ? { value: "5" } : sql.includes("COUNT(*)") ? { n: 0 } : null)),
       UPLOADS: {} as R2Bucket,
       ASSETS: {} as Fetcher,
       FK_ENV: "test",
@@ -295,7 +295,7 @@ describe("GET / landing page", () => {
 
   it("shows ready state once secrets + a project exist", async () => {
     const handler = (sql: string) => {
-      if (sql.includes("meta")) return { value: "4" };
+      if (sql.includes("meta")) return { value: "5" };
       if (sql.includes("COUNT(*)")) return { n: 1 };
       return null;
     };

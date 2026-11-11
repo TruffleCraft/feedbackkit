@@ -29,7 +29,7 @@ cp .env.example .env
 openssl rand -hex 32
 ```
 
-Put the generated value in `.env` as `ADMIN_TOKEN`. Set `FK_PUBLIC_URL` to the address visitors will use, then start:
+Put the generated value in `.env` as `ADMIN_TOKEN` (it opens the admin until you create the first owner with `feedbackkit-admin setup-link`; see [accounts](docs/SELF_HOSTING.md#accounts-and-recovery)). Set `FK_PUBLIC_URL` to the address visitors will use, then start:
 
 ```sh
 node --env-file=.env scripts/server.mjs

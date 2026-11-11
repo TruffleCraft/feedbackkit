@@ -13,7 +13,7 @@ test('SQLite migrations, numbered bindings, atomic returning and attachment pers
  const dir=temporary(), filename=join(dir,'feedbackkit.sqlite');
  let store=openStorage(filename,'migrations');
  try {
-  assert.equal((await store.DB.prepare("SELECT value FROM meta WHERE key='schema_version'").first()).value,'4');
+  assert.equal((await store.DB.prepare("SELECT value FROM meta WHERE key='schema_version'").first()).value,'5');
   const row=await store.DB.prepare("INSERT INTO counters (key,window_start,count) VALUES (?1,?2,1) ON CONFLICT(key) DO UPDATE SET count=count+1 RETURNING count").bind('test',123).first();
   assert.equal(row.count,1);
   assert.equal((await store.DB.prepare("UPDATE counters SET count=count+1 WHERE key=?1 RETURNING count").bind('test').first()).count,2);

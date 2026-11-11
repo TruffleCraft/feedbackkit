@@ -11,6 +11,8 @@ import { codeDeliveryCapability } from "./code-capability.mjs";
 import { canonicalUrl, clientAddress, readTrustedHops } from "./server-http.mjs";
 import { appEnvironment } from "./server-env.mjs";
 import { createUpdateCheck, readSwitch } from "./server-update-check.mjs";
+import { runAdmin } from "./server-admin.mjs";
+import { pruneExpiredAuth } from "../dist-server/auth.mjs";
 import { createKv } from "./server-kv.mjs";
 import { MCP_OFF_BODY, planMcp } from "./server-mcp.mjs";
 
@@ -23,7 +25,11 @@ let warnedForwarded = false;
 const here = dirname(fileURLToPath(import.meta.url));
 const bundle = (() => { try { return JSON.parse(readFileSync(join(here, "bundle.json"), "utf8")); } catch { return null; } })();
 const root = bundle ? here : join(here, "..");
-if ((process.env.ADMIN_TOKEN ?? "").length < 32) throw new Error("Set ADMIN_TOKEN to a random secret of at least 32 characters before starting.");
+// `feedbackkit-admin` runs this file with the argument `admin`: the host commands for accounts, no server.
+if (process.argv[2] === "admin") process.exit(await runAdmin(process.argv.slice(3), { root }));
+// ADMIN_TOKEN is optional since accounts exist: it works only until the first owner is created, and the server
+// starts without it. When it is set it must still be a real secret.
+if (process.env.ADMIN_TOKEN && process.env.ADMIN_TOKEN.length < 32) throw new Error("ADMIN_TOKEN is set but shorter than 32 characters. Use a random secret of at least 32 characters, or remove it and create the first owner with feedbackkit-admin setup-link.");
 const origin = new URL(process.env.FK_PUBLIC_URL || "http://localhost:8787");
 if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new Error("FK_PUBLIC_URL must be an http(s) origin, without credentials, path, query or fragment.");
 // MCP (ADR-015): decided before anything is opened, so an unsafe combination stops the start. It is off unless FK_MCP=on,
@@ -37,6 +43,9 @@ const supported = bundle ? bundle.deliveryCapability : codeDeliveryCapability();
 const recorded = Number(storage.sqlite.prepare("SELECT value FROM meta WHERE key='delivery_capability'").get()?.value ?? 0);
 if (recorded > supported) throw new Error(`This database needs delivery capability ${recorded} and this release provides ${supported}. Start the newer release again, or restore the backup taken before the update.`);
 storage.sqlite.prepare("INSERT INTO meta (key,value) VALUES ('delivery_capability',?) ON CONFLICT(key) DO UPDATE SET value=MAX(CAST(meta.value AS INTEGER),CAST(excluded.value AS INTEGER))").run(String(supported));
+const ownerExists = (() => { try { return Boolean(storage.sqlite.prepare("SELECT 1 FROM owner_claim LIMIT 1").get()); } catch { return false; } })();
+if (!ownerExists) console.warn(process.env.ADMIN_TOKEN ? "No owner exists yet, so ADMIN_TOKEN still opens the admin. Create the first owner with: feedbackkit-admin setup-link. From then on ADMIN_TOKEN grants nothing." : "No owner exists yet. Create the first owner with: feedbackkit-admin setup-link");
+else if (process.env.ADMIN_TOKEN) console.warn("ADMIN_TOKEN is set but ignored: this instance has an owner. Remove it from the environment file.");
 const files = new Map([
   ["/widget.js", ["widget.js", "application/javascript; charset=utf-8"]],
   ["/admin.js", ["admin.js", "application/javascript; charset=utf-8"]],
@@ -54,7 +63,7 @@ async function asset(path) {
 // file), and FK_UPDATE_CHECK=off removes it. The browser never calls GitHub; the gateway does.
 const updateCheckOn = readSwitch(process.env.FK_UPDATE_CHECK);
 const updateCheck = bundle && updateCheckOn ? createUpdateCheck({ release: bundle.release, channel: bundle.channel, api: process.env.FK_UPDATE_API }) : null;
-const env = { ...appEnvironment(process.env), ...(updateCheck ? { UPDATE_CHECK: updateCheck } : {}), DB: storage.DB, UPLOADS: storage.UPLOADS, ASSETS: { fetch: (r) => asset(new URL(typeof r === 'string' ? r : r.url).pathname) }, FK_ENV: "production", FK_CHANNEL: bundle?.channel ?? "local", ...(bundle ? { FK_RELEASE: bundle.release } : {}), WIDGET_VERSION: (await readFile(join(root,"dist/widget.ver"),"utf8")).trim() };
+const env = { ...appEnvironment(process.env), ...(updateCheck ? { UPDATE_CHECK: updateCheck } : {}), DB: storage.DB, UPLOADS: storage.UPLOADS, ASSETS: { fetch: (r) => asset(new URL(typeof r === 'string' ? r : r.url).pathname) }, FK_ENV: "production", FK_RUNTIME: "node", FK_CHANNEL: bundle?.channel ?? "local", ...(bundle ? { FK_RELEASE: bundle.release } : {}), WIDGET_VERSION: (await readFile(join(root,"dist/widget.ver"),"utf8")).trim() };
 // Cloudflare Access is deployment-specific; never trust its headers or bind accidental
 // process-environment strings as runtime objects. OAUTH_KV is the one binding the
 // server sets itself: the OAuth provider's storage, in the same SQLite file. The table
@@ -66,7 +75,7 @@ if (mcpFetch) env.OAUTH_KV = kv;
 env.MCP_STATUS = mcp.note;
 const pending = new Set();
 const context = { waitUntil(p) { const task=Promise.resolve(p).catch((e)=>console.error("Background task failed:",e.message));pending.add(task);task.finally(()=>pending.delete(task)); }, passThroughOnException() {} };
-async function sweep() { await Promise.all([sweepExpiredAssets(env),pruneExpiredRecords(env)]); kv.sweepExpired(); storage.compact(); }
+async function sweep() { await Promise.all([sweepExpiredAssets(env),pruneExpiredRecords(env),pruneExpiredAuth(env)]); kv.sweepExpired(); storage.compact(); }
 // A failing sweep is logged and retried every hour; it never keeps the service from starting.
 await sweep().catch((e)=>console.error("Start sweep failed:",e.message));
 const timer = setInterval(()=>context.waitUntil(sweep()), 60 * 60 * 1000);

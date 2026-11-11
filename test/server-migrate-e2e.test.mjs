@@ -151,7 +151,7 @@ WIDGET_VERSION = "test"
     assert.deepEqual(manifest.rows, { projects: 2, feedback: 7, assets: 2, events: 4, dedup: 6 }, 'six submissions, one test report, two uploads, four funnel events');
     assert.deepEqual(manifest.missing, [], 'no attachment is missing');
     assert.deepEqual(manifest.objects.map((o) => [o.key, o.sha256]).sort(), Object.entries(uploaded).sort(), 'the attachments left the bucket byte for byte');
-    assert.equal(manifest.schemaVersion, 4);
+    assert.equal(manifest.schemaVersion, 5);
 
     const dry = []; assert.equal(await main(['import', '--from', exportDir, '--data-dir', data, '--dry-run'], { log: (l) => dry.push(l) }), 0);
     assert.match(dry.join('\n'), /Dry run: .* is empty\. Nothing was written\./);

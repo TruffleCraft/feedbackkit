@@ -52,16 +52,32 @@ export function openStorage(filename, migrations) {
   // table above, so it is not a numbered migration and an older release ignores it.
   sqlite.exec("CREATE TABLE IF NOT EXISTS _fk_kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, metadata TEXT, expires_at INTEGER)");
   sqlite.exec("CREATE INDEX IF NOT EXISTS _fk_kv_expires ON _fk_kv (expires_at) WHERE expires_at IS NOT NULL");
+  const written = (result) => ({ success: true, results: [], meta: { changes: Number(result.changes), last_row_id: Number(result.lastInsertRowid) } });
   function statement(sql, values = []) {
     const run = (method) => sqlite.prepare(sql)[method](...values);
     return {
       bind(...bound) { return statement(sql, bound); },
       async first(column) { const row = run("get"); return row ? column === undefined ? row : row[column] : null; },
       async all() { return { success: true, results: run("all"), meta: {} }; },
-      async run() { const result = run("run"); return { success: true, results: [], meta: { changes: Number(result.changes), last_row_id: Number(result.lastInsertRowid) } }; },
+      async run() { return written(run("run")); },
+      // Used by batch() below: the statements of one batch run inside one transaction, without an await between them.
+      runNow() { return written(run("run")); },
     };
   }
-  const DB = { prepare: (sql) => statement(sql) };
+  const DB = {
+    prepare: (sql) => statement(sql),
+    // D1's batch(): the statements run in order inside one transaction, and an error in any of them rolls the whole
+    // batch back and rejects. Nothing else runs in between: the work is synchronous and BEGIN IMMEDIATE takes the
+    // write lock first, so a second process waits for the busy timeout instead of interleaving.
+    async batch(statements) {
+      sqlite.exec("BEGIN IMMEDIATE");
+      try {
+        const results = statements.map((item) => item.runNow());
+        sqlite.exec("COMMIT");
+        return results;
+      } catch (error) { try { sqlite.exec("ROLLBACK"); } catch {} throw error; }
+    },
+  };
   const UPLOADS = {
     async put(key, value, options = {}) {
       const data = typeof value === "string" ? Buffer.from(value) : Buffer.from(value);

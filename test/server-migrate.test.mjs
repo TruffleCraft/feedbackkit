@@ -109,7 +109,7 @@ test('an import moves projects, public keys, revisions, reports, inbox state, at
     assert.deepEqual({ ...db.prepare("SELECT delivery_state, last_error, retry_count, issue_draft FROM feedback WHERE id = 'fb-3'").get() }, { delivery_state: 'failed', last_error: 'tracker credential not configured', retry_count: 1, issue_draft: '{"title":"x"}' });
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM counters').get().n, 0, 'rate-limit counters do not move');
     assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'delivery_capability'").get().value, '3');
-    assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '4');
+    assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '5');
     assert.equal(db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'events'").get().seq, 2, 'event ids carry on');
     db.close();
     // The server's own storage reads the attachments with their type.
@@ -149,14 +149,14 @@ test('an export of an older schema is brought up with the server\'s own migratio
     };
     writeExport(from, { version: 1, rows, objects: {} });
     const summary = await imp(from, data);
-    assert.deepEqual(summary.migrationsApplied, ['0002_admin.sql', '0003_feedback_identity.sql', '0004_delivery.sql']);
+    assert.deepEqual(summary.migrationsApplied, ['0002_admin.sql', '0003_feedback_identity.sql', '0004_delivery.sql', '0005_accounts.sql']);
     const db = open(data);
     const by = Object.fromEntries(db.prepare('SELECT id, client_feedback_id, delivery, delivery_state, disposition FROM feedback').all().map((r) => [r.id, { ...r }]));
     assert.equal(by['fb-1'].client_feedback_id, '00000000-0000-4000-8000-000000000001', 'the v3 backfill ran');
     assert.deepEqual([by['fb-1'].delivery, by['fb-1'].delivery_state], ['issue', 'delivered'], 'the v4 backfill ran');
     assert.deepEqual([by['fb-2'].delivery, by['fb-2'].delivery_state], ['issue', 'failed']);
     assert.deepEqual([by['fb-3'].delivery, by['fb-3'].delivery_state, by['fb-3'].disposition], [null, null, 'open'], 'a row without proof of its destination stays unknown');
-    assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '4');
+    assert.equal(db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get().value, '5');
     db.close();
   } finally { for (const d of [from, data]) rmSync(d, { recursive: true, force: true }); }
 });
@@ -177,9 +177,9 @@ test('the import refuses what it cannot move safely and leaves the destination a
     const newerSchema = exportWith('newer-schema', { rows: newer });
     writeFileSync(join(newerSchema, 'd1.sql'), readFileSync(join(newerSchema, 'd1.sql'), 'utf8').replace("INSERT INTO \"meta\" (\"key\",\"value\") VALUES('schema_version','4')", "INSERT INTO \"meta\" (\"key\",\"value\") VALUES('schema_version','99')"));
     const m = JSON.parse(readFileSync(join(newerSchema, 'manifest.json'), 'utf8')); m.d1.sha256 = sha(readFileSync(join(newerSchema, 'd1.sql'), 'utf8')); writeFileSync(join(newerSchema, 'manifest.json'), JSON.stringify(m));
-    await refused(imp(newerSchema, empty), /schema 99 and this release supports 4/);
+    await refused(imp(newerSchema, empty), /schema 99 and this release supports 5/);
     const highCapability = rowsV4(); highCapability.meta = [{ key: 'delivery_capability', value: '9' }];
-    await refused(imp(exportWith('high-capability', { rows: highCapability }), empty), /delivery capability 9 and this release provides 3/);
+    await refused(imp(exportWith('high-capability', { rows: highCapability }), empty), /delivery capability 9 and this release provides 4/);
     assert.ok(!existsSync(empty), 'nothing was created');
 
     // a damaged or edited export
