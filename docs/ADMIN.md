@@ -44,6 +44,10 @@ People sign in with passkeys. An **owner** can invite members and other owners, 
 
 The last owner cannot be demoted or removed, and an account always keeps one passkey. If every passkey is lost, an operator with host access issues a recovery link (`feedbackkit-admin recovery-link`, or `pnpm admin:link --recovery` on Cloudflare): it replaces the account's passkeys and signs out its sessions. API tokens survive recovery, so review the list afterwards. How to set it up: [SELF_HOSTING.md](SELF_HOSTING.md#accounts-and-recovery) and [QUICKSTART.md](QUICKSTART.md#accounts). The API errors are in [ERRORS.md](ERRORS.md#accounts-sessions-and-tokens). **Status:** the screens for all of this come with the approved mock; the API and the host commands exist now.
 
+## Agents
+
+On Cloudflare an agent can read projects, feedback and the funnel through the gateway's MCP server, without the admin token in its hands. Whoever approves a connection signs in through Cloudflare Access first, and the agent gets read-only scopes ([setup](QUICKSTART.md#mcp-for-agents)). A server installation cannot approve connections yet, because that needs the accounts of a later release ([MCP for agents](SELF_HOSTING.md#mcp-for-agents)).
+
 ## Credentials and hosting
 
 On Cloudflare, use Worker secrets. On a server or LXC, use the protected environment file used by the service; for a foreground run use `.env`. Restart the standalone service after changing credentials. Project settings can be edited and published without restarting.

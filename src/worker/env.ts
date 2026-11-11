@@ -1,4 +1,5 @@
 import type { OAuthHelpers } from "@cloudflare/workers-oauth-provider";
+import type { ConsentAuthenticator } from "./oauth/consent-identity.js";
 
 /** What the admin notice about a newer release shows (docs/design/mockups/update-notice.md). */
 export interface UpdateStatus {
@@ -27,6 +28,12 @@ export interface Env {
   OAUTH_KV?: KVNamespace;
   // Injected per request by the OAuth provider when OAUTH_KV is bound.
   OAUTH_PROVIDER?: OAuthHelpers;
+  // Who may approve an MCP connection (oauth/consent-identity.ts). Unset on the Worker, which
+  // asks Cloudflare Access. The standalone server sets it. It is a function, so no process
+  // environment variable can supply it.
+  CONSENT_AUTHENTICATOR?: ConsentAuthenticator;
+  // The standalone server's one-line answer to "is MCP on?", shown in /diag. Never set on the Worker.
+  MCP_STATUS?: string;
   // Secrets (set via `wrangler secret put`): ADMIN_TOKEN, GITHUB_PAT_<name>,
   // LLM_API_KEY, FEEDBACKKIT_CONFIG_JSON (optional), FK_ACCESS_TEAM_DOMAIN and
   // FK_ACCESS_AUD (optional, Cloudflare Access sign-in for the admin and for

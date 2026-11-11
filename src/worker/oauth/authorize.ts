@@ -1,10 +1,10 @@
 import { AuthorizationError, CimdFetchError, type AuthRequest, type ConsentDescription } from "@cloudflare/workers-oauth-provider";
 import type { Context, Hono } from "hono";
-import { verifyAccess } from "../admin/access.js";
 import { sameOrigin } from "../admin/auth.js";
 import { CSS, FAVICON } from "../admin/pages.js";
 import { DEFAULT_SCOPES, SCOPE_TEXT, isScope, type AuthProps, type Scope } from "../mcp/scopes.js";
 import { consentHeaders } from "./consent-headers.js";
+import { authenticateConsent, signInRequired } from "./consent-identity.js";
 import { OAUTH_PATHS, mcpDisabledResponse } from "./provider.js";
 import type { Env } from "../env.js";
 
@@ -77,10 +77,6 @@ function message(status: number, title: string, text: string): Response {
   return respond(status, page(title, `<h1>${esc(title)}</h1><p class="lead">${esc(text)}</p>`, nonce), nonce, null);
 }
 
-const SIGN_IN_REQUIRED = [
-  "Sign-in required",
-  "Connecting an app takes a Cloudflare Access sign-in, and this request arrived without one. The operator has to put /oauth/authorize behind the Access application of this gateway. Then start again from the app. Nothing was granted.",
-] as const;
 const EXPIRED = ["This page has expired", "Start again from the app that asked to connect. Nothing was granted."] as const;
 const BLOCKED = ["Request blocked", "The form was not sent from this page. Start again from the app that asked to connect. Nothing was granted."] as const;
 
@@ -137,8 +133,8 @@ export function registerOAuthRoutes(app: AppT): void {
   app.get(OAUTH_PATHS.authorize, async (c: Ctx) => {
     const oauth = c.env.OAUTH_PROVIDER;
     if (!oauth) return mcpDisabledResponse();
-    const identity = await verifyAccess(c.env, c.req.raw);
-    if (!identity) return message(403, ...SIGN_IN_REQUIRED);
+    const identity = await authenticateConsent(c.req.raw, c.env);
+    if (!identity) return message(403, ...signInRequired(c.env));
 
     let authReq: AuthRequest;
     let details: ConsentDescription;
@@ -162,8 +158,8 @@ export function registerOAuthRoutes(app: AppT): void {
     // Access sends its cookie cross-site (SameSite=None), so check where the
     // form came from before trusting the Access identity on a POST.
     if (!sameOrigin(c)) return message(403, ...BLOCKED);
-    const identity = await verifyAccess(c.env, c.req.raw);
-    if (!identity) return message(403, ...SIGN_IN_REQUIRED);
+    const identity = await authenticateConsent(c.req.raw, c.env);
+    if (!identity) return message(403, ...signInRequired(c.env));
 
     let form: FormData;
     try {

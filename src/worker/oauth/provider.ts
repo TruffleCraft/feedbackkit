@@ -42,8 +42,21 @@ export function mcpDisabledResponse(description = MCP_DISABLED): Response {
 // only work on the host they were issued for.
 const providers = new Map<string, OAuthProvider<Env> | null>();
 
-function providerFor(origin: string, app: Handler): OAuthProvider<Env> | null {
-  if (providers.has(origin)) return providers.get(origin)!;
+export interface ProviderOptions {
+  /**
+   * Accept a client_id that is the URL of a Client ID Metadata Document (default
+   * true). The provider then fetches that URL, which is only safe where fetch
+   * refuses private addresses: workerd does with the `global_fetch_strictly_public`
+   * flag, Node has no such thing. The standalone server turns it off, and clients
+   * register through /oauth/register instead.
+   */
+  clientIdMetadataDocuments?: boolean;
+}
+
+function providerFor(origin: string, app: Handler, options: ProviderOptions): OAuthProvider<Env> | null {
+  const cimd = options.clientIdMetadataDocuments ?? true;
+  const cacheKey = `${origin} cimd=${cimd}`;
+  if (providers.has(cacheKey)) return providers.get(cacheKey)!;
   let p: OAuthProvider<Env> | null;
   try {
     p = new OAuthProvider<Env>({
@@ -55,7 +68,7 @@ function providerFor(origin: string, app: Handler): OAuthProvider<Env> | null {
       // Dynamic registration stays as the fallback; Client ID Metadata Documents
       // are the MCP default and need global_fetch_strictly_public (wrangler).
       clientRegistrationEndpoint: OAUTH_PATHS.register,
-      clientIdMetadataDocumentEnabled: true,
+      clientIdMetadataDocumentEnabled: cimd,
       scopesSupported: [...SCOPES],
       resourceMetadata: { resource: `${origin}/mcp`, resource_name: "FeedbackKit" },
       accessTokenTTL: ACCESS_TOKEN_TTL_S,
@@ -70,7 +83,7 @@ function providerFor(origin: string, app: Handler): OAuthProvider<Env> | null {
     console.warn(`[feedbackkit] MCP unavailable on ${origin}: ${(e as Error).message}`);
     p = null;
   }
-  providers.set(origin, p);
+  providers.set(cacheKey, p);
   return p;
 }
 
@@ -84,11 +97,11 @@ export function resetProviders(): void {
  * provider, which answers OAuth and MCP paths and hands the rest to the app.
  * Without it, OAuth and MCP paths are 404 and the app serves everything else.
  */
-export function workerFetch(app: Handler, request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
+export function workerFetch(app: Handler, request: Request, env: Env, ctx: ExecutionContext, options: ProviderOptions = {}): Response | Promise<Response> {
   const url = new URL(request.url);
   const isOauthPath = OAUTH_PATH_RE.test(url.pathname);
   if (!env.OAUTH_KV) return isOauthPath ? mcpDisabledResponse() : app.fetch(request, env, ctx);
-  const provider = providerFor(url.origin, app);
+  const provider = providerFor(url.origin, app, options);
   if (!provider) return isOauthPath ? mcpDisabledResponse(MCP_BAD_ORIGIN) : app.fetch(request, env, ctx);
   return provider.fetch(request, env, ctx);
 }

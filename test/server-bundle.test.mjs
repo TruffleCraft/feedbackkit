@@ -55,7 +55,8 @@ test('the tarball unpacks with tar, lists its files in bundle.json and has no no
     const listed = (path = '') => readdirSync(join(dir, path), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? listed(join(path, e.name)) : [join(path, e.name)]));
     assert.deepEqual(listed().filter((f) => f !== 'bundle.json').sort(), manifest.files);
     assert.ok(!existsSync(join(dir, 'node_modules')) && !existsSync(join(dir, 'src')));
-    assert.ok(statSync(join(dir, 'server.mjs')).size < 2_000_000, 'one small file');
+    // 3 MB since accounts: the WebAuthn library brings its CBOR, ASN.1 and certificate parsers (about 0.7 MB unminified).
+    assert.ok(statSync(join(dir, 'server.mjs')).size < 3_000_000, 'one small file');
     // A command-line guard in an included module fires when the bundle is the entry script (it did not on macOS only because /var is a link).
     assert.ok(!readFileSync(join(dir, 'server.mjs'), 'utf8').includes('pathToFileURL(process.argv[1])'), 'no entry guard of another module in the bundle');
     assert.ok(readFileSync(join(dir, 'deploy/feedbackkit.service'), 'utf8').includes('/opt/feedbackkit/current/server.mjs'));

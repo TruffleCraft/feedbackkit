@@ -48,6 +48,10 @@ export function openStorage(filename, migrations) {
     } catch (error) { sqlite.exec("ROLLBACK"); throw error; }
   }
   sqlite.exec("CREATE TABLE IF NOT EXISTS _fk_objects (key TEXT PRIMARY KEY, data BLOB NOT NULL, metadata TEXT NOT NULL)");
+  // The OAuth provider's storage (scripts/server-kv.mjs): KV on SQLite. Standalone only and expand-only, like the
+  // table above, so it is not a numbered migration and an older release ignores it.
+  sqlite.exec("CREATE TABLE IF NOT EXISTS _fk_kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, metadata TEXT, expires_at INTEGER)");
+  sqlite.exec("CREATE INDEX IF NOT EXISTS _fk_kv_expires ON _fk_kv (expires_at) WHERE expires_at IS NOT NULL");
   const written = (result) => ({ success: true, results: [], meta: { changes: Number(result.changes), last_row_id: Number(result.lastInsertRowid) } });
   function statement(sql, values = []) {
     const run = (method) => sqlite.prepare(sql)[method](...values);
