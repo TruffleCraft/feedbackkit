@@ -1,0 +1,15 @@
+# Monthly, grouped version updates. npm covers the pnpm lockfile at the root.
+# Security updates are not affected by the schedule or the cooldown.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }
+    groups: { actions: { patterns: ["*"] } }
+    commit-message: { prefix: "chore(ci)" }
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: monthly }
+    cooldown: { default-days: 7 }   # a new release is proposed once it is a week old
+    groups: { deps: { patterns: ["*"], update-types: ["minor", "patch"] } }
+    commit-message: { prefix: "chore(deps)" }

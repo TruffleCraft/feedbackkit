@@ -26,3 +26,15 @@ Use pnpm from `package.json` and the existing lockfile. Work on an isolated bran
 | Installation docs | Follow the relevant path on a clean instance; separate tested commands from untested target deployment |
 
 Keep secrets and private data out of source, fixtures, logs, screenshots, exports, commit messages and PR text. Use fictional examples: made-up names, `example.org`, coordinates with at most four decimals, no agent session links. The `secrets` CI job scans every pull request ([Keep private data out](CONTRIBUTING.md#keep-private-data-out)). Do not merge UI changes or deploy to someone else's installation without the operator's approval.
+
+## Pull requests
+
+Follow [CONTRIBUTING.md](CONTRIBUTING.md): Conventional Commits, PRs against `main`, and a PR title that names the change in this repo. Branch names start with `feat/`, `fix/`, `docs/`, `chore/` or `refactor/`. Link the issue in the PR body (`Closes #N`, `Refs #N`, or `No issue: <reason>`). Merge only when all checks are green.
+
+## Code Review Rules
+
+For every review of a PR here, by a person or an agent:
+
+- Comment on correctness and security only: bugs, broken contracts between runtimes, data that leaks into reports or logs, missing auth checks, secrets or private data in the diff.
+- No style comments. Formatting and naming are not findings.
+- Skip `pnpm-lock.yaml` and generated files: `site/src/widget-ver.ts`, `src/admin/settings-descriptor.json` and the rendered diagrams under `docs/design/diagrams/`.
