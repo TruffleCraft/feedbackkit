@@ -91,6 +91,6 @@ Design: [gate2-accounts.md](gate2-accounts.md). Threat model: `docs/SECURITY.md#
 | A release older than the data refuses to start | `docs/SELF_HOSTING.md`, `docs/RELEASES.md` | capability 4 (`test/server-accounts.test.mjs`) with the existing refusal in `test/server-storage-hardening.test.mjs` | verified on the standalone server. A Cloudflare rollback has no such check, and the docs say to delete the `ADMIN_TOKEN` secret |
 | The release tarball carries `feedbackkit-admin` and it runs with Node alone | `docs/SELF_HOSTING.md` | `test/server-accounts.test.mjs` ("the release carries feedbackkit-admin") | verified |
 | Cloudflare Access stays accepted beside accounts and is not an account | `docs/SECURITY.md` | `test/auth-gate.test.ts` | verified with a test key pair, not against a real Access application |
-| The setup, sign-in, account, accounts and token screens | none | None | planned. The mock is a separate pull request and needs the owner's approval |
+| The setup, sign-in, account, accounts and token screens do what the approved mock shows, on a phone and in dark mode, and every control works | `docs/ADMIN.md`, `docs/SELF_HOSTING.md` | `e2e/accounts-ui.spec.ts` (Chrome, virtual authenticator, every control clicked), `test/auth-pages.test.ts` | verified in Chrome only; Firefox and Safari were not run, and the passkey prompt is the virtual authenticator's, not a real device's |
 
 Co-created by Michel with NORA (AI Agent)

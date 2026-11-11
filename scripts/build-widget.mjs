@@ -18,7 +18,7 @@ mkdirSync(dist, { recursive: true });
 const fontSrc = join(root, "node_modules", "@fontsource-variable", "urbanist", "files", "urbanist-latin-wght-normal.woff2");
 // Static-asset headers (Workers assets read dist/_headers). The admin module is
 // loaded by URL without a version, so it must revalidate on every page load.
-let headers = "/admin.js\n  Cache-Control: no-cache\n  X-Content-Type-Options: nosniff\n";
+let headers = "/admin.js\n  Cache-Control: no-cache\n  X-Content-Type-Options: nosniff\n/auth.js\n  Cache-Control: no-cache\n  X-Content-Type-Options: nosniff\n";
 if (existsSync(fontSrc)) {
   copyFileSync(fontSrc, join(dist, "urbanist.woff2"));
   headers += "/urbanist.woff2\n  Access-Control-Allow-Origin: *\n  Cache-Control: public, max-age=0, must-revalidate\n";
@@ -73,6 +73,24 @@ if (existsSync(entry)) {
   });
   const bytes = Object.values(result.metafile.outputs)[0]?.bytes ?? 0;
   console.log(`build:widget: bundled src/admin → dist/admin.js (${(bytes / 1024).toFixed(1)} kB min)`);
+}
+
+// Account screens (Gate 2): their own module, loaded only by /admin/sign-in, /admin/setup,
+// /admin/account, /admin/accounts and /admin/tokens, so the admin module keeps its budget.
+{
+  const { build } = await import("esbuild");
+  const result = await build({
+    entryPoints: [join(root, "src", "auth", "main.ts")],
+    bundle: true,
+    format: "iife",
+    minify: true,
+    target: "es2022",
+    outfile: join(dist, "auth.js"),
+    metafile: true,
+    legalComments: "none",
+  });
+  const bytes = Object.values(result.metafile.outputs)[0]?.bytes ?? 0;
+  console.log(`build:widget: bundled src/auth → dist/auth.js (${(bytes / 1024).toFixed(1)} kB min)`);
 }
 
 writeFileSync(join(dist, "_headers"), headers);

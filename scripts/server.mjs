@@ -49,6 +49,7 @@ else if (process.env.ADMIN_TOKEN) console.warn("ADMIN_TOKEN is set but ignored: 
 const files = new Map([
   ["/widget.js", ["widget.js", "application/javascript; charset=utf-8"]],
   ["/admin.js", ["admin.js", "application/javascript; charset=utf-8"]],
+  ["/auth.js", ["auth.js", "application/javascript; charset=utf-8"]],
   ["/urbanist.woff2", ["urbanist.woff2", "font/woff2"]],
 ]);
 async function asset(path) {

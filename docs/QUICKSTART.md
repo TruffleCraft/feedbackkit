@@ -438,9 +438,8 @@ Open `https://<your-gateway>/admin`. There are three ways in:
 
 - Accounts with passkeys: one owner is created with a one-time link, and
   people, scripts and agents come after that (see "Accounts" below). `ADMIN_TOKEN`
-  stops working when the first owner exists. **Status:** the account API and
-  `pnpm admin:link` are in; the screens that the link opens come with the
-  approved mock, so until a release ships them the other two ways stay the way in.
+  stops working when the first owner exists. Open the link, choose a name and
+  create a passkey.
 - Cloudflare Access (recommended for teams that already use it): each person
   signs in with their own account and nothing has to be pasted. Setup below.
   Access stays accepted beside accounts. It is not an account, so it cannot

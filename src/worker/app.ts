@@ -20,6 +20,7 @@ import { registerAdminRoutes } from "./admin/routes.js";
 import { checkConfigForWrite, parseStoredConfig } from "./admin/config-write.js";
 import { embedSnippet } from "./admin/snippet.js";
 import { registerAdminPages } from "./admin/pages.js";
+import { registerAuthPages } from "./admin/auth-pages.js";
 import { registerAuthRoutes, ownerExists } from "./auth/index.js";
 import type { Env } from "./env.js";
 
@@ -157,10 +158,13 @@ app.get("/diag", async (c) => {
   const firstRun = projects === null || projects === 0;
   const nextSteps: string[] = [];
   if (!schema.ok) nextSteps.push("apply D1 migrations (see schema.reason)");
-  // The standalone server needs no ADMIN_TOKEN since accounts exist: its first step is the first owner, made with a host command.
+  // Accounts replace ADMIN_TOKEN. The standalone server needs none: its first step is the first owner, made with a host command.
+  // On Cloudflare the first owner comes from `pnpm admin:link`; ADMIN_TOKEN still opens the admin until then, and grants nothing after.
+  const owner = await ownerExists(c.env);
   if (c.env.FK_RUNTIME === "node") {
-    if (!(await ownerExists(c.env))) nextSteps.push("create the first owner: run `sudo feedbackkit-admin setup-link` on this host (docs/SELF_HOSTING.md#accounts-and-recovery)");
-  } else if (!secrets.adminToken) nextSteps.push("set the admin secret: npx wrangler secret put ADMIN_TOKEN");
+    if (!owner) nextSteps.push("create the first owner: run `sudo feedbackkit-admin setup-link` on this host (docs/SELF_HOSTING.md#accounts-and-recovery)");
+  } else if (!owner && !secrets.adminToken) nextSteps.push(`create the first owner: run \`pnpm admin:link --url ${new URL(c.req.url).origin}\` from your checkout (docs/SELF_HOSTING.md#accounts-and-recovery), or set the older admin secret: npx wrangler secret put ADMIN_TOKEN`);
+  else if (owner && secrets.adminToken) nextSteps.push("delete the ADMIN_TOKEN secret, it grants nothing now: npx wrangler secret delete ADMIN_TOKEN");
   if (!secrets.githubPat && needsPat) nextSteps.push("set a GitHub PAT: npx wrangler secret put GITHUB_PAT_default");
   if (firstRun) nextSteps.push("create your first project: POST /api/admin/config/import (see docs/QUICKSTART.md)");
   if (!secrets.llmKey) nextSteps.push("optional: set LLM_API_KEY to enable AI follow-up questions");
@@ -623,6 +627,8 @@ app.get("/t/:key", (c) => {
 registerAdminRoutes(app);
 // Admin shell pages (P2, step 3): /admin, /admin/projects/:id, /admin/system.
 registerAdminPages(app);
+// Accounts (Gate 2): the screens, then the API behind them.
+registerAuthPages(app);
 // Accounts (Gate 2): passkey sign-in, one-time setup links, the account page, accounts and API tokens.
 registerAuthRoutes(app);
 // MCP consent (ADR-015): GET/POST /oauth/authorize. The OAuth provider in
@@ -634,13 +640,13 @@ app.all("/api/admin/*", notImplemented("P2"));
 // First-run landing page (P2): the first URL an operator sees after a deploy.
 // Renders the setup checklist from presence signals; strict no-script CSP.
 app.get("/", async (c) => {
-  const [schema, projects] = await Promise.all([checkSchema(c.env), countProjects(c.env)]);
+  const [schema, projects, owner] = await Promise.all([checkSchema(c.env), countProjects(c.env), ownerExists(c.env)]);
   c.header("Content-Security-Policy", LANDING_CSP);
   c.header("X-Content-Type-Options", "nosniff");
   c.header("Cache-Control", "no-store");
   // new URL(...).origin is scheme://host[:port] — the URL parser rejects or
   // encodes HTML-special characters, so it is safe to inline into the markup.
-  return c.html(renderLanding({ version: VERSION, origin: new URL(c.req.url).origin, schema, secrets: secretsPresence(c.env), projects }));
+  return c.html(renderLanding({ version: VERSION, origin: new URL(c.req.url).origin, schema, secrets: secretsPresence(c.env), projects, owner, standalone: c.env.FK_RUNTIME === "node" }));
 });
 
 // Routes + version live here; the Workers entry is src/worker/index.ts. The
