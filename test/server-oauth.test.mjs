@@ -1,19 +1,63 @@
-import { test, mock } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { app, createMcpFetch } from '../dist-server/app.mjs';
+import { readFileSync } from 'node:fs';
+import { createMcpFetch, consentAuthenticator } from '../dist-server/app.mjs';
 import {
-  ADMIN_FAILED_AUTH_LIMIT, ALL_TOOLS, AUTHORIZE_VIEWS_PER_HOUR, ORIGIN, REDIRECT, REGISTRATIONS_PER_HOUR, TOKEN,
+  ALL_TOOLS, IDENTITY_HEADER, ORIGIN, PERSON, REDIRECT, REGISTRATIONS_PER_HOUR, TOKEN,
   authorizeClient, authorizePath, browser, connect, exchange, form, gateway, openConsent, pkce, postDecision, register, rpc, toolNames,
 } from './oauth-harness.mjs';
 
 // The standalone server's OAuth and MCP side (ADR-015, amendment of 2026-11-11), through the real
 // workers-oauth-provider and the real MCP handler on Node. Before this change every one of these paths answered 404.
-// The cases mirror test/mcp-oauth.test.ts and test/mcp-tools.test.ts (the Worker's); where they differ the reason is in the name.
+// The cases mirror test/mcp-oauth.test.ts and test/mcp-tools.test.ts (the Worker's).
+//
+// Who signs in is the one thing a standalone server cannot answer yet: it has no Cloudflare Access, and accounts are not
+// built. These tests answer it with a stub that exists in test code only (test/oauth-harness.mjs). The server's own answer
+// is "nobody", and the first tests below pin that.
 
-const withGateway = (fn) => async (t) => { const gw = await gateway(); try { await fn(gw, t); } finally { gw.close(); } };
+const withGateway = (fn, options) => async (t) => { const gw = await gateway(options); try { await fn(gw, t); } finally { gw.close(); } };
 const location = (response) => new URL(response.headers.get('Location'));
 const refresh = (gw, refreshToken, clientId) => gw.request('/oauth/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: form({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId }) });
 const grantRows = (gw) => gw.storage.sqlite.prepare("SELECT key FROM _fk_kv WHERE key LIKE 'grant:%'").all();
+const transactionRows = (gw) => gw.storage.sqlite.prepare("SELECT key FROM _fk_kv WHERE key LIKE 'transaction:%'").all();
+
+// ---- the server's own sign-in: nobody ---------------------------------------------------------------------------
+
+test('the server\'s own consent identity is nobody, whatever the request carries', async () => {
+  const requests = [
+    new Request(`${ORIGIN}/oauth/authorize`),
+    new Request(`${ORIGIN}/oauth/authorize`, { headers: { [IDENTITY_HEADER]: PERSON } }),
+    new Request(`${ORIGIN}/oauth/authorize`, { headers: { 'Cf-Access-Jwt-Assertion': 'a.b.c', Authorization: `Bearer ${TOKEN}`, Cookie: 'session=abc; CF_Authorization=abc' } }),
+    new Request(`${ORIGIN}/oauth/authorize?admin_token=${TOKEN}`, { method: 'POST', body: form({ admin_token: TOKEN, email: PERSON }), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }),
+  ];
+  for (const request of requests) assert.equal(await consentAuthenticator(request, {}), null);
+});
+
+test('without a sign-in nothing is granted: no page, no handle, no cookie, no stored transaction, no grant', withGateway(async (gw) => {
+  const clientId = await register(gw);
+  const { challenge } = await pkce();
+  for (const as of [null, 'ignored@example.org']) {
+    const page = await gw.request(authorizePath(clientId, { challenge }), {}, { as });
+    assert.equal(page.status, 403);
+    assert.equal(page.headers.getSetCookie().length, 0);
+    const html = await page.text();
+    assert.match(html, /Connecting apps is not available yet/);
+    assert.match(html, /accounts are not built/);
+    assert.doesNotMatch(html, /name="handle"|name="admin_token"|type="password"/);
+    assert.equal((await gw.request('/oauth/authorize', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: ORIGIN }, body: form({ handle: 'x', decision: 'allow' }) }, { as })).status, 403);
+  }
+  assert.equal(transactionRows(gw).length, 0);
+  assert.equal(grantRows(gw).length, 0);
+}, { authenticate: null }));
+
+test('the stub identity is not in the production build', () => {
+  const built = readFileSync(new URL('../dist-server/app.mjs', import.meta.url), 'utf8');
+  assert.ok(!built.includes(IDENTITY_HEADER), 'the stub header is not in dist-server/app.mjs');
+  assert.ok(!built.includes('stubIdentity'));
+  assert.ok(!built.includes('X-Test'));
+});
+
+// ---- discovery, registration ----------------------------------------------------------------------------------
 
 test('metadata names the public origin, publishes DCR only and the two read scopes', withGateway(async (gw) => {
   const server = await (await gw.request('/.well-known/oauth-authorization-server')).json();
@@ -46,8 +90,6 @@ test('/mcp without a token is 401 and points at the resource metadata; a made-up
   assert.equal((await gw.request('/mcp', { headers: { Authorization: `Bearer ${access_token}` } })).status, 405);
 }));
 
-// ---- dynamic client registration -------------------------------------------------------------------------------
-
 test('dynamic client registration works, refuses a bad redirect URI and is limited per client address', withGateway(async (gw) => {
   const clientId = await register(gw);
   assert.match(clientId, /\S/);
@@ -55,11 +97,12 @@ test('dynamic client registration works, refuses a bad redirect URI and is limit
   assert.equal(plain.status, 400, 'an http redirect to a remote host is refused');
   assert.equal((await gw.request('/oauth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 400);
   // The limit counts per address: one address runs out, another does not.
-  for (let i = 0; i < REGISTRATIONS_PER_HOUR - 3; i++) assert.equal((await gw.request('/oauth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'n', redirect_uris: [REDIRECT], token_endpoint_auth_method: 'none' }) })).status, 201);
-  const over = await gw.request('/oauth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'n', redirect_uris: [REDIRECT], token_endpoint_auth_method: 'none' }) });
+  const again = (ip) => gw.request('/oauth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'n', redirect_uris: [REDIRECT], token_endpoint_auth_method: 'none' }) }, ip ? { ip } : undefined);
+  for (let i = 0; i < REGISTRATIONS_PER_HOUR - 3; i++) assert.equal((await again()).status, 201);
+  const over = await again();
   assert.equal(over.status, 429);
   assert.equal((await over.json()).error, 'temporarily_unavailable');
-  assert.equal((await gw.request('/oauth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'n', redirect_uris: [REDIRECT], token_endpoint_auth_method: 'none' }) }, { ip: '203.0.113.99' })).status, 201);
+  assert.equal((await again('203.0.113.99')).status, 201);
 }));
 
 test('a client id that is a URL is not fetched: no Client ID Metadata Document, no outbound request', withGateway(async (gw, t) => {
@@ -73,21 +116,20 @@ test('a client id that is a URL is not fetched: no Client ID Metadata Document, 
 
 // ---- the consent page ------------------------------------------------------------------------------------------
 
-test('the consent page asks for the admin token in a password field, posts it to itself and sets the single-use handle and cookie', withGateway(async (gw) => {
+test('the consent page names the signed-in person, sets the single-use handle and cookie, and asks for no token', withGateway(async (gw) => {
   const clientId = await register(gw);
   const { challenge } = await pkce();
   const { response, html, handle, jar } = await openConsent(gw, authorizePath(clientId, { challenge }));
   assert.equal(response.status, 200);
   assert.match(html, /Connect Test &lt;Agent&gt;/, 'the name the client chose is escaped');
   assert.ok(!html.includes('<Agent>'));
+  assert.ok(html.includes(`Signed in as <b>${PERSON}</b>`));
   assert.match(html, /<form method="post" action="\/oauth\/authorize">/);
-  assert.match(html, /<input [^>]*name="admin_token" type="password"/);
-  assert.ok(html.includes(`<b>${ORIGIN}</b>`), 'the page names the gateway address the token goes to');
+  assert.doesNotMatch(html, /type="password"|admin_token/, 'the page asks for no secret');
   assert.match(html, /Read projects, feedback and funnel numbers/);
   assert.match(html, /Read project configuration/);
   assert.match(html, /client\.example/);
   assert.doesNotMatch(html, /<script/i);
-  assert.doesNotMatch(html, /Signed in as/, 'no Cloudflare Access wording');
   assert.ok(handle.length > 20);
   assert.match(jar.cookie(), /^__Host-oauth-consent/);
   assert.match(response.headers.getSetCookie()[0], /Secure/i);
@@ -106,7 +148,7 @@ test('a wrong redirect URI, an unknown client, a missing PKCE challenge and a wr
   const evil = await gw.request(authorizePath(clientId, { challenge, redirect: 'https://evil.example/cb' }));
   assert.equal(evil.status, 400);
   assert.equal(evil.headers.get('Location'), null, 'never redirect to a URI the client did not register');
-  assert.doesNotMatch(await evil.text(), /name="admin_token"/);
+  assert.doesNotMatch(await evil.text(), /name="handle"/);
   const unknown = await gw.request(authorizePath('unknown-client', { challenge }));
   assert.equal(unknown.status, 400);
   assert.equal(unknown.headers.get('Location'), null);
@@ -123,7 +165,7 @@ test('a wrong redirect URI, an unknown client, a missing PKCE challenge and a wr
   assert.equal(grantRows(gw).length, 0);
 }));
 
-test('Allow with the admin token grants the requested scopes: the code goes back to the client with its state', withGateway(async (gw) => {
+test('Allow grants the requested scopes to the signed-in person: the code goes back to the client with its state', withGateway(async (gw) => {
   const clientId = await register(gw);
   const { challenge } = await pkce();
   const { handle, jar } = await openConsent(gw, authorizePath(clientId, { scope: 'feedback:read', challenge }));
@@ -133,31 +175,26 @@ test('Allow with the admin token grants the requested scopes: the code goes back
   assert.equal(`${to.origin}${to.pathname}`, REDIRECT);
   assert.equal(to.searchParams.get('state'), 'st-123');
   assert.ok(to.searchParams.get('code'));
-  assert.equal(grantRows(gw).length, 1);
-  assert.equal(gw.storage.sqlite.prepare("SELECT count(*) AS n FROM _fk_kv WHERE key LIKE 'grant:admin:%'").get().n, 1, 'the grant belongs to the one identity this runtime has');
+  assert.deepEqual(grantRows(gw).map((r) => r.key.split(':')[1]), [encodeURIComponent(PERSON)], 'the grant belongs to the person who approved it');
 }));
 
-test('a wrong admin token grants nothing, burns neither handle nor page, and the right one still works afterwards', withGateway(async (gw) => {
+test('Allow without a sign-in is refused and does not spend the page: the signed-in person can still use it', withGateway(async (gw) => {
   const clientId = await register(gw);
   const { challenge } = await pkce();
   const { handle, jar } = await openConsent(gw, authorizePath(clientId, { challenge }));
-  for (const wrong of ['', 'nope', TOKEN.slice(0, -1), `${TOKEN}x`, 'x'.repeat(600)]) {
-    const response = await postDecision(gw, { handle, jar, adminToken: wrong });
-    assert.equal(response.status, 403, `token ${JSON.stringify(wrong.slice(0, 12))}`);
-    assert.equal(response.headers.get('Location'), null);
-    assert.match(await response.text(), /That is not the admin token/);
-  }
-  assert.equal((await postDecision(gw, { handle, jar, adminToken: null })).status, 403, 'a form without the field');
+  const refused = await postDecision(gw, { handle, jar, options: { as: null } });
+  assert.equal(refused.status, 403);
+  assert.equal(refused.headers.get('Location'), null);
   assert.equal(grantRows(gw).length, 0);
-  assert.equal((await postDecision(gw, { handle, jar })).status, 302, 'the same page, the right token');
+  assert.equal((await postDecision(gw, { handle, jar })).status, 302);
   assert.equal(grantRows(gw).length, 1);
 }));
 
-test('Cancel denies without a token: the client gets access_denied and no grant exists', withGateway(async (gw) => {
+test('Cancel denies: the client gets access_denied and no grant exists', withGateway(async (gw) => {
   const clientId = await register(gw);
   const { challenge } = await pkce();
   const { handle, jar } = await openConsent(gw, authorizePath(clientId, { challenge }));
-  const response = await postDecision(gw, { handle, jar, decision: 'cancel', adminToken: null });
+  const response = await postDecision(gw, { handle, jar, decision: 'cancel' });
   assert.equal(response.status, 302);
   assert.equal(location(response).searchParams.get('error'), 'access_denied');
   assert.equal(location(response).searchParams.get('state'), 'st-123');
@@ -165,7 +202,7 @@ test('Cancel denies without a token: the client gets access_denied and no grant 
   assert.equal((await postDecision(gw, { handle, jar })).status, 400, 'the declined page is spent');
 }));
 
-test('the handle works once: a replay is refused, with the right token and with the wrong one', withGateway(async (gw) => {
+test('the handle works once: a replay is refused', withGateway(async (gw) => {
   const clientId = await register(gw);
   const { challenge } = await pkce();
   const { handle, jar } = await openConsent(gw, authorizePath(clientId, { challenge }));
@@ -181,7 +218,6 @@ test('a handle from another browser, a handle without its cookie and a made-up h
   const { challenge } = await pkce();
   const mine = await openConsent(gw, authorizePath(clientId, { challenge }));
   const theirs = await openConsent(gw, authorizePath(clientId, { challenge }));
-  // The right token, but my handle with their browser's cookie, and the reverse.
   assert.equal((await postDecision(gw, { handle: mine.handle, jar: theirs.jar })).status, 400);
   assert.equal((await postDecision(gw, { handle: theirs.handle, jar: mine.jar })).status, 400);
   assert.equal((await postDecision(gw, { handle: mine.handle, jar: browser() })).status, 400, 'no cookie at all');
@@ -191,7 +227,7 @@ test('a handle from another browser, a handle without its cookie and a made-up h
   assert.equal((await postDecision(gw, { handle: mine.handle, jar: mine.jar })).status, 302, 'the pair that belongs together still works');
 }));
 
-test('a form posted from another origin, or from an opaque one, is blocked before the token is even looked at', withGateway(async (gw) => {
+test('a form posted from another origin, or from an opaque one, is blocked before anything else is looked at', withGateway(async (gw) => {
   const clientId = await register(gw);
   const { challenge } = await pkce();
   const { handle, jar } = await openConsent(gw, authorizePath(clientId, { challenge }));
@@ -199,70 +235,8 @@ test('a form posted from another origin, or from an opaque one, is blocked befor
   assert.equal(cross.status, 403);
   assert.match(await cross.text(), /Request blocked/);
   assert.equal((await postDecision(gw, { handle, jar, origin: 'null', headers: { 'Sec-Fetch-Site': 'cross-site' } })).status, 403);
-  // A blocked form is not a wrong token: it did not count against the lockout either.
-  for (let i = 0; i < ADMIN_FAILED_AUTH_LIMIT + 2; i++) await postDecision(gw, { handle, jar, origin: 'https://evil.example' });
-  assert.equal((await postDecision(gw, { handle, jar })).status, 302);
-}));
-
-// ---- the lockout -----------------------------------------------------------------------------------------------
-
-test('wrong tokens are counted per client address; after the limit even the right token gets 429, and another address is unaffected', withGateway(async (gw) => {
-  const clientId = await register(gw);
-  const { challenge } = await pkce();
-  const { handle, jar } = await openConsent(gw, authorizePath(clientId, { challenge }));
-  for (let i = 0; i < ADMIN_FAILED_AUTH_LIMIT; i++) assert.equal((await postDecision(gw, { handle, jar, adminToken: `wrong-${i}` })).status, 403, `try ${i + 1}`);
-  const locked = await postDecision(gw, { handle, jar, adminToken: 'one-more' });
-  assert.equal(locked.status, 429);
-  assert.match(await locked.text(), /Too many attempts/);
-  assert.equal((await postDecision(gw, { handle, jar })).status, 429, 'the right token is no better than a wrong one once locked');
   assert.equal(grantRows(gw).length, 0);
-  const other = await openConsent(gw, authorizePath(clientId, { challenge }), browser(), { ip: '198.51.100.20' });
-  assert.equal((await postDecision(gw, { handle: other.handle, jar: other.jar, options: { ip: '198.51.100.20' } })).status, 302);
-}));
-
-test('the consent form and the admin API share one lockout: failures on one lock the other', withGateway(async (gw) => {
-  const clientId = await register(gw);
-  const { challenge } = await pkce();
-  const { handle, jar } = await openConsent(gw, authorizePath(clientId, { challenge }));
-  // Wrong Bearer tokens against the admin API, through the same counter (same address).
-  const admin = (token) => app.fetch(new Request(`${ORIGIN}/api/admin/projects`, { headers: { Authorization: `Bearer ${token}`, 'CF-Connecting-IP': '203.0.113.7' } }), gw.env, { waitUntil() {} });
-  for (let i = 0; i < ADMIN_FAILED_AUTH_LIMIT; i++) assert.equal((await admin(`wrong-${i}`)).status, 401);
-  assert.equal((await postDecision(gw, { handle, jar })).status, 429, 'the right token at the consent form is locked out');
-  assert.equal((await admin(TOKEN)).status, 429);
-}));
-
-test('opening the consent page is limited per client address, because every view stores a transaction', withGateway(async (gw) => {
-  const clientId = await register(gw);
-  const { challenge } = await pkce();
-  for (let i = 0; i < AUTHORIZE_VIEWS_PER_HOUR; i++) assert.equal((await gw.request(authorizePath(clientId, { challenge }))).status, 200);
-  assert.equal((await gw.request(authorizePath(clientId, { challenge }))).status, 429);
-  assert.equal((await gw.request(authorizePath(clientId, { challenge }), {}, { ip: '198.51.100.21' })).status, 200);
-}));
-
-test('the admin token appears nowhere it should not: not in a response, a header, a redirect, the database or any log line', withGateway(async (gw, t) => {
-  const lines = [];
-  for (const name of ['log', 'info', 'warn', 'error', 'debug']) t.mock.method(console, name, (...args) => lines.push(args.map(String).join(' ')));
-  const seen = [];
-  const original = gw.request;
-  gw.request = async (path, init, opts) => {
-    const response = await original(path, init, opts);
-    seen.push(path, [...response.headers].join('\n'), await response.clone().text());
-    return response;
-  };
-  const granted = await connect(gw);
-  await postDecision(gw, { handle: 'x', jar: browser(), adminToken: TOKEN });
-  await rpc(gw, granted.access_token, 'tools/call', { name: 'whoami', arguments: {} });
-  assert.ok(!seen.join('\n').includes(TOKEN));
-  assert.ok(!lines.join('\n').includes(TOKEN));
-  const dump = JSON.stringify(gw.storage.sqlite.prepare('SELECT key, value, metadata FROM _fk_kv').all());
-  assert.ok(!dump.includes(TOKEN));
-  assert.ok(!dump.includes(Buffer.from(TOKEN).toString('base64')));
-  // The only door for the token is the POST body: a URL carries nothing.
-  const { challenge } = await pkce();
-  const page = await gw.request(`${authorizePath(await register(gw), { challenge })}&admin_token=${TOKEN}`);
-  assert.equal(page.status, 200);
-  assert.ok(!(await page.text()).includes(TOKEN), 'a token in the URL is not echoed into the page');
-  assert.equal(gw.storage.sqlite.prepare("SELECT count(*) AS n FROM _fk_kv WHERE key LIKE 'grant:%'").get().n, 1, 'and does not grant anything');
+  assert.equal((await postDecision(gw, { handle, jar })).status, 302);
 }));
 
 // ---- token endpoint: PKCE, exchange, refresh, revoke -----------------------------------------------------------
@@ -339,6 +313,19 @@ test('an expired access token is 401 and its refresh token still works; an expir
   assert.equal(gw.storage.sqlite.prepare("SELECT count(*) AS n FROM _fk_kv WHERE key LIKE 'grant:%' OR key LIKE 'token:%'").get().n, 0);
 }));
 
+test('a grant survives a restart: the same database, a new gateway', async () => {
+  const first = await gateway();
+  let second;
+  try {
+    const grant = await connect(first);
+    first.close({ keep: true });
+    second = await gateway({ existing: first.dir });
+    assert.equal((await rpc(second, grant.access_token, 'tools/list')).status, 200);
+    const renewed = await refresh(second, grant.refresh_token, grant.clientId);
+    assert.equal(renewed.status, 200);
+  } finally { second?.close(); }
+});
+
 // ---- /mcp ------------------------------------------------------------------------------------------------------
 
 test('tools/list follows the granted scopes: feedback:read, config:read, both', withGateway(async (gw) => {
@@ -373,10 +360,10 @@ test('a read tool returns the stored data, and a tool outside the granted scope 
   assert.equal(noFeedback.body.error.code, -32602);
 }));
 
-test('whoami tells who approved it: the one identity of this runtime, the client name and the scopes', withGateway(async (gw) => {
+test('whoami tells who approved it, the client name and the scopes', withGateway(async (gw) => {
   const grant = await connect(gw, { scope: 'feedback:read' });
   const who = (await rpc(gw, grant.access_token, 'tools/call', { name: 'whoami', arguments: {} })).body.result.structuredContent;
-  assert.equal(who.email, 'admin');
+  assert.equal(who.email, PERSON);
   assert.equal(who.clientName, 'Test <Agent>');
   assert.deepEqual(who.scopes, ['feedback:read']);
   assert.equal(who.gateway, ORIGIN);
@@ -408,7 +395,7 @@ test('the request context the server passes in is never written to: a grant\'s p
 
 test('MCP calls are limited per grant and hour, like on the Worker', withGateway(async (gw) => {
   const grant = await connect(gw, { scope: 'feedback:read' });
-  const limit = Number(/export const MCP_CALLS_PER_HOUR = (\d+);/.exec((await import('node:fs')).readFileSync(new URL('../src/worker/mcp/server.ts', import.meta.url), 'utf8'))[1]);
+  const limit = Number(/export const MCP_CALLS_PER_HOUR = (\d+);/.exec(readFileSync(new URL('../src/worker/mcp/server.ts', import.meta.url), 'utf8'))[1]);
   // Fill the counter directly instead of making a thousand calls; the key is the hashed grant, so call once to learn it.
   assert.equal((await rpc(gw, grant.access_token, 'tools/list')).status, 200);
   gw.storage.sqlite.prepare("UPDATE counters SET count = ? WHERE key LIKE 'mcp:%'").run(limit);

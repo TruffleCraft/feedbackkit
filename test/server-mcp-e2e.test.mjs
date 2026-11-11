@@ -1,6 +1,6 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
@@ -11,11 +11,16 @@ import { buildBundle } from '../scripts/build-bundle.mjs';
 import { planMcp, isLoopbackHost } from '../scripts/server-mcp.mjs';
 import { openStorage } from '../scripts/server-storage.mjs';
 import { createKv } from '../scripts/server-kv.mjs';
+import { ORIGIN, PERSON, gateway } from './oauth-harness.mjs';
 
-// The standalone server end to end, the way an agent meets it: the unpacked release tarball (server.mjs, Node alone,
-// no node_modules), a real socket, and the MCP SDK's own client doing discovery, registration, PKCE, the token
-// exchange and the tool calls. The one step no program can do is the person in the browser, so the test plays the
-// browser: it opens the consent page, types the admin token and clicks Allow with the same HTTP a browser sends.
+// The standalone server's MCP side, from the outside. Two halves.
+//
+// The MCP SDK's own client does the whole OAuth flow (discovery, registration, PKCE, consent, token, tools) against the
+// bundled application with a stub sign-in, because a standalone server has no sign-in for approving a connection yet:
+// accounts are not built, and the stub exists in test code only (test/oauth-harness.mjs).
+//
+// The unpacked release tarball, started with Node alone, is the other half: what an operator gets. MCP is off by default,
+// says so at start and in /diag, serves only plumbing when FK_MCP=on, and approves nothing, because nobody can sign in.
 
 const root = new URL('..', import.meta.url).pathname;
 const token = 'fictional-test-token-'.repeat(3);
@@ -61,16 +66,8 @@ async function start(env, { data = temporary() } = {}) {
   return { exited: false, base, port, data, output: () => output, async stop() { if (child.exitCode === null) { child.kill('SIGTERM'); await once(child, 'exit'); } } };
 }
 
-const admin = (server, path, method = 'GET', body) => fetch(server.base + path, { method, headers: { Authorization: `Bearer ${token}`, Origin: server.base, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-
-async function seedProject(server) {
-  const config = { projectId: 'example', locale: 'en', delivery: 'local', auth: { origins: [server.base] }, llm: { provider: 'off', model: '' }, templates: [{ type: 'feedback', label: 'Feedback', fields: [] }] };
-  assert.equal((await admin(server, '/api/admin/projects', 'POST', { config })).status, 201);
-  assert.equal((await admin(server, '/api/admin/projects/example/test-report', 'POST', {})).status, 200);
-}
-
 /** An OAuth client for the MCP SDK that keeps its state in memory and hands the authorization URL to the test. */
-function oauthClient(base, scope) {
+function oauthClient(scope) {
   const state = { tokens: undefined, info: undefined, verifier: undefined, authorizationUrl: undefined, discovery: undefined };
   return {
     state,
@@ -91,128 +88,98 @@ function oauthClient(base, scope) {
   };
 }
 
-/** The person in the browser: opens the consent URL, types the admin token, clicks Allow (or Cancel). Returns the callback parameters. */
-async function browse(authorizationUrl, { adminToken = token, decision = 'allow' } = {}) {
-  const page = await fetch(authorizationUrl);
-  assert.equal(page.status, 200, 'the consent page');
-  const html = await page.text();
-  const handle = /name="handle" value="([^"]+)"/.exec(html)[1];
-  const cookie = page.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
-  const origin = new URL(authorizationUrl).origin;
-  const fields = { handle, decision };
-  if (adminToken !== null) fields.admin_token = adminToken;
-  const done = await fetch(`${origin}/oauth/authorize`, { method: 'POST', redirect: 'manual', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: origin, Cookie: cookie }, body: new URLSearchParams(fields) });
-  return { status: done.status, location: done.headers.get('Location') ? new URL(done.headers.get('Location')) : null, body: await done.text() };
-}
-
-async function connect(base, oauth) {
-  const transport = new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { authProvider: oauth.provider });
-  const client = new Client({ name: 'sdk-test', version: '1.0.0' });
-  await client.connect(transport);
-  return { client, transport };
-}
-
-test('the MCP SDK client discovers, registers, passes consent, reads feedback and is refused outside its scope', async () => {
-  const server = await start({ FK_MCP: 'on' });
+test('the MCP SDK client discovers, registers, passes consent, reads feedback and is refused outside its scope (bundled app, stub sign-in)', async () => {
+  const gw = await gateway();
   try {
-    assert.equal(server.exited, false, server.output);
-    assert.match(server.output(), /MCP on \(issuer http:\/\/127\.0\.0\.1:\d+, resource http:\/\/127\.0\.0\.1:\d+\/mcp\)/);
-    await seedProject(server);
-
-    const oauth = oauthClient(server.base, 'feedback:read');
-    // Without a token the SDK finds the authorization server through the 401 and the resource metadata, registers itself, and asks for the consent URL.
-    const transport = new StreamableHTTPClientTransport(new URL(`${server.base}/mcp`), { authProvider: oauth.provider });
+    // The SDK's fetch goes straight into the server's OAuth and MCP handler.
+    const sdkFetch = (input, init) => { const url = new URL(typeof input === 'string' ? input : input.url ?? input.href); return gw.request(url.pathname + url.search, init); };
+    const oauth = oauthClient('feedback:read');
+    const transport = new StreamableHTTPClientTransport(new URL(`${ORIGIN}/mcp`), { authProvider: oauth.provider, fetch: sdkFetch });
     await assert.rejects(new Client({ name: 'sdk-test', version: '1.0.0' }).connect(transport), UnauthorizedError);
     assert.ok(oauth.state.info?.client_id, 'registered through /oauth/register');
     const authorizationUrl = oauth.state.authorizationUrl;
-    assert.equal(authorizationUrl.origin, server.base);
+    assert.equal(authorizationUrl.origin, ORIGIN);
     assert.equal(authorizationUrl.pathname, '/oauth/authorize');
     assert.equal(authorizationUrl.searchParams.get('code_challenge_method'), 'S256');
-    assert.equal(authorizationUrl.searchParams.get('resource'), `${server.base}/mcp`);
-    assert.ok(!authorizationUrl.toString().includes(token), 'the token is not in the URL');
+    assert.equal(authorizationUrl.searchParams.get('resource'), `${ORIGIN}/mcp`);
 
-    // A wrong admin token: no code, and the SDK has nothing to finish.
-    const wrong = await browse(authorizationUrl, { adminToken: 'not-the-admin-token' });
-    assert.equal(wrong.status, 403);
-    assert.equal(wrong.location, null);
-    // The right one: the redirect carries the code, state and issuer.
-    const allowed = await browse(authorizationUrl);
+    // The person in the browser: opens the consent page, clicks Allow. Returns the callback parameters.
+    const page = await gw.request(authorizationUrl.pathname + authorizationUrl.search);
+    assert.equal(page.status, 200);
+    const handle = /name="handle" value="([^"]+)"/.exec(await page.text())[1];
+    const cookie = page.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+    const allowed = await gw.request('/oauth/authorize', { method: 'POST', redirect: 'manual', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: ORIGIN, Cookie: cookie }, body: new URLSearchParams({ handle, decision: 'allow' }) });
     assert.equal(allowed.status, 302);
-    assert.ok(allowed.location.searchParams.get('code'));
-    assert.equal(allowed.location.searchParams.get('iss'), server.base);
-    await transport.finishAuth(allowed.location.searchParams);
+    const callback = new URL(allowed.headers.get('Location'));
+    assert.ok(callback.searchParams.get('code'));
+    assert.equal(callback.searchParams.get('iss'), ORIGIN);
+    await transport.finishAuth(callback.searchParams);
     assert.ok(oauth.state.tokens.access_token && oauth.state.tokens.refresh_token);
 
-    const { client } = await connect(server.base, oauth);
+    const client = new Client({ name: 'sdk-test', version: '1.0.0' });
+    await client.connect(new StreamableHTTPClientTransport(new URL(`${ORIGIN}/mcp`), { authProvider: oauth.provider, fetch: sdkFetch }));
     const names = (await client.listTools()).tools.map((t) => t.name).sort();
     assert.deepEqual(names, ['fetch', 'get_feedback', 'get_funnel', 'list_feedback', 'list_projects', 'search', 'search_feedback', 'whoami']);
-    const projects = await client.callTool({ name: 'list_projects', arguments: {} });
-    assert.equal(projects.structuredContent.projects[0].id, 'example');
-    const items = await client.callTool({ name: 'list_feedback', arguments: { project: 'example' } });
-    assert.equal(items.structuredContent.items.length, 1);
+    assert.equal((await client.callTool({ name: 'list_projects', arguments: {} })).structuredContent.projects[0].id, 'demo');
+    assert.equal((await client.callTool({ name: 'list_feedback', arguments: { project: 'demo' } })).structuredContent.items.length, 1);
     const who = await client.callTool({ name: 'whoami', arguments: {} });
-    assert.deepEqual({ email: who.structuredContent.email, scopes: who.structuredContent.scopes, gateway: who.structuredContent.gateway }, { email: 'admin', scopes: ['feedback:read'], gateway: server.base });
-    await assert.rejects(client.callTool({ name: 'get_config', arguments: { project: 'example' } }), /not found/i, 'outside the granted scope');
+    assert.deepEqual({ email: who.structuredContent.email, scopes: who.structuredContent.scopes, gateway: who.structuredContent.gateway }, { email: PERSON, scopes: ['feedback:read'], gateway: ORIGIN });
+    await assert.rejects(client.callTool({ name: 'get_config', arguments: { project: 'demo' } }), /not found/i, 'outside the granted scope');
     await client.close();
-  } finally { await server.stop?.(); }
+  } finally { gw.close(); }
 });
 
-test('the grant survives a restart on the same address', async () => {
-  const port = await freePort();
-  const data = temporary();
-  const env = { FK_MCP: 'on', FK_PUBLIC_URL: `http://127.0.0.1:${port}`, PORT: String(port) };
-  let server = await start(env, { data });
-  try {
-    await seedProject(server);
-    const oauth = oauthClient(server.base, 'feedback:read config:read');
-    const transport = new StreamableHTTPClientTransport(new URL(`${server.base}/mcp`), { authProvider: oauth.provider });
-    await assert.rejects(new Client({ name: 'sdk-test', version: '1.0.0' }).connect(transport), UnauthorizedError);
-    await transport.finishAuth((await browse(oauth.state.authorizationUrl)).location.searchParams);
-    await server.stop();
-    server = await start(env, { data });
-    assert.equal(server.exited, false, server.output);
-    const { client } = await connect(server.base, oauth);
-    assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), ['fetch', 'get_config', 'get_feedback', 'get_funnel', 'list_feedback', 'list_projects', 'search', 'search_feedback', 'whoami']);
-    const config = await client.callTool({ name: 'get_config', arguments: { project: 'example' } });
-    assert.equal(config.structuredContent.projectId, 'example');
-    await client.close();
-  } finally { await server.stop?.(); rmSync(data, { recursive: true, force: true }); }
-});
-
-test('with an https FK_PUBLIC_URL MCP is on by itself, and issuer and resource come from it, never from the Host header', async () => {
-  const server = await start({ FK_PUBLIC_URL: 'https://feedback.example.test' });
-  try {
-    assert.equal(server.exited, false, server.output);
-    assert.match(server.output(), /MCP on \(issuer https:\/\/feedback\.example\.test, resource https:\/\/feedback\.example\.test\/mcp\)/);
-    const meta = await (await fetch(`${server.base}/.well-known/oauth-authorization-server`, { headers: { Host: 'evil.example' } })).json();
-    assert.equal(meta.issuer, 'https://feedback.example.test');
-    assert.equal(meta.token_endpoint, 'https://feedback.example.test/oauth/token');
-    const resource = await (await fetch(`${server.base}/.well-known/oauth-protected-resource/mcp`, { headers: { Host: 'evil.example' } })).json();
-    assert.equal(resource.resource, 'https://feedback.example.test/mcp');
-    // The 401 challenge points at the public address too.
-    const challenge = (await fetch(`${server.base}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json', Host: 'evil.example' }, body: '{}' })).headers.get('WWW-Authenticate');
-    assert.ok(challenge.includes('https://feedback.example.test/.well-known/oauth-protected-resource/mcp'), challenge);
-  } finally { await server.stop?.(); }
-});
-
-test('FK_MCP=off, or an http address without FK_MCP, leaves every OAuth and MCP path at 404 with the way to turn it on', async () => {
-  for (const env of [{ FK_PUBLIC_URL: 'https://feedback.example.test', FK_MCP: 'off' }, {}]) {
+test('MCP is off by default: the start log and /diag say why, and every OAuth and MCP path answers 404 with a hint', async () => {
+  for (const env of [{}, { FK_PUBLIC_URL: 'https://feedback.example.test' }, { FK_MCP: 'off', FK_PUBLIC_URL: 'https://feedback.example.test' }]) {
     const server = await start(env);
     try {
       assert.equal(server.exited, false, server.output);
       assert.match(server.output(), /MCP off \(/);
+      const diag = await (await fetch(`${server.base}/diag`)).json();
+      assert.match(diag.mcp, /^off \(/);
       for (const [path, method] of [['/mcp', 'POST'], ['/oauth/authorize', 'GET'], ['/oauth/token', 'POST'], ['/oauth/register', 'POST'], ['/.well-known/oauth-authorization-server', 'GET'], ['/.well-known/oauth-protected-resource/mcp', 'GET']]) {
         const response = await fetch(server.base + path, { method });
         assert.equal(response.status, 404, path);
         const body = await response.json();
         assert.equal(body.error, 'not_found');
-        assert.match(body.error_description, /FK_PUBLIC_URL/);
+        assert.match(body.error_description, /accounts are not built/);
       }
       // Everything else is untouched.
       assert.equal((await fetch(`${server.base}/diag`)).status, 200);
       assert.equal((await fetch(`${server.base}/api/admin/projects`)).status, 401);
     } finally { await server.stop?.(); }
   }
+});
+
+test('FK_MCP=on serves the plumbing and approves nothing: issuer and resource from FK_PUBLIC_URL, a 401 challenge, registration, and a consent page that refuses everyone', async () => {
+  const server = await start({ FK_MCP: 'on', FK_PUBLIC_URL: 'https://feedback.example.test' });
+  try {
+    assert.equal(server.exited, false, server.output);
+    assert.match(server.output(), /MCP on, but no connection can be approved yet: accounts are not built \(issuer https:\/\/feedback\.example\.test, resource https:\/\/feedback\.example\.test\/mcp\)/);
+    assert.match((await (await fetch(`${server.base}/diag`)).json()).mcp, /^on, but no connection can be approved yet/);
+    // A hostile Host header moves nothing.
+    const meta = await (await fetch(`${server.base}/.well-known/oauth-authorization-server`, { headers: { Host: 'evil.example' } })).json();
+    assert.equal(meta.issuer, 'https://feedback.example.test');
+    assert.equal(meta.token_endpoint, 'https://feedback.example.test/oauth/token');
+    assert.equal(meta.client_id_metadata_document_supported, false);
+    const resource = await (await fetch(`${server.base}/.well-known/oauth-protected-resource/mcp`, { headers: { Host: 'evil.example' } })).json();
+    assert.equal(resource.resource, 'https://feedback.example.test/mcp');
+    const challenge = (await fetch(`${server.base}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json', Host: 'evil.example' }, body: '{}' })).headers.get('WWW-Authenticate');
+    assert.ok(challenge.includes('https://feedback.example.test/.well-known/oauth-protected-resource/mcp'), challenge);
+    // A client can register, but nobody can approve it, whatever the request claims to be.
+    const registered = await fetch(`${server.base}/oauth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_name: 'probe', redirect_uris: ['https://client.example/cb'], token_endpoint_auth_method: 'none' }) });
+    assert.equal(registered.status, 201);
+    const { client_id } = await registered.json();
+    const q = new URLSearchParams({ response_type: 'code', client_id, redirect_uri: 'https://client.example/cb', scope: 'feedback:read', state: 's', code_challenge: 'x'.repeat(43), code_challenge_method: 'S256', resource: 'https://feedback.example.test/mcp' });
+    for (const headers of [{}, { 'X-Test-Identity': PERSON }, { Authorization: `Bearer ${token}`, 'Cf-Access-Jwt-Assertion': 'a.b.c' }]) {
+      const page = await fetch(`${server.base}/oauth/authorize?${q}`, { headers });
+      assert.equal(page.status, 403);
+      assert.equal(page.headers.getSetCookie().length, 0);
+      assert.match(await page.text(), /Connecting apps is not available yet/);
+    }
+    const post = await fetch(`${server.base}/oauth/authorize`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: server.base.replace(/^http:\/\/127\.0\.0\.1:\d+/, 'https://feedback.example.test') }, body: new URLSearchParams({ handle: 'x', decision: 'allow', admin_token: token }) });
+    assert.equal(post.status, 403);
+  } finally { await server.stop?.(); }
 });
 
 test('unsafe combinations stop the start with the reason', async () => {
@@ -251,15 +218,18 @@ test('the start sweep removes expired OAuth rows and keeps live ones, with MCP o
 
 test('planMcp: the whole table', () => {
   const plan = (url, setting, host) => planMcp({ origin: new URL(url), setting, host });
-  assert.deepEqual(plan('https://fb.example.test', undefined).enabled, true);
-  assert.deepEqual(plan('https://fb.example.test', '').enabled, true);
-  assert.deepEqual(plan('https://fb.example.test', 'ON ').enabled, true);
-  assert.deepEqual(plan('https://fb.example.test', 'off').enabled, false);
-  assert.deepEqual(plan('http://localhost:8787', undefined).enabled, false);
-  assert.deepEqual(plan('http://localhost:8787', 'on', '127.0.0.1').enabled, true);
-  assert.deepEqual(plan('http://127.0.0.1:8787', 'on', 'localhost').enabled, true);
-  assert.deepEqual(plan('http://[::1]:8787', 'on', '::1').enabled, true);
-  assert.deepEqual(plan('https://fb.example.test', 'on', '0.0.0.0').enabled, true, 'behind https the listen address is the proxy\'s business');
+  // Off unless asked for, whatever the address says: nobody can approve a connection yet.
+  assert.equal(plan('https://fb.example.test', undefined).enabled, false);
+  assert.equal(plan('https://fb.example.test', '').enabled, false);
+  assert.equal(plan('http://localhost:8787', undefined).enabled, false);
+  assert.match(plan('https://fb.example.test', undefined).note, /accounts, which are not built yet/);
+  assert.equal(plan('https://fb.example.test', 'off').enabled, false);
+  assert.equal(plan('https://fb.example.test', 'ON ').enabled, true);
+  assert.match(plan('https://fb.example.test', 'on').note, /^on, but no connection can be approved yet/);
+  assert.equal(plan('http://localhost:8787', 'on', '127.0.0.1').enabled, true);
+  assert.equal(plan('http://127.0.0.1:8787', 'on', 'localhost').enabled, true);
+  assert.equal(plan('http://[::1]:8787', 'on', '::1').enabled, true);
+  assert.equal(plan('https://fb.example.test', 'on', '0.0.0.0').enabled, true, 'behind https the listen address is the proxy\'s business');
   assert.throws(() => plan('http://fb.example.test', 'on'), /needs an https/);
   assert.throws(() => plan('http://192.168.1.5:8787', 'on'), /needs an https/);
   assert.throws(() => plan('http://localhost:8787', 'on', '0.0.0.0'), /clear text/);

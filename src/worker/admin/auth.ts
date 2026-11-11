@@ -21,15 +21,12 @@ function safeEqual(a: string, b: string): boolean {
   return out === 0;
 }
 
-function tokenMatches(env: Env, candidate: string): boolean {
-  const token = env["ADMIN_TOKEN"] as string | undefined;
-  return !!token && safeEqual(candidate, token);
-}
-
 function tokenAuthed(c: Context): boolean {
+  const token = c.env["ADMIN_TOKEN"] as string | undefined;
+  if (!token) return false;
   const header = c.req.header("Authorization") ?? "";
   const m = header.match(/^Bearer\s+(.+)$/);
-  return m ? tokenMatches(c.env as Env, m[1]!) : false;
+  return m ? safeEqual(m[1]!, token) : false;
 }
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -93,26 +90,12 @@ export async function adminCheck(c: Ctx, opts: { countAnonymous?: boolean } = {}
   if (access) return { ok: true, identity: access };
   if (opts.countAnonymous === false && c.req.header("Authorization") === undefined) return { ok: false, res: unauthorized() };
 
-  const header = c.req.header("Authorization") ?? "";
-  const bearer = header.match(/^Bearer\s+(.+)$/);
-  const verdict = await checkAdminToken(c.env, c.req.header("CF-Connecting-IP") ?? "unknown", bearer ? bearer[1]! : "");
-  if (verdict === "ok") return { ok: true, identity: { via: "token" } };
-  return { ok: false, res: verdict === "limited" ? limited() : unauthorized() };
-}
-
-/**
- * One try at the ADMIN_TOKEN with the failed-attempt lockout (see adminCheck for
- * the rules): "ok", "unauthorized" (wrong, and counted) or "limited" (this client
- * has used up its failures for the hour, so even the right token gets nothing).
- * The Bearer path of the admin API and the consent form of the standalone MCP
- * server both go through here, so they share one counter per client.
- */
-export async function checkAdminToken(env: Env, ip: string, candidate: string): Promise<"ok" | "unauthorized" | "limited"> {
-  const key = await ipKey(env, "adm401", ip);
-  if (await lockedOut(env, key)) return "limited";
-  if (tokenMatches(env, candidate)) return "ok";
-  const rl = await hitRateLimit(env, key, hourWindow(), ADMIN_FAILED_AUTH_LIMIT);
-  return rl.allowed ? "unauthorized" : "limited";
+  const ip = c.req.header("CF-Connecting-IP") ?? "unknown";
+  const key = await ipKey(c.env, "adm401", ip);
+  if (await lockedOut(c.env, key)) return { ok: false, res: limited() };
+  if (tokenAuthed(c)) return { ok: true, identity: { via: "token" } };
+  const rl = await hitRateLimit(c.env, key, hourWindow(), ADMIN_FAILED_AUTH_LIMIT);
+  return { ok: false, res: rl.allowed ? unauthorized() : limited() };
 }
 
 /**

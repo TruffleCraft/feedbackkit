@@ -40,7 +40,7 @@ Retention applies to log records, inbox reports and attachments whether handled 
 
 ## Agents
 
-An agent can read projects, feedback and the funnel through the gateway's MCP server, without the admin token in its hands. Whoever approves a connection signs in first (Cloudflare Access on Cloudflare, the admin token on a server), and the agent gets read-only scopes. Setup: [Cloudflare](QUICKSTART.md#mcp-for-agents), [server](SELF_HOSTING.md#connect-an-agent-through-mcp). To cut a server's agent connections, see [End every agent connection](SELF_HOSTING.md#end-every-agent-connection).
+On Cloudflare an agent can read projects, feedback and the funnel through the gateway's MCP server, without the admin token in its hands. Whoever approves a connection signs in through Cloudflare Access first, and the agent gets read-only scopes ([setup](QUICKSTART.md#mcp-for-agents)). A server installation cannot approve connections yet, because that needs the accounts of a later release ([MCP for agents](SELF_HOSTING.md#mcp-for-agents)).
 
 ## Credentials and hosting
 

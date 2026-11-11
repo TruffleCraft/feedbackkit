@@ -1,10 +1,10 @@
 import { AuthorizationError, CimdFetchError, type AuthRequest, type ConsentDescription } from "@cloudflare/workers-oauth-provider";
 import type { Context, Hono } from "hono";
-import { verifyAccess } from "../admin/access.js";
 import { sameOrigin } from "../admin/auth.js";
 import { CSS, FAVICON } from "../admin/pages.js";
 import { DEFAULT_SCOPES, SCOPE_TEXT, isScope, type AuthProps, type Scope } from "../mcp/scopes.js";
 import { consentHeaders } from "./consent-headers.js";
+import { authenticateConsent, signInRequired } from "./consent-identity.js";
 import { OAUTH_PATHS, mcpDisabledResponse } from "./provider.js";
 import type { Env } from "../env.js";
 
@@ -23,10 +23,10 @@ import type { Env } from "../env.js";
 // this browser (beginConsent / approveConsent of workers-oauth-provider), posted
 // from this origin. Nothing is granted without both an identity and that click.
 
-export type AppT = Hono<{ Bindings: Env }>;
-export type Ctx = Context<{ Bindings: Env }>;
+type AppT = Hono<{ Bindings: Env }>;
+type Ctx = Context<{ Bindings: Env }>;
 
-export const esc = (s: unknown) =>
+const esc = (s: unknown) =>
   String(s ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
 
 /** The scopes a request gets: the ones it asks for that we know, else the default. */
@@ -49,7 +49,7 @@ const PAGE_CSS = `
 @media (max-width:640px){.consent{padding-top:24px}.consent .c{padding:20px}}
 `;
 
-export function page(title: string, inner: string, nonce: string): string {
+function page(title: string, inner: string, nonce: string): string {
   return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -65,26 +65,22 @@ ${inner}
 </body></html>`;
 }
 
-export function respond(status: number, html: string, nonce: string, redirectOrigin: string | null, base?: Headers): Response {
+function respond(status: number, html: string, nonce: string, redirectOrigin: string | null, base?: Headers): Response {
   const headers = new Headers(base);
   for (const [k, v] of Object.entries(consentHeaders(nonce, redirectOrigin))) headers.set(k, v);
   return new Response(html, { status, headers });
 }
 
 /** A short page that only says what happened. Nothing on it can grant anything. */
-export function message(status: number, title: string, text: string): Response {
+function message(status: number, title: string, text: string): Response {
   const nonce = crypto.randomUUID().replace(/-/g, "");
   return respond(status, page(title, `<h1>${esc(title)}</h1><p class="lead">${esc(text)}</p>`, nonce), nonce, null);
 }
 
-const SIGN_IN_REQUIRED = [
-  "Sign-in required",
-  "Connecting an app takes a Cloudflare Access sign-in, and this request arrived without one. The operator has to put /oauth/authorize behind the Access application of this gateway. Then start again from the app. Nothing was granted.",
-] as const;
-export const EXPIRED = ["This page has expired", "Start again from the app that asked to connect. Nothing was granted."] as const;
-export const BLOCKED = ["Request blocked", "The form was not sent from this page. Start again from the app that asked to connect. Nothing was granted."] as const;
+const EXPIRED = ["This page has expired", "Start again from the app that asked to connect. Nothing was granted."] as const;
+const BLOCKED = ["Request blocked", "The form was not sent from this page. Start again from the app that asked to connect. Nothing was granted."] as const;
 
-export function redirectOriginOf(uri: string): string | null {
+function redirectOriginOf(uri: string): string | null {
   try {
     const u = new URL(uri);
     return u.protocol === "https:" || u.protocol === "http:" ? u.origin : null;
@@ -93,13 +89,7 @@ export function redirectOriginOf(uri: string): string | null {
   }
 }
 
-/**
- * The consent page. `identity` is the line above the form that says who is
- * approving (the Access sign-in here); `fields` goes inside the form, before the
- * buttons (the admin token field on the standalone server). Both are HTML the
- * caller built, with every value in it already escaped.
- */
-export function consentPage(details: ConsentDescription, scopes: Scope[], identity: string, handle: string, nonce: string, fields = ""): string {
+function consentPage(details: ConsentDescription, scopes: Scope[], email: string, handle: string, nonce: string): string {
   const name = esc(details.clientName);
   const who = details.clientDomain
     ? `Published by <b>${esc(details.clientDomain)}</b>.`
@@ -112,17 +102,17 @@ export function consentPage(details: ConsentDescription, scopes: Scope[], identi
 <ul>${scopes.map((s) => `<li>${esc(SCOPE_TEXT[s])}</li>`).join("")}</ul></div>
 <p class="sm muted wrapany">${who} Access goes to <b>${esc(details.redirectHost)}</b>.</p>
 ${details.redirectIsLoopback ? `<p class="warn">This hands access to an app on your computer. Continue only if you just started connecting from it.</p>` : ""}
-${identity}
+<p class="sm wrapany">Signed in as <b>${esc(email)}</b></p>
 <form method="post" action="${OAUTH_PATHS.authorize}">
 <input type="hidden" name="handle" value="${esc(handle)}">
-${fields}<div class="actions"><button class="b violet" type="submit" name="decision" value="allow">Allow</button><button class="b ghost" type="submit" name="decision" value="cancel" formnovalidate>Cancel</button></div>
+<div class="actions"><button class="b violet" type="submit" name="decision" value="allow">Allow</button><button class="b ghost" type="submit" name="decision" value="cancel">Cancel</button></div>
 </form>`,
     nonce,
   );
 }
 
 /** Errors from parseAuthRequest: back to the client only when its redirect URI is trusted. */
-export function authorizationErrorResponse(e: unknown): Response {
+function authorizationErrorResponse(e: unknown): Response {
   if (e instanceof AuthorizationError) {
     if (e.redirectTo) return new Response(null, { status: 302, headers: { Location: e.redirectTo, "Cache-Control": "no-store" } });
     return message(400, "Can't connect this app", e.description);
@@ -133,7 +123,7 @@ export function authorizationErrorResponse(e: unknown): Response {
 }
 
 /** The name the consent page showed (the client ID when the client gave none), capped. */
-export async function clientNameOf(env: Env, request: AuthRequest): Promise<string> {
+async function clientNameOf(env: Env, request: AuthRequest): Promise<string> {
   const { clientName } = await env.OAUTH_PROVIDER!.describeConsent(request);
   return clientName.trim().slice(0, 80) || "an app";
 }
@@ -143,8 +133,8 @@ export function registerOAuthRoutes(app: AppT): void {
   app.get(OAUTH_PATHS.authorize, async (c: Ctx) => {
     const oauth = c.env.OAUTH_PROVIDER;
     if (!oauth) return mcpDisabledResponse();
-    const identity = await verifyAccess(c.env, c.req.raw);
-    if (!identity) return message(403, ...SIGN_IN_REQUIRED);
+    const identity = await authenticateConsent(c.req.raw, c.env);
+    if (!identity) return message(403, ...signInRequired(c.env));
 
     let authReq: AuthRequest;
     let details: ConsentDescription;
@@ -157,7 +147,7 @@ export function registerOAuthRoutes(app: AppT): void {
     }
     const consent = await oauth.beginConsent(authReq);
     const nonce = crypto.randomUUID().replace(/-/g, "");
-    const html = consentPage(details, grantedScopes(authReq.scope), `<p class="sm wrapany">Signed in as <b>${esc(identity.email)}</b></p>`, consent.handle, nonce);
+    const html = consentPage(details, grantedScopes(authReq.scope), identity.email, consent.handle, nonce);
     return respond(200, html, nonce, redirectOriginOf(authReq.redirectUri), consent.headers);
   });
 
@@ -168,8 +158,8 @@ export function registerOAuthRoutes(app: AppT): void {
     // Access sends its cookie cross-site (SameSite=None), so check where the
     // form came from before trusting the Access identity on a POST.
     if (!sameOrigin(c)) return message(403, ...BLOCKED);
-    const identity = await verifyAccess(c.env, c.req.raw);
-    if (!identity) return message(403, ...SIGN_IN_REQUIRED);
+    const identity = await authenticateConsent(c.req.raw, c.env);
+    if (!identity) return message(403, ...signInRequired(c.env));
 
     let form: FormData;
     try {

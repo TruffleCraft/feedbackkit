@@ -26,7 +26,8 @@ const root = bundle ? here : join(here, "..");
 if ((process.env.ADMIN_TOKEN ?? "").length < 32) throw new Error("Set ADMIN_TOKEN to a random secret of at least 32 characters before starting.");
 const origin = new URL(process.env.FK_PUBLIC_URL || "http://localhost:8787");
 if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new Error("FK_PUBLIC_URL must be an http(s) origin, without credentials, path, query or fragment.");
-// MCP (ADR-015): decided before anything is opened, so an unsafe combination stops the start.
+// MCP (ADR-015): decided before anything is opened, so an unsafe combination stops the start. It is off unless FK_MCP=on,
+// and even then no connection can be approved until accounts exist (scripts/server-mcp.mjs).
 const mcp = planMcp({ origin, setting: process.env.FK_MCP, host: process.env.HOST || "127.0.0.1" });
 const storage = openStorage(join(process.env.FK_DATA_DIR || join(root, "data"), "feedbackkit.sqlite"), join(root, "migrations"));
 // The capability only ever rises. A database that a newer release raised past
@@ -62,6 +63,7 @@ delete env.OAUTH_KV; delete env.OAUTH_PROVIDER; delete env.FK_ACCESS_TEAM_DOMAIN
 const kv = createKv(storage.sqlite);
 const mcpFetch = mcp.enabled ? createMcpFetch(origin.origin) : null;
 if (mcpFetch) env.OAUTH_KV = kv;
+env.MCP_STATUS = mcp.note;
 const pending = new Set();
 const context = { waitUntil(p) { const task=Promise.resolve(p).catch((e)=>console.error("Background task failed:",e.message));pending.add(task);task.finally(()=>pending.delete(task)); }, passThroughOnException() {} };
 async function sweep() { await Promise.all([sweepExpiredAssets(env),pruneExpiredRecords(env)]); kv.sweepExpired(); storage.compact(); }

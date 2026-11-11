@@ -14,7 +14,8 @@ import { Buffer } from "node:buffer";
 // Expiry is honored on every read and list, and sweepExpired() removes the rows (the
 // server calls it hourly). The limits are KV's own, so a call that Cloudflare would
 // refuse fails here too instead of passing in a test and failing in production.
-// The table is expand-only: an older release ignores it, a newer one reads it again.
+// The table (`_fk_kv`) is made by openStorage in scripts/server-storage.mjs, beside `_fk_objects`. It is expand-only:
+// an older release ignores it, a newer one reads it again.
 
 export const KV_MAX_KEY_BYTES = 512;
 export const KV_MAX_METADATA_BYTES = 1024;
@@ -24,12 +25,10 @@ export const KV_MAX_LIST_LIMIT = 1000;
 const bytes = (text) => Buffer.byteLength(text, "utf8");
 
 /**
- * @param {import("node:sqlite").DatabaseSync} sqlite
+ * @param {import("node:sqlite").DatabaseSync} sqlite a database that openStorage has opened
  * @param {{ now?: () => number }} [options] now returns epoch milliseconds; tests move it.
  */
 export function createKv(sqlite, { now = () => Date.now() } = {}) {
-  sqlite.exec("CREATE TABLE IF NOT EXISTS _fk_kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, metadata TEXT, expires_at INTEGER)");
-  sqlite.exec("CREATE INDEX IF NOT EXISTS _fk_kv_expires ON _fk_kv (expires_at) WHERE expires_at IS NOT NULL");
   const seconds = () => Math.floor(now() / 1000);
   const checkKey = (key) => {
     if (typeof key !== "string" || key.length === 0) throw new TypeError("KV key must be a non-empty string");

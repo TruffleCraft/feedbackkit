@@ -1,6 +1,11 @@
-// Shared by test/server-oauth.test.mjs: the standalone server's OAuth and MCP side without a socket.
-// It builds what scripts/server.mjs builds (SQLite storage, the KV adapter, the bundled app) and calls
-// createMcpFetch with real Request objects, so the real workers-oauth-provider and the real MCP handler run.
+// Shared by test/server-oauth.test.mjs and test/server-mcp-e2e.test.mjs: the standalone server's OAuth and MCP side
+// without a socket. It builds what scripts/server.mjs builds (SQLite storage, the KV adapter, the bundled app) and
+// calls createMcpFetch with real Request objects, so the real workers-oauth-provider and the real MCP handler run.
+//
+// Who is signing in is the one thing the standalone server cannot answer yet (no accounts). The stub below answers it
+// for the tests: a request that carries the header X-Test-Identity is that person. It lives in test code only. The
+// production build has no way to receive it (createMcpFetch takes it as an argument, and scripts/server.mjs passes
+// none), and a test checks that the built server does not contain it.
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,34 +17,46 @@ import { createKv } from '../scripts/server-kv.mjs';
 export const ORIGIN = 'https://gw.test';
 export const REDIRECT = 'https://client.example/callback';
 export const TOKEN = 'fictional-test-token-'.repeat(3);
-export const ADMIN_FAILED_AUTH_LIMIT = Number(/export const ADMIN_FAILED_AUTH_LIMIT = (\d+);/.exec(readFileSync(new URL('../src/worker/admin/auth.ts', import.meta.url), 'utf8'))[1]);
+export const PERSON = 'robin@example.org';
+export const IDENTITY_HEADER = 'X-Test-Identity';
 export const REGISTRATIONS_PER_HOUR = Number(/export const REGISTRATIONS_PER_HOUR = (\d+);/.exec(readFileSync(new URL('../src/worker/standalone.ts', import.meta.url), 'utf8'))[1]);
-export const AUTHORIZE_VIEWS_PER_HOUR = Number(/export const AUTHORIZE_VIEWS_PER_HOUR = (\d+);/.exec(readFileSync(new URL('../src/worker/oauth/authorize-standalone.ts', import.meta.url), 'utf8'))[1]);
 export const ALL_TOOLS = ['fetch', 'get_config', 'get_feedback', 'get_funnel', 'list_feedback', 'list_projects', 'search', 'search_feedback', 'whoami'];
 
 const config = { projectId: 'demo', templates: [{ type: 'bug', label: 'Bug' }], llm: { provider: 'off' }, tracker: { kind: 'github', defaultRepo: 'acme/site', patSecret: 'GITHUB_PAT_default' }, auth: { origins: [] } };
 
-/** A gateway on a temporary SQLite file with one project and one feedback item. */
-export async function gateway() {
-  const dir = mkdtempSync(join(tmpdir(), 'fk-oauth-'));
+/** The stub: the person named in X-Test-Identity, or nobody. Test code only. */
+export const stubIdentity = async (request) => {
+  const who = request.headers.get(IDENTITY_HEADER);
+  return who ? { email: who, sub: `sub-${who}` } : null;
+};
+
+/**
+ * A gateway on a temporary SQLite file with one project and one feedback item. `existing` is a directory of an earlier
+ * gateway (a restart); `authenticate` is the sign-in (the stub by default, `null` for the server's own, which has none).
+ */
+export async function gateway({ existing, authenticate = stubIdentity } = {}) {
+  const dir = existing ?? mkdtempSync(join(tmpdir(), 'fk-oauth-'));
   const storage = openStorage(join(dir, 'feedbackkit.sqlite'), 'migrations');
   const kv = createKv(storage.sqlite);
   const env = { DB: storage.DB, UPLOADS: storage.UPLOADS, ASSETS: { fetch: async () => new Response('') }, FK_ENV: 'test', WIDGET_VERSION: 't', ADMIN_TOKEN: TOKEN, OAUTH_KV: kv };
-  await storage.DB.prepare("INSERT INTO projects (id, public_key, config, config_version, updated_at) VALUES ('demo', 'fk_pub_demo', ?1, 3, 0)").bind(JSON.stringify(config)).run();
-  await storage.DB.prepare("INSERT INTO feedback (id, project_id, outcome, payload, issue_url, created_at, client_feedback_id, delivery) VALUES ('fb-1', 'demo', 'created', ?1, NULL, ?2, 'c-1', 'local')")
-    .bind(JSON.stringify({ feedbackId: 'c-1', message: 'The save button does nothing' }), Date.now()).run();
-  const mcpFetch = createMcpFetch(ORIGIN);
+  if (!existing) {
+    await storage.DB.prepare("INSERT INTO projects (id, public_key, config, config_version, updated_at) VALUES ('demo', 'fk_pub_demo', ?1, 3, 0)").bind(JSON.stringify(config)).run();
+    await storage.DB.prepare("INSERT INTO feedback (id, project_id, outcome, payload, issue_url, created_at, client_feedback_id, delivery) VALUES ('fb-1', 'demo', 'created', ?1, NULL, ?2, 'c-1', 'local')")
+      .bind(JSON.stringify({ feedbackId: 'c-1', message: 'The save button does nothing' }), Date.now()).run();
+  }
+  const mcpFetch = authenticate ? createMcpFetch(ORIGIN, { authenticate }) : createMcpFetch(ORIGIN);
   // One context for every request, as scripts/server.mjs has: the server must not let the provider write a grant's props onto it.
   const shared = { waitUntil() {}, passThroughOnException() {} };
   const calls = { count: 0 };
-  /** One request to the standalone server's OAuth/MCP side; `ip` is the client address the server would have set. */
-  const request = (path, init = {}, { ip = '203.0.113.7' } = {}) => {
+  /** One request to the OAuth/MCP side; `ip` is the client address the server would have set, `as` the signed-in person (null: nobody). */
+  const request = (path, init = {}, { ip = '203.0.113.7', as = PERSON } = {}) => {
     calls.count++;
     const headers = new Headers(init.headers);
     headers.set('CF-Connecting-IP', ip);
+    if (as !== null && !headers.has(IDENTITY_HEADER)) headers.set(IDENTITY_HEADER, as);
     return mcpFetch(new Request(`${ORIGIN}${path}`, { ...init, headers }), env, shared);
   };
-  return { env, kv, storage, request, calls, close() { storage.close(); rmSync(dir, { recursive: true, force: true }); } };
+  return { env, kv, storage, dir, request, calls, close({ keep = false } = {}) { storage.close(); if (!keep) rmSync(dir, { recursive: true, force: true }); } };
 }
 
 export async function pkce() {
@@ -82,18 +99,17 @@ export async function openConsent(gw, path, jar = browser(), options) {
   return { response, html, jar, handle: /name="handle" value="([^"]+)"/.exec(html)?.[1] ?? '' };
 }
 
-export function postDecision(gw, { handle, jar, decision = 'allow', adminToken = TOKEN, origin = ORIGIN, headers = {}, options }) {
+export function postDecision(gw, { handle, jar, decision = 'allow', origin = ORIGIN, headers = {}, options }) {
   const fields = { handle, decision };
-  if (adminToken !== null) fields.admin_token = adminToken;
   return gw.request('/oauth/authorize', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: origin, Cookie: jar.cookie(), ...headers }, body: form(fields) }, options);
 }
 
-/** The whole consent: register, open the page, type the admin token, click Allow. Returns the code and PKCE verifier. */
-export async function authorizeClient(gw, { scope = 'feedback:read config:read', clientId, token = TOKEN } = {}) {
+/** The whole consent: register, open the page as the signed-in person, click Allow. Returns the code and PKCE verifier. */
+export async function authorizeClient(gw, { scope = 'feedback:read config:read', clientId } = {}) {
   clientId ??= await register(gw);
   const { verifier, challenge } = await pkce();
   const { handle, jar } = await openConsent(gw, authorizePath(clientId, { scope, challenge }));
-  const done = await postDecision(gw, { handle, jar, adminToken: token });
+  const done = await postDecision(gw, { handle, jar });
   if (done.status !== 302) throw new Error(`consent answered ${done.status}: ${await done.text()}`);
   const code = new URL(done.headers.get('Location')).searchParams.get('code');
   return { clientId, code, verifier };
