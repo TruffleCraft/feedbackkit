@@ -462,8 +462,8 @@ test("states: no link, a spent link, an owner that exists, rate limit, no passke
         expect(csp, path).not.toContain("unsafe-inline");
         const html = await res.text();
         expect(html, path).toContain('<meta name="robots" content="noindex,nofollow">');
-        expect(html.match(/<[a-z]+ [^>]*\sstyle=/g), path).toBeNull();
-        expect(html.match(/\son[a-z]+=/g), path).toBeNull();
+        expect(html.match(/<[a-z]+ [^>]*\sstyle=/gi), path).toBeNull();
+        expect(html.match(/\son[a-z]+=/gi), path).toBeNull();
       }
     });
     expect(problems).toEqual([]);

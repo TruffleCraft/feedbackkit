@@ -48,9 +48,9 @@ describe("account screen shells", () => {
     expect(html).toContain('<meta name="robots" content="noindex,nofollow">');
     expect(html).toContain(`<script src="/auth.js" nonce="${nonce}" defer></script>`);
     expect(html).not.toContain("/admin.js"); // the account screens load their own module only
-    for (const tag of html.match(/<(script|style)\b[^>]*>/g) ?? []) expect(tag).toContain(`nonce="${nonce}"`);
-    expect(html).not.toMatch(/\sstyle="/);
-    expect(html).not.toMatch(/\son[a-z]+="/);
+    for (const tag of html.match(/<(script|style)\b[^>]*>/gi) ?? []) expect(tag).toContain(`nonce="${nonce}"`);
+    expect(html).not.toMatch(/\sstyle="/i);
+    expect(html).not.toMatch(/\son[a-z]+="/i);
     expect(html).not.toContain("\u2014"); // no em dashes in the product text
     expect(dbCalls).toBe(0); // a static shell: no data, so no D1 access
   });
