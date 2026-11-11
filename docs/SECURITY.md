@@ -120,7 +120,7 @@ The standalone Node server (`scripts/server.mjs`) runs the same application as t
 - **Update check.** On a release tarball install the server makes one `GET` to the GitHub Releases API at most once a day (once an hour after a failure) so the System page can say that a newer release exists. The request carries a fixed `User-Agent` (`feedbackkit-update-check`) and an `Accept` header: no credential, cookie, installed version or host name. GitHub sees the server's IP address, as it does for any client. The browser never calls GitHub, and the admin CSP stays `connect-src 'self'`. The link to the release notes is built from the validated version, never taken from the answer. A failed or rate-limited check shows a short fixed reason on the System page and changes nothing else. `FK_UPDATE_CHECK=off` removes it, and a checkout install and Cloudflare make no such request. Test: `test/server-update-notice.test.mjs`.
 - **MCP.** Off, and nobody can approve a connection yet: the consent step is not wired to the account session yet (the sign-in exists: `authenticateAccount` in `src/worker/auth/`). `FK_MCP=on` serves the OAuth endpoints anyway and approves nothing. See [Identity on the standalone server](#identity-on-the-standalone-server). Tests: `test/server-oauth.test.mjs`, `test/server-mcp-e2e.test.mjs`.
 - **Move from Cloudflare.** `feedbackkit-migrate export` reads D1 and R2 with the operator's own wrangler login and writes every report and screenshot into a directory, so that directory is as sensitive as the database: keep it private and delete it after the import. The export holds no secrets, because D1 stores variable names only. The import refuses a damaged or edited export (checksums), writes in one transaction and checks counts and checksums before and after it commits. Tests: `test/server-migrate.test.mjs` and `test/server-migrate-e2e.test.mjs`.
-- **Not built yet.** The sign-in, setup and account screens of Gate 2 (the account API and the host commands exist), and masking of screenshots before upload (Gate 1). See the [plan](design/autonomous-admin-plan.md).
+- **Not built yet.** Masking of screenshots before upload (Gate 1). See the [plan](design/autonomous-admin-plan.md).
 
 ## Admin endpoints
 
@@ -191,7 +191,7 @@ missing only.
 
 ### Admin pages
 
-`/admin`, `/admin/projects/:id` and `/admin/system` are public HTML shells
+`/admin`, `/admin/projects/:id`, `/admin/system` and the account screens (`/admin/sign-in`, `/admin/setup`, `/admin/account`, `/admin/accounts`, `/admin/tokens`) are public HTML shells
 without data: no D1 read, nothing from the URL in the markup. `dist/admin.js`
 first asks `GET /api/admin/me` without a token. If Access signed the visitor
 in, it skips the token form, shows the email and links **Sign out** to
@@ -238,6 +238,17 @@ The cookie is `__Host-fk_session` with `Secure` when the public URL is https, an
 ### Failed attempts
 
 Failed sign-ins, link redemptions and API-token attempts are counted per hashed client address (30 an hour) and, when the attempt names an account, per account (10 an hour). **A valid credential is never refused because of a counter.** The server verifies first. Over a limit, a failed attempt gets `429` with `Retry-After` instead of `401`. The counters bound what a flood can write and tell a client or an upstream limiter to stop. They are not the defense against guessing, because a passkey signature and a 256-bit token cannot be guessed. Without `FK_TRUSTED_PROXY_HOPS` every client behind a proxy shares one address: failures there read as `429`, and a valid credential still works. Set it to the number of proxies in front of the server so that counters are per client. The tests run both cases on a real server.
+
+### The screens
+
+`dist/auth.js` serves the five account screens and is the only script they load; `dist/admin.js` keeps its own budget (ADR-014 amendment, 2026-11-11). The shells are the static pages described under [Admin pages](#admin-pages): the same nonce CSP, no inline style or event handler, `noindex`, no D1 access. Tests: `test/auth-pages.test.ts` and, in a real Chrome with a virtual authenticator, `e2e/accounts-ui.spec.ts`.
+
+- **The link token leaves the address bar.** The setup page reads the fragment and removes it with `history.replaceState` before it calls the server. It sends the token only in a JSON body.
+- **A new token or link does not stay in the page.** The fields that show a new API token or invitation link are cleared when their dialog closes. The token is shown once, and the server cannot show it again.
+- **Every API value reaches the page as text.** Names, user agents and errors are set with `textContent` or a `value` property, never as HTML.
+- **A session that ends sends the page to sign-in.** A `401` after the page has loaded goes to `/admin/sign-in#ended`, which says that the session ended. The sign-out button posts with the CSRF token and then leaves the page.
+- **The legacy token form exists only before the first owner.** It keeps the pasted token in `sessionStorage` of that tab, as the admin always did, and the sign-in page offers it only while no owner exists.
+- **The passkey buttons stay off where a passkey cannot work** (an address that is not https or `localhost`, or a browser without the WebAuthn JSON helpers), and the page says what to do instead.
 
 ### Operating notes
 
@@ -316,14 +327,14 @@ the scopes. The provider's user id is the URL-encoded email.
 
 ### Identity on the standalone server
 
-Not available yet. A standalone server has no Cloudflare Access, and accounts
-arrive with Gate 2, so there is nobody who can approve a connection. The consent
+Not available yet. A standalone server has no Cloudflare Access, and the
+accounts of Gate 2 are not yet connected to the consent step, so there is nobody who can approve a connection. The consent
 route is the Worker's, and it asks the same function who is signing in. The
 standalone server's answer is "nobody" (`consentAuthenticator` in
 `src/worker/standalone.ts`): the page says that accounts are not built, sets no
 cookie, stores no transaction and creates no grant, whatever the request carries
 (an Access header, a bearer token, a cookie, a form field). The account session
-replaces that function when Gate 2 ships, and the signed-in account becomes the
+replaces that function once the consent step is wired to it, and the signed-in account becomes the
 identity of a grant, as the Access email is on the Worker.
 
 A secret typed into the consent form (the `ADMIN_TOKEN`) was built for this and

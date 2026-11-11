@@ -25,7 +25,7 @@ Measured at `3f3caba` on 2026-11-10 (static review, seven specialist passes, an 
 | Standalone runtime | Works on a developer machine. Not release-ready | Two server tests pass. systemd, an LXC and a real GitHub delivery were not run. No release artifact exists |
 | Settings form | Works for edits. Unsafe to ship | `pnpm check:bundle` fails (admin 28.4 kB gz, budget 15 kB). Two e2e runs fail |
 | Create-only project API | Works. Incomplete | No Worker test, no error codes, no snippet in the response |
-| Accounts, roles | Backend built (Gate 2 backend pull request), screens waiting for the approved mock ([mockups/accounts.md](mockups/accounts.md)) | Passkeys, sessions, one-time links, scoped tokens on both runtimes, one conformance suite, a real-browser run ([gate2-accounts.md](gate2-accounts.md), [evidence](evidence/2026-11-11-gate2-accounts.md)) |
+| Accounts, roles | Built on both runtimes with the screens (Gate 2 backend and screens pull requests; mock [mockups/accounts.md](mockups/accounts.md), variants C, A, A) | Passkeys, sessions, one-time links, scoped tokens on both runtimes, one conformance suite, a real-browser run of the API and of every screen ([gate2-accounts.md](gate2-accounts.md), [evidence](evidence/2026-11-11-gate2-accounts.md), [screens](evidence/2026-11-11-gate2-ui.md)) |
 | OIDC | Not built | Step 6 |
 | Board, masks, previews | Not built | Not started |
 | Step A, runtime hardening | Implemented, in pull request #130 | Branch `feat/standalone-runtime-hardening` (six commits on top of `3f3caba`). R1 to R9 closed except R16. `pnpm test` runs the 32 durability tests on workerd and on SQLite, plus 366 unit tests. 17 Node server tests and the admin e2e specs pass. One settings e2e still fails, as it does at `3f3caba` (Step B) |

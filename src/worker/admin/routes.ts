@@ -13,6 +13,7 @@ import { checkRepoAccess } from "../providers/github.js";
 import { retentionImpact, retentionNotice } from "../storage/retention.js";
 import { releaseOf, bindingsPresence, secretsPresence } from "../status.js";
 import { adminCheck, adminGate, allowedProjects, identityOf } from "./auth.js";
+import { ownerExists } from "../auth/accounts.js";
 import { DAY_MS, QueryError, exportConfig, getFunnel, listFeedback, listProjects, parseConfig, type ProjectRow } from "./queries.js";
 import type { Env } from "../env.js";
 
@@ -80,7 +81,8 @@ export function registerAdminRoutes(app: AppT): void {
   // credentials at all gets a 401 that does not count toward the lockout.
   app.get("/api/admin/me", async (c) => {
     const r = await adminCheck(c, { countAnonymous: false });
-    if (!r.ok) return r.res;
+    // A visitor without credentials learns whether to sign in (an owner exists) or to set up: the page goes to the right screen.
+    if (!r.ok) return r.res.status === 401 ? c.json({ v: WIRE_VERSION, status: "error", error: "unauthorized", ownerExists: await ownerExists(c.env) }, 401) : r.res;
     const id = r.identity;
     if (id.via === "access") return c.json({ v: WIRE_VERSION, via: "access", email: id.email });
     if (id.via === "session") return c.json({ v: WIRE_VERSION, via: "session", account: { id: id.accountId, name: id.name, role: id.role }, csrf: id.csrf });

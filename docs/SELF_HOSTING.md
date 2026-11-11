@@ -8,7 +8,7 @@ What is verified and what is not: the server and its tests run on a developer ma
 
 Coming from Cloudflare? [Move from Cloudflare](#move-from-cloudflare) copies your data across.
 
-The server carries the plumbing for MCP (the OAuth provider and the MCP server at `/mcp`), off by default, because approving a connection needs the account sign-in of Gate 2, which is not built. Agents cannot connect to a standalone server yet ([MCP for agents](#mcp-for-agents)).
+The server carries the plumbing for MCP (the OAuth provider and the MCP server at `/mcp`), off by default, because approving a connection needs the account sign-in of Gate 2, which exists but is not yet connected to the consent page. Agents cannot connect to a standalone server yet ([MCP for agents](#mcp-for-agents)).
 
 ## Node.js on a server or Proxmox LXC
 
@@ -83,7 +83,7 @@ Both checks must pass before you extract anything. The unit expects Node at `/us
 
 ## MCP for agents
 
-Not available yet. On Cloudflare an agent such as Claude Code connects to `/mcp` with OAuth 2.1 after a person approves it on a consent page behind Cloudflare Access. A standalone server has no Access, and the sign-in that replaces it is the account system of Gate 2, which is not built. Until then nobody can approve a connection, so no agent can connect, and the server does not pretend otherwise.
+Not available yet. On Cloudflare an agent such as Claude Code connects to `/mcp` with OAuth 2.1 after a person approves it on a consent page behind Cloudflare Access. A standalone server has no Access, and the sign-in that replaces it is the account system of Gate 2, which exists but is not yet connected to the consent page. Until it is, nobody can approve a connection, so no agent can connect, and the server does not pretend otherwise.
 
 What is there: the OAuth provider and the MCP server run in the same server with the same tools and read-only scopes as on Cloudflare, and their state lives in the table `_fk_kv` of `feedbackkit.sqlite`, so backups and a rollback carry it and an older release ignores it. The plumbing is off. The start log says so (`MCP off (approving a connection needs accounts, which are not built yet)`), `/diag` shows the same line as `mcp`, and every `/mcp`, `/oauth/*` and `/.well-known/oauth-*` path answers 404 and names the reason.
 
@@ -109,7 +109,7 @@ For issue screenshots, set the project's public attachment base to `https://<gat
 
 ## Accounts and recovery
 
-Accounts replace `ADMIN_TOKEN`: two roles (owner and member), passkey sign-in, no password, no mail, no public sign-up. Scripts and agents use scoped API tokens. The design and the threat model are in [design/gate2-accounts.md](design/gate2-accounts.md) and [SECURITY.md](SECURITY.md#accounts-and-sessions). **Status:** the account API, the host commands and their tests are in; the screens that the links open (setup, sign-in, account, accounts, tokens) come with the approved mock, so until a release ships them keep `ADMIN_TOKEN` as your way in. Release notes say when they ship.
+Accounts replace `ADMIN_TOKEN`: two roles (owner and member), passkey sign-in, no password, no mail, no public sign-up. Scripts and agents use scoped API tokens. The design and the threat model are in [design/gate2-accounts.md](design/gate2-accounts.md) and [SECURITY.md](SECURITY.md#accounts-and-sessions). The screens are part of the admin: `/admin/setup` (the page the links open), `/admin/sign-in`, `/admin/account` (your passkeys and sessions), `/admin/accounts` (invitations, roles, removal) and `/admin/tokens` (API tokens). Accounts and tokens are for owners; a member uses the rest of the admin.
 
 **Passkeys need HTTPS or `localhost`.** Browsers refuse WebAuthn on plain http to any other host. The relying party ID is the host name of `FK_PUBLIC_URL`, so set `FK_PUBLIC_URL` to the address people really use before the first owner enrolls, and do not change its host afterwards (a passkey belongs to the host name; use a recovery link to enroll again). An IP address cannot be a relying party ID. A server without TLS is reachable for the first setup through a tunnel: `ssh -L 8787:127.0.0.1:8787 you@host`, then `http://localhost:8787` with `FK_PUBLIC_URL=http://localhost:8787`.
 
@@ -124,7 +124,7 @@ sudo feedbackkit-admin accounts            # who exists, no secrets
 
 The command reads `FK_DATA_DIR` and `FK_PUBLIC_URL` from `/etc/feedbackkit.env` (which only root can read), then continues as the owner of the data directory, so the files it touches stay readable for the service. It prints the link alone on stdout (everything else goes to stderr) and never writes it anywhere. A link works once and expires after 30 minutes (`--minutes 1` to `240`). A new `setup-link` replaces an older unused one, and `setup-link` refuses once an owner exists. `recovery-link` picks the owner when there is exactly one; with several, name the account with `--account`. A checkout install runs `node scripts/server.mjs admin setup-link`.
 
-**First owner.** Run `setup-link`, open the link in the browser you will sign in with, enter a name and create a passkey. From then on `ADMIN_TOKEN` grants nothing, the server logs that it is ignored, and you can remove it from the environment file. Two browsers that open the link at the same time produce one owner.
+**First owner.** Run `setup-link`, open the link in the browser you will sign in with, enter a name and create a passkey, then add a second one under Your account (a security key or another device): the last passkey cannot be removed, and with only one a lost device means a recovery link. From then on `ADMIN_TOKEN` grants nothing, the server logs that it is ignored, and you can remove it from the environment file. Two browsers that open the link at the same time produce one owner.
 
 **Recovery.** If every passkey is lost, run `recovery-link` on the host. The link replaces the account's passkeys, signs out all its sessions and **revokes the API tokens that account created**, because recovery is also the path after a lost or exposed credential; the owner creates new tokens afterwards, and the setup page says how many ended. `--keep-tokens` opts out. Tokens of other accounts are not touched. Recovery needs host access by design: there is no mail and no vendor to ask. Owners can invite members and renew a member's link from the admin; an owner is only ever recovered from the host.
 

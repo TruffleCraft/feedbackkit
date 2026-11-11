@@ -289,8 +289,8 @@ export function registerAuthRoutes(app: AppT): void {
     guarded(c, async () => {
       const denied = await adminGate(c, { owner: true });
       if (denied) return denied;
-      const accounts = await listAccounts(c.env);
-      return c.json({ v: WIRE_VERSION, accounts: accounts.map((a) => ({ id: a.id, name: a.name, role: a.role, state: a.state, passkeys: a.passkeys, createdAt: a.createdAt, lastSeenAt: a.lastSeenAt, linkExpiresAt: a.linkExpiresAt })) });
+      const accounts = await listAccounts(c.env, Date.now(), c.req.query("removed") === "1");
+      return c.json({ v: WIRE_VERSION, accounts: accounts.map((a) => ({ id: a.id, name: a.name, role: a.role, state: a.state, passkeys: a.passkeys, createdAt: a.createdAt, lastSeenAt: a.lastSeenAt, linkExpiresAt: a.linkExpiresAt, removedAt: a.removedAt })) });
     }),
   );
 
@@ -356,7 +356,7 @@ export function registerAuthRoutes(app: AppT): void {
       const tokens = await listApiTokens(c.env);
       return c.json({
         v: WIRE_VERSION,
-        tokens: tokens.map((t) => ({ id: t.id, prefix: t.prefix, name: t.name, access: t.access, projects: t.projects, createdAt: t.createdAt, createdBy: t.createdByName, expiresAt: t.expiresAt, lastUsedAt: t.lastUsedAt, state: t.revokedAt !== null ? "revoked" : t.expiresAt <= now ? "expired" : "active" })),
+        tokens: tokens.map((t) => ({ id: t.id, prefix: t.prefix, name: t.name, access: t.access, projects: t.projects, createdAt: t.createdAt, createdBy: t.createdByName, expiresAt: t.expiresAt, lastUsedAt: t.lastUsedAt, revokedAt: t.revokedAt, state: t.revokedAt !== null ? "revoked" : t.expiresAt <= now ? "expired" : "active" })),
       });
     }),
   );

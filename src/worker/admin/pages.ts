@@ -108,6 +108,7 @@ svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-widt
 .top .end{margin-left:auto;display:flex;align-items:center;gap:10px}
 .out{border:0;background:none;color:var(--muted);font-weight:600;font-size:14px;cursor:pointer;padding:6px 4px;white-space:nowrap}
 .out:hover{color:var(--ink)}
+.who a{color:inherit}.who a:hover{color:var(--ink)}
 a.out{display:inline-flex;align-items:center}
 .who{color:var(--muted);font-size:14px;font-weight:600;min-width:0;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .top .end{min-width:0}
@@ -296,7 +297,7 @@ dialog{max-width:580px;width:calc(100% - 32px);border:1px solid var(--line-2);bo
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 `;
 
-const SPRITE = `<svg width="0" height="0" class="sprite" aria-hidden="true" focusable="false">
+export const SPRITE = `<svg width="0" height="0" class="sprite" aria-hidden="true" focusable="false">
 <symbol id="mark" viewBox="0 0 48 48"><rect x="3" y="8" width="30" height="14" rx="7" fill="#7c3aed"/><rect x="15" y="26" width="30" height="14" rx="7" fill="#a78bfa"/></symbol>
 <symbol id="i-ext" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></symbol>
 <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
@@ -312,7 +313,7 @@ const SPRITE = `<svg width="0" height="0" class="sprite" aria-hidden="true" focu
 <symbol id="i-moon" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></symbol>
 </svg>`;
 
-const icon = (name: string, cls = "i") => `<svg class="${cls}" aria-hidden="true"><use href="#${name}"/></svg>`;
+export const icon = (name: string, cls = "i") => `<svg class="${cls}" aria-hidden="true"><use href="#${name}"/></svg>`;
 
 const ACCESS_GUIDE = "https://github.com/TruffleCraft/feedbackkit/blob/main/docs/QUICKSTART.md#admin";
 
@@ -329,6 +330,7 @@ const LOGIN = `<section id="login" class="login" hidden aria-labelledby="login-h
     <button class="b violet full" type="submit" id="login-btn">Sign in</button>
     <p class="help">The token stays in this tab and is gone once you close it.</p>
   </form>
+  <div class="hint">${icon("i-shield")}<span>No accounts yet? Run <code class="mono">feedbackkit-admin setup-link</code> on the server (on Cloudflare: <code class="mono">pnpm admin:link</code>) and open the link it prints to sign in with a passkey. The admin token stops working once the first owner exists.</span></div>
   <div class="hint">${icon("i-shield")}<span>Put <code class="mono">/admin*</code> and <code class="mono">/api/admin/*</code> behind Cloudflare Access so each person signs in with their own account. <a href="${ACCESS_GUIDE}" target="_blank" rel="noopener noreferrer">Setup guide</a></span></div>
 </section>`;
 
