@@ -32,7 +32,7 @@
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^1.2.3",
-    "@hono/node-server": "^1.19.18",
+    "@hono/node-server": "^2.1.6",
     "@modelcontextprotocol/server": "2.0.0",
     "@simplewebauthn/server": "14.1.0",
     "agents": "^0.27.0",
