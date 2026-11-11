@@ -14,7 +14,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { chownSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chownSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -404,4 +404,7 @@ export async function main(argv, { log = console.log } = {}) {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) process.exitCode = await main(process.argv.slice(2));
+// Run as a command. The real path is compared because Node reports the real path in import.meta.url, and
+// the documented way to start this is through the link /opt/feedbackkit/current.
+const entry = process.argv[1] && (() => { try { return realpathSync(process.argv[1]); } catch { return process.argv[1]; } })();
+if (entry && import.meta.url === pathToFileURL(entry).href) process.exitCode = await main(process.argv.slice(2));
