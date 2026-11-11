@@ -5,7 +5,7 @@ import { z } from "zod";
 import { CONTEXT_KEY_RE, MAX_CONTEXT_KEYS, MAX_CONTEXT_VALUE } from "./limits.js";
 
 export const WIRE_VERSION = 1 as const;
-export const SCHEMA_VERSION = 4 as const;
+export const SCHEMA_VERSION = 5 as const;
 
 // What this release does with the delivery model (#109). The promote workflow
 // writes it to meta.delivery_capability once a release is live on stable; config
@@ -15,7 +15,10 @@ export const SCHEMA_VERSION = 4 as const;
 //   1  reads delivery / tracker.project / absent tracker; delivers issue and local
 //   2  also delivers to a GitHub Project
 //   3  also reads archived types (templates[].archived): hidden from visitors, kept for reports
-export const DELIVERY_CAPABILITY = 3 as const;
+//   4  knows accounts (schema 5): once the first owner exists ADMIN_TOKEN grants nothing. A release below 4
+//      would honor it again, so the standalone server refuses to start on data that reached 4. No config
+//      shape needs 4; requiredDeliveryCapability never returns it.
+export const DELIVERY_CAPABILITY = 4 as const;
 
 // ── Template schema (per ADR-002/005) ────────────────────────────────────────
 export const FieldKind = z.enum(["text", "longtext", "select", "url"]);

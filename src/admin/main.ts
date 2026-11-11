@@ -157,6 +157,10 @@ const readToken = () => store("session", TOKEN_KEY);
 // Set when /api/admin/me reports a Cloudflare Access sign-in: requests then go
 // out without a token, and Access adds the identity on its way to the gateway.
 let accessEmail: string | null = null;
+// A passkey session (Gate 2) is cookie auth like Access: no Authorization header, and writes carry the CSRF token.
+// `owner` says an owner exists, so the token form gives way to /admin/sign-in.
+let csrf = "";
+let owner = false;
 
 async function api<T>(path: string, token = readToken()): Promise<T> {
   const headers: Record<string, string> = { Accept: "application/json" };
@@ -200,6 +204,7 @@ async function privateImage(url: string): Promise<string> {
 async function send(method: string, path: string, body?: unknown): Promise<{ status: number; json: Record<string, unknown> }> {
   const headers: Record<string, string> = { Accept: "application/json", "Content-Type": "application/json" };
   if (accessEmail === null) headers["Authorization"] = `Bearer ${readToken() ?? ""}`;
+  if (csrf) headers["X-CSRF-Token"] = csrf;
   const res = await fetch(path, { method, headers, cache: "no-store", credentials: "same-origin", ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   let json: Record<string, unknown> = {};
   try {
@@ -299,19 +304,23 @@ const MSG_LOCKED = "Too many failed sign-ins from your network. After 20 in an h
 const MSG_ENDED = "The saved token no longer works. Sign in again.";
 const MSG_ACCESS_ENDED = "Your sign-in has ended. Reload the page to sign in again.";
 
-/** Asks the gateway, without a token, whether Cloudflare Access signed this visitor in. */
+/** Asks the gateway, without a token, who signed this visitor in: Cloudflare Access (the email) or a passkey session (the name). */
 async function accessSignIn(): Promise<string | null> {
   try {
     const res = await fetch("/api/admin/me", { headers: { Accept: "application/json" }, cache: "no-store", credentials: "same-origin" });
+    const me = (await res.json()) as { via?: string; email?: string; account?: { name?: string }; csrf?: string; ownerExists?: boolean };
+    owner = !!me.ownerExists;
     if (!res.ok) return null;
-    const me = (await res.json()) as { via?: unknown; email?: unknown };
-    return me.via === "access" && typeof me.email === "string" && me.email ? me.email : null;
+    csrf = me.csrf ?? "";
+    return (me.via === "session" ? me.account?.name : me.via === "access" ? me.email : "") || null;
   } catch {
     return null;
   }
 }
 
 function showLogin(msg?: string) {
+  // Once an owner exists the token form is gone: sign in with a passkey.
+  if (owner || csrf) return location.replace("/admin/sign-in" + (msg ? "#ended" : ""));
   store("session", TOKEN_KEY, null);
   notice(null);
   for (const s of document.querySelectorAll<HTMLElement>("main > section")) s.hidden = s.id !== "login";
@@ -357,7 +366,7 @@ function wireLogin(view: string) {
 
 /** 401/429 end the session; anything else is shown as a load error. */
 function fail(err: unknown, what: string) {
-  if (accessEmail !== null && err instanceof HttpError && err.status === 401) {
+  if (accessEmail !== null && !csrf && err instanceof HttpError && err.status === 401) {
     for (const s of document.querySelectorAll<HTMLElement>("main > section")) s.hidden = true;
     return notice(MSG_ACCESS_ENDED);
   }
@@ -398,7 +407,7 @@ async function loadProjects() {
   if (!list.length) {
     $("import-cmd").textContent = [
       "curl -X POST \\",
-      '  -H "Authorization: Bearer $ADMIN_TOKEN" \\',
+      '  -H "Authorization: Bearer $FEEDBACKKIT_TOKEN" \\',
       '  -H "Content-Type: application/json" \\',
       "  --data @feedbackkit.config.json \\",
       `  ${location.origin}/api/admin/config/import`,
@@ -1240,12 +1249,12 @@ function start(view: string) {
   const section = $(`view-${view}`);
   $("login").hidden = true;
   $("nav").hidden = false;
-  $("signout").hidden = accessEmail !== null;
-  $("signout-access").hidden = accessEmail === null;
+  $("signout").hidden = accessEmail !== null && !csrf;
+  $("signout-access").hidden = accessEmail === null || !!csrf;
   if (accessEmail !== null) {
     const who = $("who");
     // On phones only the email shows; the label is for wider screens and screen readers.
-    who.replaceChildren(el("span", { class: "who-label" }, "Signed in as "), accessEmail);
+    who.replaceChildren(el("span", { class: "who-label" }, "Signed in as "), csrf ? el("a", { href: "/admin/account" }, accessEmail) : accessEmail);
     who.title = accessEmail;
     who.hidden = false;
   }
@@ -1257,7 +1266,7 @@ function start(view: string) {
 async function boot() {
   applyTheme(store("local", THEME_KEY));
   $("theme").addEventListener("click", toggleTheme);
-  $("signout").addEventListener("click", () => showLogin());
+  $("signout").addEventListener("click", () => (csrf ? void send("POST", "/api/auth/signout").finally(() => location.replace("/admin/sign-in")) : showLogin()));
   const view = document.body.dataset["view"] ?? "projects";
   wireLogin(view);
   accessEmail = await accessSignIn();

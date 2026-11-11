@@ -32,10 +32,19 @@ regexes = [
   # docs/design/evidence/2026-11-10-real-release-lxc.md: the fingerprint of the public dev release
   # key in release-keys/dev.pub. A fingerprint identifies a public key and grants nothing.
   '''^ogXw2Hs1dsFjNhFXSWNYTm7maKOFI5XAh7Lxq1oCSkU$''',
+  # docs/RELEASES.md, release-keys/README.md and the evidence files docs/design/evidence/2026-11-11-stable-release.md
+  # and 2026-11-11-github-delivery.md: the fingerprint of the public stable release key in
+  # release-keys/stable.pub (`ssh-keygen -l -f release-keys/stable.pub`). A fingerprint identifies a
+  # public key and grants nothing.
+  '''^4yszmEKSSoX49kfCJkTRP6CYIaqWhU/KUMqrL55nXb0$''',
   # site/src/index.ts: the public project key of the demo gateway. A public key is meant to sit
   # in a page's HTML (docs/SECURITY.md).
   '''^fk_pub_64a564982de5$''',
   # test/widget.test.ts: the textbook JWT with the payload {"sub":"1234567890"} that the PII
   # redaction test has to hide
   '''^eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxMjM0NTY3ODkwIn0\.dozjgNryP4J3jVmNHl0$''',
+  # scripts/build-bundle.mjs: the name of a file the release carries, written next to "auth.js" in
+  # the list of dist files. The generic rule reads "auth" as a key name and the next entry as its
+  # value. A file name is public by design.
+  '''^urbanist\.woff2$''',
 ]

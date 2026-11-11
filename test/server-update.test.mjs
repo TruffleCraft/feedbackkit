@@ -8,6 +8,7 @@ import { once } from 'node:events';
 import { createServer as createNetServer } from 'node:net';
 import { createServer } from 'node:http';
 import { createHash } from 'node:crypto';
+import { DatabaseSync } from 'node:sqlite';
 import { buildBundle } from '../scripts/build-bundle.mjs';
 import { packTarGz } from '../scripts/tar-pack.mjs';
 
@@ -100,8 +101,8 @@ esac
 `);
   chmodSync(h.systemctl, 0o755);
 
-  h.install = async (version) => {
-    const out = await h.publish(version);
+  h.install = async (version, options) => {
+    const out = await h.publish(version, options);
     execFileSync('tar', ['-xzf', join(out, `feedbackkit-v${version}.tar.gz`), '-C', join(h.base, 'releases')]);
     execFileSync('mv', [join(h.base, 'releases', `feedbackkit-v${version}`), join(h.base, 'releases', version)]);
     symlinkSync(`releases/${version}`, join(h.base, 'current'));
@@ -291,5 +292,69 @@ test('a tarball with more than the release directory is refused and leaves nothi
     assert.equal(h.current(), '1.0.0');
     assert.deepEqual(readdirSync(join(h.base, 'releases')).sort(), ['1.0.0'], 'no half-unpacked release is left');
     assert.equal((await h.diag()).version, '1.0.0');
+  } finally { await h.close(); }
+});
+
+// ── Accounts (Gate 2): migration 0005, delivery capability 4 and the way back ─────────────
+
+// A model of the release before accounts: this bundle with schema 4, delivery capability 3, no migration 0005
+// and the schema version compiled into the server file set back. It stands in for the real older release, whose
+// bytes a test cannot fetch; the checks below read the database and the start-up refusal, not the old code.
+const beforeAccounts = (dir) => {
+  rmSync(join(dir, 'migrations/0005_accounts.sql'));
+  const file = join(dir, 'bundle.json');
+  const manifest = JSON.parse(readFileSync(file, 'utf8'));
+  manifest.schemaVersion = 4; manifest.deliveryCapability = 3; manifest.files = manifest.files.filter((f) => !f.endsWith('0005_accounts.sql'));
+  writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
+  const server = join(dir, 'server.mjs');
+  const text = readFileSync(server, 'utf8');
+  assert.match(text, /SCHEMA_VERSION = 5/, 'the server file carries the schema version this test sets back');
+  writeFileSync(server, text.replace('SCHEMA_VERSION = 5', 'SCHEMA_VERSION = 4'));
+};
+const database = (h) => {
+  const db = new DatabaseSync(join(h.data, 'feedbackkit.sqlite'), { readOnly: true });
+  try {
+    const meta = (key) => db.prepare('SELECT value FROM meta WHERE key = ?').get(key)?.value;
+    return { schema: meta('schema_version'), capability: meta('delivery_capability'), accounts: Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'owner_claim'").get()) };
+  } finally { db.close(); }
+};
+
+test('an update to the first release with accounts migrates the data and keeps it; a rollback returns to the old schema', async () => {
+  const h = await harness();
+  try {
+    await h.install('1.0.0', { mutate: beforeAccounts });
+    await h.createProject('before');
+    assert.deepEqual(database(h), { schema: '4', capability: '3', accounts: false });
+    await h.publish('1.1.0');
+    const update = await h.run();
+    assert.equal(update.status, 0, update.stdout + update.stderr);
+    const diag = await h.diag();
+    assert.deepEqual({ version: diag.version, schemaOk: diag.schema.ok, schema: diag.schema.version }, { version: '1.1.0', schemaOk: true, schema: 5 });
+    assert.deepEqual(await h.projects(), ['before'], 'the data came along through migration 0005');
+    assert.deepEqual(database(h), { schema: '5', capability: '4', accounts: true });
+    assert.equal((await (await fetch(`${h.baseUrl}/api/auth/state`)).json()).ownerExists, false);
+    const back = await h.run('--rollback');
+    assert.equal(back.status, 0, back.stdout + back.stderr);
+    assert.equal((await h.diag()).version, '1.0.0');
+    assert.deepEqual(await h.projects(), ['before']);
+    assert.deepEqual(database(h), { schema: '4', capability: '3', accounts: false }, 'the data is the copy from before the update, with the old schema');
+  } finally { await h.close(); }
+});
+
+test('a release from before accounts refuses to start on data that has them, so ADMIN_TOKEN cannot come back', async () => {
+  const h = await harness();
+  try {
+    await h.install('1.0.0', { mutate: beforeAccounts });
+    await h.publish('1.1.0');
+    assert.equal((await h.run()).status, 0);
+    // An operator starts the old release by hand on the new data, without feedbackkit-update's copy.
+    execFileSync(h.systemctl, ['stop', 'feedbackkit']);
+    rmSync(join(h.base, 'current')); symlinkSync('releases/1.0.0', join(h.base, 'current'));
+    writeFileSync(h.log, '');
+    execFileSync(h.systemctl, ['start', 'feedbackkit']);
+    let log = '';
+    for (let i = 0; i < 100 && !/delivery capability/.test(log); i++) { await new Promise((r) => setTimeout(r, 100)); log = readFileSync(h.log, 'utf8'); }
+    assert.match(log, /This database needs delivery capability 4 and this release provides 3/);
+    assert.equal(await h.diag(), null, 'nothing is listening');
   } finally { await h.close(); }
 });

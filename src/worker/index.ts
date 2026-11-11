@@ -8,6 +8,7 @@ registerOAuthRoutes(app);
 import { workerFetch } from "./oauth/provider.js";
 import { sweepExpiredAssets } from "./storage/r2.js";
 import { pruneExpiredRecords } from "./storage/retention.js";
+import { pruneExpiredAuth } from "./auth/host.js";
 import type { Env } from "./env.js";
 
 // Hono serves fetch, behind the OAuth provider when OAUTH_KV is bound (it then
@@ -16,6 +17,6 @@ import type { Env } from "./env.js";
 export default {
   fetch: (request: Request, env: Env, ctx: ExecutionContext) => workerFetch(app, request, env, ctx),
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(Promise.allSettled([sweepExpiredAssets(env), pruneExpiredRecords(env)]));
+    ctx.waitUntil(Promise.allSettled([sweepExpiredAssets(env), pruneExpiredRecords(env), pruneExpiredAuth(env)]));
   },
 };

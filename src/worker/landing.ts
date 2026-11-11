@@ -13,6 +13,8 @@ export interface LandingState {
   schema: SchemaState;
   secrets: { adminToken: boolean; githubPat: boolean; llmKey: boolean };
   projects: number | null;
+  owner: boolean; // the first owner exists (Gate 2)
+  standalone: boolean; // the standalone server: no wrangler, no ADMIN_TOKEN secret
 }
 
 interface Item {
@@ -30,9 +32,12 @@ export function renderLanding(s: LandingState): string {
       label: s.schema.ok ? "Database schema is up to date" : `Database schema: ${s.schema.ok === false ? s.schema.reason : ""}`,
     },
     {
-      ok: s.secrets.adminToken,
-      label: "ADMIN_TOKEN secret",
-      fix: "npx wrangler secret put ADMIN_TOKEN   # generate one: openssl rand -hex 32",
+      // Accounts replace ADMIN_TOKEN: the first owner is made with a one-time link from the host. ADMIN_TOKEN still opens the admin until then.
+      ok: s.owner || (!s.standalone && s.secrets.adminToken),
+      label: s.owner ? "First owner created" : s.standalone ? "No owner yet" : s.secrets.adminToken ? "ADMIN_TOKEN secret (works until the first owner exists)" : "No owner yet, and no ADMIN_TOKEN secret",
+      fix: s.standalone
+        ? "sudo feedbackkit-admin setup-link   # on this host, then open the link it prints"
+        : `pnpm admin:link --url ${s.origin}   # from your checkout, signed in to Cloudflare; then open the link it prints\n# or, the older way: npx wrangler secret put ADMIN_TOKEN   (generate one: openssl rand -hex 32)`,
     },
     {
       ok: s.secrets.githubPat,
@@ -42,7 +47,7 @@ export function renderLanding(s: LandingState): string {
     {
       ok: projects > 0,
       label: projects > 0 ? `${projects} project${projects === 1 ? "" : "s"} configured` : "No project configured yet",
-      fix: `curl -X POST "${s.origin}/api/admin/config/import" -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" --data @config.json`,
+      fix: `curl -X POST "${s.origin}/api/admin/config/import" -H "Authorization: Bearer $FEEDBACKKIT_TOKEN" -H "Content-Type: application/json" --data @config.json   # an API token, or ADMIN_TOKEN before the first owner`,
     },
     {
       ok: s.secrets.llmKey,

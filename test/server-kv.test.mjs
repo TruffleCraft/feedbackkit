@@ -131,7 +131,7 @@ test('rows survive a restart, and an older release that never heard of the table
     storage.close();
     // The release before this one: opens the file with its own code and never touches _fk_kv.
     storage = openStorage(file, 'migrations');
-    assert.equal((await storage.DB.prepare("SELECT value FROM meta WHERE key='schema_version'").first()).value, '4');
+    assert.equal((await storage.DB.prepare("SELECT value FROM meta WHERE key='schema_version'").first()).value, '5');
     storage.close();
     storage = openStorage(file, 'migrations');
     assert.deepEqual(await createKv(storage.sqlite).get('grant:u:1', 'json'), { ok: true });

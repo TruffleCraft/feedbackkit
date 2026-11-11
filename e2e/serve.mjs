@@ -40,6 +40,7 @@ function consentForm(res, action, headers) {
 
 const ROUTES = {
   "/admin.js": { file: join(root, "dist", "admin.js"), type: "application/javascript; charset=utf-8" },
+  "/auth.js": { file: join(root, "dist", "auth.js"), type: "application/javascript; charset=utf-8" },
   "/widget.js": { file: join(root, "dist", "widget.js"), type: "application/javascript; charset=utf-8" },
   "/urbanist.woff2": { file: join(root, "dist", "urbanist.woff2"), type: "font/woff2" },
   "/": { file: join(root, "e2e", "demo.html"), type: "text/html; charset=utf-8" },
