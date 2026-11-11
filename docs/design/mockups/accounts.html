@@ -70,7 +70,7 @@ table.cmp tr:last-child td{border-bottom:0}
     <li><a href="#tokens">6 API tokens</a></li>
     <li><a href="#compare">Side by side</a></li>
     <li><a href="#recommendation">Recommendation</a></li>
-    <li><a href="#questions">Open questions</a></li>
+    <li><a href="#questions">Decided</a></li>
   </ul>
 
   <div class="cols">
@@ -134,12 +134,13 @@ table.cmp tr:last-child td{border-bottom:0}
   </section>
 
   <section class="variant" id="questions">
-    <h2>Open questions</h2>
+    <h2>Decided</h2>
     <div class="panel" style="max-width:900px">
+      <p class="help">Answered by the owner on 2026-11-11 ("Ja, wie empfohlen"). The copy below follows them.</p>
       <ul>
-        <li><b>Member access.</b> Until Step 4, a member can use the whole admin except accounts and tokens. The mock says so in the invitation dialog. Is that acceptable for an interim?</li>
-        <li><b>Token limits.</b> A token limited to some projects cannot create projects or open System. The mock states it in the create dialog. Confirm that rule or ask for another.</li>
-        <li><b>Recovery and API tokens.</b> Recovery replaces passkeys and sessions and leaves API tokens running, so an agent keeps working while the owner recovers. After a suspected break-in, tokens stay a way in until someone revokes them. Should recovery revoke them too?</li>
+        <li><b>Member access.</b> Until Step 4, a member can use the whole admin except accounts and tokens. The invitation dialog says so.</li>
+        <li><b>Token limits.</b> A token limited to some projects cannot create projects or open System. The create dialog says so.</li>
+        <li><b>Recovery and API tokens.</b> Recovery revokes the API tokens that account created, because recovery is also the path after a lost or exposed credential. The owner creates new tokens afterwards. The setup page says so before the passkey is created and says how many ended afterwards; the host command has <code>--keep-tokens</code> to opt out.</li>
       </ul>
     </div>
   </section>
@@ -448,10 +449,10 @@ const SETUP_MSG = {
 function setupPage(kind, state) {
   const c = SETUP_COPY[kind];
   const lead = '<svg width="40" height="40" aria-hidden="true"><use href="#mark"/></svg>';
-  const warn = kind === "recovery" ? '<div class="note"><b>Your old passkeys and sessions will be replaced.</b> Every browser signed in as Robin is signed out. API tokens you created keep working.</div>' : "";
+  const warn = kind === "recovery" ? '<div class="note"><b>Your old passkeys and sessions will be replaced.</b> Every browser signed in as Robin is signed out, and the API tokens you created are revoked. Create new ones afterwards.</div>' : "";
   let card;
   if (state === "done") {
-    card = '<div class="login-card">' + lead + '<h1>Passkey created</h1><p>You are signed in as Robin, ' + (kind === "invite" ? "member" : "owner") + '.</p>' + (kind === "recovery" ? "" : '<div class="note" role="status">Add a second passkey in Your account, so that losing this one does not lock you out.</div>') + '<a class="b violet full" href="#">Open the admin</a></div>';
+    card = '<div class="login-card">' + lead + '<h1>Passkey created</h1><p>You are signed in as Robin, ' + (kind === "invite" ? "member" : "owner") + '.</p>' + (kind === "recovery" ? '<div class="note" role="status">2 API tokens you created were revoked. Create new ones under API tokens.</div>' : '<div class="note" role="status">Add a second passkey in Your account, so that losing this one does not lock you out.</div>') + '<a class="b violet full" href="#">Open the admin</a></div>';
   } else if (state === "badlink") {
     const next = kind === "first" ? "Run <code class=\"mono\">feedbackkit-admin setup-link</code> on the server for a new link." : kind === "invite" ? "Ask an owner for a new invitation." : "Run <code class=\"mono\">feedbackkit-admin recovery-link</code> on the server for a new link.";
     card = '<div class="login-card">' + lead + '<h1>This link no longer works</h1><p>Setup, invitation and recovery links work once and expire. This one was used, has expired or is not valid.</p><p>' + next + '</p><a class="b ghost full" href="#">Go to sign in</a></div>';
@@ -573,7 +574,7 @@ const SECTIONS = [
   { id: "setup-main", name: "Create the passkey", intro: "First owner, invitation and recovery share the card. Only the heading, the explanation and one warning change.", meta: ["Route: <b>/admin/setup#token</b>", "New script: <b>none beyond auth.js</b>"],
     desktop: [{ vp: D, caption: "First owner", html: setupPage("first") }, { vp: D, caption: "Invitation (member)", html: setupPage("invite") }, { vp: D, caption: "Recovery", html: setupPage("recovery") }],
     phone: [{ vp: P, caption: "First owner", html: setupPage("first") }, { vp: P, caption: "Recovery", html: setupPage("recovery") }],
-    note: "Recovery says what it replaces before the button, and leaves API tokens alone on purpose: an agent keeps running while the owner recovers." },
+    note: "Recovery says what it replaces before the button, including the API tokens it revokes (owner decision, 2026-11-11), and how many ended once the passkey exists." },
   { id: "setup-states", name: "Setup states", intro: "The states of the same page. A cancelled prompt keeps the link usable. A used, expired or unknown link ends here with the next step named.", meta: ["Cancel: <b>link stays valid</b>"],
     cards: [
       ["Waiting for the passkey prompt", setupPage("first", "waiting")], ["Prompt cancelled", setupPage("first", "cancelled")], ["Passkey could not be saved", setupPage("first", "failed")], ["Done, first owner", setupPage("first", "done")],

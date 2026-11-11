@@ -104,7 +104,7 @@ The cheapest build is C for the account area, A for sign-in and A for tokens. No
 - An invitation and a recovery link are shown once, in a dialog, with a copy button. The server keeps only a hash, so the dialog says the link cannot be shown again.
 - The link token sits after the `#`, so the server and proxy logs never receive it. `auth.js` reads it and removes it from the address bar with `history.replaceState`.
 - API tokens: name, Read or Write, all projects or some, expiry of 30, 90 (default) or 365 days. No token without an expiry. A token never manages accounts or tokens, and the page says so.
-- Recovery replaces the old passkeys and revokes the sessions of that account. It leaves API tokens alone on purpose, and the page says that too.
+- Recovery replaces the old passkeys, revokes the sessions of that account and revokes the API tokens it created (owner decision, 2026-11-11: recovery is also the path after a lost or exposed credential). The page says so before the passkey is created, and says how many tokens ended afterwards.
 - A failed attempt never produces the word "locked". The throttle message says no account is locked and a valid passkey is never blocked.
 - Examples come from the product's fictional set: Robin, Sam, Taylor, `example.org`.
 
@@ -192,7 +192,8 @@ The text the UI phase uses verbatim. The `accounts.html` frames use the same str
 | Invitation, text | Robin invited you as a member. Create a passkey to finish the account for Taylor. |
 | Recovery, heading | Recover access |
 | Recovery, text | Create a new passkey for Robin. |
-| Recovery, warning | **Your old passkeys and sessions will be replaced.** Every browser signed in as Robin is signed out. API tokens you created keep working. |
+| Recovery, warning | **Your old passkeys and sessions will be replaced.** Every browser signed in as Robin is signed out, and the API tokens you created are revoked. Create new ones afterwards. |
+| Recovery, done | Passkey created. You are signed in as Robin, owner. 2 API tokens you created were revoked. Create new ones under API tokens. (The number comes from `tokensRevoked` in the answer; with none: nothing is shown.) |
 | Button | Create passkey (recovery: Create new passkey) |
 | Help | Your device asks you to confirm. The passkey stays with you. The server keeps only its public half. |
 | Cancelled | Passkey creation was cancelled and nothing was saved. Select Create passkey to try again. |
@@ -268,11 +269,15 @@ The text the UI phase uses verbatim. The `accounts.html` frames use the same str
 | Side navigation (C) | Your account, Accounts, API tokens |
 | Tabs (B) | Access with Accounts, API tokens |
 
-## Open questions
+## Decided
 
-- **Member access.** Until Step 4, a member can use the whole admin except accounts and tokens. The invitation dialog says so. Is that acceptable for the interim?
-- **Token limits.** A token limited to some projects cannot create projects or open System. The create dialog says so. Is that the rule you want?
-- **Recovery and API tokens.** Recovery replaces passkeys and sessions and leaves API tokens running, so an agent keeps working while the owner recovers. If recovery follows a suspected break-in, tokens stay a way in until someone revokes them. Should recovery revoke them too?
+Answered by the owner on 2026-11-11 ("Ja, wie empfohlen"), relayed by the review session. The copy above follows them. Recorded as S23 in `scope.md` of the backend pull request.
+
+- **Member access.** Until Step 4, a member can use the whole admin except accounts and tokens. The invitation dialog says so.
+- **Token limits.** A token limited to some projects cannot create projects or open System. The create dialog says so.
+- **Recovery and API tokens.** Recovery revokes the API tokens that account created, because recovery is also the path after a lost or exposed credential. The owner creates new tokens afterwards. The host command has `--keep-tokens` to opt out.
+
+The variants were approved the same day: the account area as a name link with side navigation (C), recovery folded under "Locked out?" (A), a new API token in a dialog (A).
 
 ## What this does not cover
 
