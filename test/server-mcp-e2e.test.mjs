@@ -88,46 +88,81 @@ function oauthClient(scope) {
   };
 }
 
-test('the MCP SDK client discovers, registers, passes consent, reads feedback and is refused outside its scope (bundled app, stub sign-in)', async () => {
-  const gw = await gateway();
-  try {
-    // The SDK's fetch goes straight into the server's OAuth and MCP handler.
-    const sdkFetch = (input, init) => { const url = new URL(typeof input === 'string' ? input : input.url ?? input.href); return gw.request(url.pathname + url.search, init); };
-    const oauth = oauthClient('feedback:read');
-    const transport = new StreamableHTTPClientTransport(new URL(`${ORIGIN}/mcp`), { authProvider: oauth.provider, fetch: sdkFetch });
-    await assert.rejects(new Client({ name: 'sdk-test', version: '1.0.0' }).connect(transport), UnauthorizedError);
-    assert.ok(oauth.state.info?.client_id, 'registered through /oauth/register');
-    const authorizationUrl = oauth.state.authorizationUrl;
-    assert.equal(authorizationUrl.origin, ORIGIN);
-    assert.equal(authorizationUrl.pathname, '/oauth/authorize');
-    assert.equal(authorizationUrl.searchParams.get('code_challenge_method'), 'S256');
-    assert.equal(authorizationUrl.searchParams.get('resource'), `${ORIGIN}/mcp`);
+/**
+ * The SDK client's whole OAuth flow against the bundled app with the stub sign-in: 401, discovery, registration, consent, token.
+ * Returns the OAuth state and a fetch that goes straight into the server and keeps every MCP request it carries.
+ */
+async function signIn(gw, scope) {
+  const sent = [];
+  const sdkFetch = (input, init) => {
+    const url = new URL(typeof input === 'string' ? input : input.url ?? input.href);
+    if (url.pathname === '/mcp' && init?.body) sent.push({ headers: Object.fromEntries(new Headers(init.headers)), body: JSON.parse(init.body) });
+    return gw.request(url.pathname + url.search, init);
+  };
+  const oauth = oauthClient(scope);
+  const transport = new StreamableHTTPClientTransport(new URL(`${ORIGIN}/mcp`), { authProvider: oauth.provider, fetch: sdkFetch });
+  await assert.rejects(new Client({ name: 'sdk-test', version: '1.0.0' }).connect(transport), UnauthorizedError);
+  assert.ok(oauth.state.info?.client_id, 'registered through /oauth/register');
+  const authorizationUrl = oauth.state.authorizationUrl;
+  assert.equal(authorizationUrl.origin, ORIGIN);
+  assert.equal(authorizationUrl.pathname, '/oauth/authorize');
+  assert.equal(authorizationUrl.searchParams.get('code_challenge_method'), 'S256');
+  assert.equal(authorizationUrl.searchParams.get('resource'), `${ORIGIN}/mcp`);
 
-    // The person in the browser: opens the consent page, clicks Allow. Returns the callback parameters.
-    const page = await gw.request(authorizationUrl.pathname + authorizationUrl.search);
-    assert.equal(page.status, 200);
-    const handle = /name="handle" value="([^"]+)"/.exec(await page.text())[1];
-    const cookie = page.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
-    const allowed = await gw.request('/oauth/authorize', { method: 'POST', redirect: 'manual', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: ORIGIN, Cookie: cookie }, body: new URLSearchParams({ handle, decision: 'allow' }) });
-    assert.equal(allowed.status, 302);
-    const callback = new URL(allowed.headers.get('Location'));
-    assert.ok(callback.searchParams.get('code'));
-    assert.equal(callback.searchParams.get('iss'), ORIGIN);
-    await transport.finishAuth(callback.searchParams);
-    assert.ok(oauth.state.tokens.access_token && oauth.state.tokens.refresh_token);
+  // The person in the browser: opens the consent page, clicks Allow. Returns the callback parameters.
+  const page = await gw.request(authorizationUrl.pathname + authorizationUrl.search);
+  assert.equal(page.status, 200);
+  const handle = /name="handle" value="([^"]+)"/.exec(await page.text())[1];
+  const cookie = page.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+  const allowed = await gw.request('/oauth/authorize', { method: 'POST', redirect: 'manual', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: ORIGIN, Cookie: cookie }, body: new URLSearchParams({ handle, decision: 'allow' }) });
+  assert.equal(allowed.status, 302);
+  const callback = new URL(allowed.headers.get('Location'));
+  assert.ok(callback.searchParams.get('code'));
+  assert.equal(callback.searchParams.get('iss'), ORIGIN);
+  await transport.finishAuth(callback.searchParams);
+  assert.ok(oauth.state.tokens.access_token && oauth.state.tokens.refresh_token);
+  sent.length = 0;
+  return { oauth, sdkFetch, sent };
+}
 
-    const client = new Client({ name: 'sdk-test', version: '1.0.0' });
-    await client.connect(new StreamableHTTPClientTransport(new URL(`${ORIGIN}/mcp`), { authProvider: oauth.provider, fetch: sdkFetch }));
-    const names = (await client.listTools()).tools.map((t) => t.name).sort();
-    assert.deepEqual(names, ['fetch', 'get_feedback', 'get_funnel', 'list_feedback', 'list_projects', 'search', 'search_feedback', 'whoami']);
-    assert.equal((await client.callTool({ name: 'list_projects', arguments: {} })).structuredContent.projects[0].id, 'demo');
-    assert.equal((await client.callTool({ name: 'list_feedback', arguments: { project: 'demo' } })).structuredContent.items.length, 1);
-    const who = await client.callTool({ name: 'whoami', arguments: {} });
-    assert.deepEqual({ email: who.structuredContent.email, scopes: who.structuredContent.scopes, gateway: who.structuredContent.gateway }, { email: PERSON, scopes: ['feedback:read'], gateway: ORIGIN });
-    await assert.rejects(client.callTool({ name: 'get_config', arguments: { project: 'demo' } }), /not found/i, 'outside the granted scope');
-    await client.close();
-  } finally { gw.close(); }
-});
+// The SDK client speaks the 2025 handshake unless it is told otherwise (versionNegotiation), so the same flow runs three
+// ways: the default, a client that asks the server with server/discover first, and one pinned to 2026-07-28.
+for (const [label, negotiation, era] of [['the default (2025 initialize handshake)', undefined, 'legacy'], ["versionNegotiation 'auto' (server/discover first)", { mode: 'auto' }, 'modern'], ['versionNegotiation pinned to 2026-07-28', { mode: { pin: '2026-07-28' } }, 'modern']]) {
+  test(`the MCP SDK client with ${label} discovers, registers, passes consent, reads feedback and is refused outside its scope (bundled app, stub sign-in)`, async () => {
+    const gw = await gateway();
+    try {
+      const { oauth, sdkFetch, sent } = await signIn(gw, 'feedback:read');
+      const client = new Client({ name: 'sdk-test', version: '1.0.0' }, negotiation ? { versionNegotiation: negotiation } : {});
+      await client.connect(new StreamableHTTPClientTransport(new URL(`${ORIGIN}/mcp`), { authProvider: oauth.provider, fetch: sdkFetch }));
+      const names = (await client.listTools()).tools.map((t) => t.name).sort();
+      assert.deepEqual(names, ['fetch', 'get_feedback', 'get_funnel', 'list_feedback', 'list_projects', 'search', 'search_feedback', 'whoami']);
+      assert.equal((await client.callTool({ name: 'list_projects', arguments: {} })).structuredContent.projects[0].id, 'demo');
+      assert.equal((await client.callTool({ name: 'list_feedback', arguments: { project: 'demo' } })).structuredContent.items.length, 1);
+      const who = await client.callTool({ name: 'whoami', arguments: {} });
+      assert.deepEqual({ email: who.structuredContent.email, scopes: who.structuredContent.scopes, gateway: who.structuredContent.gateway }, { email: PERSON, scopes: ['feedback:read'], gateway: ORIGIN });
+      await assert.rejects(client.callTool({ name: 'get_config', arguments: { project: 'demo' } }), /not found/i, 'outside the granted scope');
+      await client.close();
+
+      const methods = sent.map((r) => r.body.method);
+      if (era === 'legacy') {
+        assert.equal(methods[0], 'initialize', 'the 2025 handshake');
+        assert.ok(!sent.some((r) => r.headers['mcp-method']), 'no 2026 metadata headers');
+      } else {
+        assert.ok(!methods.includes('initialize'), 'no handshake');
+        assert.ok(methods.includes('server/discover') || label.includes('pinned'), 'auto asks the server first');
+        for (const r of sent) {
+          // Every request carries what 2026-07-28 requires: the version and the method in headers, and the version and the capabilities in _meta.
+          assert.equal(r.headers['mcp-protocol-version'], '2026-07-28', r.body.method);
+          assert.equal(r.headers['mcp-method'], r.body.method);
+          assert.equal(r.body.params._meta['io.modelcontextprotocol/protocolVersion'], '2026-07-28');
+          assert.ok(r.body.params._meta['io.modelcontextprotocol/clientCapabilities']);
+          if (r.body.method === 'tools/call') assert.equal(r.headers['mcp-name'], r.body.params.name);
+        }
+        assert.ok(methods.includes('tools/call') && methods.includes('tools/list'));
+      }
+    } finally { gw.close(); }
+  });
+}
 
 test('MCP is off by default: the start log and /diag say why, and every OAuth and MCP path answers 404 with a hint', async () => {
   for (const env of [{}, { FK_PUBLIC_URL: 'https://feedback.example.test' }, { FK_MCP: 'off', FK_PUBLIC_URL: 'https://feedback.example.test' }]) {

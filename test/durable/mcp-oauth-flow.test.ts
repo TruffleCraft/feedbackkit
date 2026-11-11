@@ -112,6 +112,22 @@ describe("discovery and registration", () => {
     expect(resource).toMatchObject({ resource: `${GW}/mcp`, authorization_servers: [GW] });
   });
 
+  it("registers a client that states its application_type, as the 2026-07-28 authorization spec asks of clients (SEP-837)", async () => {
+    for (const application_type of ["web", "native"]) {
+      const res = await call("/oauth/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ client_name: "Test agent", application_type, redirect_uris: [REDIRECT], token_endpoint_auth_method: "none" }) });
+      expect(res.status, application_type).toBe(201);
+    }
+  });
+
+  it("puts the issuer on the authorization response, as the spec wants for RFC 9207 (SEP-2468)", async () => {
+    const clientId = await register();
+    const res = await call(authorizePath(clientId, (await pkce()).challenge));
+    expect(res.status).toBe(302);
+    expect(new URL(res.headers.get("Location")!).searchParams.get("iss")).toBe(GW);
+    const meta = (await (await call("/.well-known/oauth-authorization-server")).json()) as Record<string, unknown>;
+    expect(meta["authorization_response_iss_parameter_supported"]).toBe(true);
+  });
+
   it("registers a client and refuses a plain-http redirect to a remote host", async () => {
     expect(await register()).toBeTruthy();
     const bad = await call("/oauth/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ client_name: "x", redirect_uris: ["http://client.example/cb"], token_endpoint_auth_method: "none" }) });
