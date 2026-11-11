@@ -20,7 +20,7 @@ import { registerAdminRoutes } from "./admin/routes.js";
 import { checkConfigForWrite, parseStoredConfig } from "./admin/config-write.js";
 import { embedSnippet } from "./admin/snippet.js";
 import { registerAdminPages } from "./admin/pages.js";
-import { registerAuthRoutes } from "./auth/index.js";
+import { registerAuthRoutes, ownerExists } from "./auth/index.js";
 import type { Env } from "./env.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -157,7 +157,10 @@ app.get("/diag", async (c) => {
   const firstRun = projects === null || projects === 0;
   const nextSteps: string[] = [];
   if (!schema.ok) nextSteps.push("apply D1 migrations (see schema.reason)");
-  if (!secrets.adminToken) nextSteps.push("set the admin secret: npx wrangler secret put ADMIN_TOKEN");
+  // The standalone server needs no ADMIN_TOKEN since accounts exist: its first step is the first owner, made with a host command.
+  if (c.env.FK_RUNTIME === "node") {
+    if (!(await ownerExists(c.env))) nextSteps.push("create the first owner: run `sudo feedbackkit-admin setup-link` on this host (docs/SELF_HOSTING.md#accounts-and-recovery)");
+  } else if (!secrets.adminToken) nextSteps.push("set the admin secret: npx wrangler secret put ADMIN_TOKEN");
   if (!secrets.githubPat && needsPat) nextSteps.push("set a GitHub PAT: npx wrangler secret put GITHUB_PAT_default");
   if (firstRun) nextSteps.push("create your first project: POST /api/admin/config/import (see docs/QUICKSTART.md)");
   if (!secrets.llmKey) nextSteps.push("optional: set LLM_API_KEY to enable AI follow-up questions");

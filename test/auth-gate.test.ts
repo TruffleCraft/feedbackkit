@@ -62,6 +62,20 @@ describe("ADMIN_TOKEN after the first owner", () => {
   });
 });
 
+describe("/diag next steps on the standalone server", () => {
+  it("asks for the first owner instead of an ADMIN_TOKEN, and stops asking once there is one", async () => {
+    const steps = async (owner: boolean) => ((await (await app.request("/diag", {}, gate({ owner }, { FK_RUNTIME: "node", ADMIN_TOKEN: undefined }))).json()) as { nextSteps: string[] }).nextSteps.join("\n");
+    expect(await steps(false)).toContain("feedbackkit-admin setup-link");
+    expect(await steps(false)).not.toContain("ADMIN_TOKEN");
+    expect(await steps(true)).not.toContain("setup-link");
+  });
+
+  it("the Cloudflare Worker still names the admin secret", async () => {
+    const e = gate({ owner: false }, { ADMIN_TOKEN: undefined });
+    expect(((await (await app.request("/diag", {}, e)).json()) as { nextSteps: string[] }).nextSteps.join("\n")).toContain("wrangler secret put ADMIN_TOKEN");
+  });
+});
+
 describe("scoped tokens at the app level", () => {
   it("a token limited to projects cannot import config, create a project or read /diag?project=", async () => {
     const e = gate({ owner: true, token: { access: "write", projects: ["demo"] } });
