@@ -16,7 +16,7 @@ import { main } from '../scripts/feedbackkit-migrate.mjs';
 
 const root = new URL('..', import.meta.url).pathname;
 const wrangler = join(root, 'node_modules/.bin/wrangler');
-const TOKEN = 'fictional-migrate-admin-token-0123456789';
+const TOKEN = 'fictional-test-token-'.repeat(3);
 const sha = (data) => createHash('sha256').update(data).digest('hex');
 const temporary = () => mkdtempSync(join(tmpdir(), 'fk-cfmove-'));
 
