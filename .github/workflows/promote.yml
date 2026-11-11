@@ -37,6 +37,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          # Kept: "Move the stable branch" pushes with the stored credentials.
+          persist-credentials: true
 
       # Validates the input (format, exists, not yet released, newer than stable)
       # before it is used anywhere else.
@@ -50,7 +52,9 @@ jobs:
           echo "sha=$(git rev-list -n 1 "refs/tags/$DEV_TAG")" >> "$GITHUB_OUTPUT"
 
       - name: Check out the dev build's commit
-        run: git checkout --detach "${{ steps.v.outputs.sha }}"
+        env:
+          SHA: ${{ steps.v.outputs.sha }}
+        run: git checkout --detach "$SHA"
 
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -95,7 +99,10 @@ jobs:
 
       - name: Smoke check
         if: vars.FK_GATEWAY_URL != ''
-        run: node scripts/smoke-check.mjs "${{ vars.FK_GATEWAY_URL }}" "${{ steps.v.outputs.version }}" stable
+        env:
+          GATEWAY_URL: ${{ vars.FK_GATEWAY_URL }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: node scripts/smoke-check.mjs "$GATEWAY_URL" "$VERSION" stable
 
       # Config writers accept new delivery shapes only once stable handles them (#109).
       - name: Record delivery capability
@@ -120,7 +127,9 @@ jobs:
 
       # Fast-forward only: promoting an older commit than the current stable fails here.
       - name: Move the stable branch
-        run: git push origin "${{ steps.v.outputs.sha }}:refs/heads/stable"
+        env:
+          SHA: ${{ steps.v.outputs.sha }}
+        run: git push origin "${SHA}:refs/heads/stable"
 
       - name: Remove this version's dev builds
         env:
