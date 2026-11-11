@@ -361,7 +361,7 @@ const LOGIN = `<section id="login" class="login" hidden aria-labelledby="login-h
     <button class="b violet full" type="submit" id="login-btn">Sign in</button>
     <p class="help">The token stays in this tab and is gone once you close it.</p>
   </form>
-  <p class="hint">No accounts yet? Run <code class="mono">feedbackkit-admin setup-link</code> on the server (on Cloudflare: <code class="mono">pnpm admin:link</code>) and open the link it prints to sign in with a passkey. The admin token stops working once the first owner exists.</p>
+  <p class="hint">No users yet? Run <code class="mono">feedbackkit-admin setup-link</code> on the server (on Cloudflare: <code class="mono">pnpm admin:link</code>) and open the link it prints to sign in with a passkey. The admin token stops working once the first owner exists.</p>
   <p class="hint">Put <code class="mono">/admin*</code> and <code class="mono">/api/admin/*</code> behind Cloudflare Access so each person signs in with their own account. <a href="${ACCESS_GUIDE}" target="_blank" rel="noopener noreferrer">Setup guide</a></p>
 </section>`;
 
