@@ -28,6 +28,16 @@ Open design questions live as issues labeled [`decision`](../../issues?q=is%3Ais
 - Conventional commits; PRs against `main`; CI must be green.
 - **Title and describe what changes in this repo.** The PR title shows up unchanged in the release notes, so it names the code or docs change, not the app whose rollout prompted it. Config and rollout state of an embedding app (its D1 config, Project, test reports) goes into that app's tracking issue.
 
+## Keep private data out
+
+This repository is public, and a push cannot be taken back: forks, clones and caches keep what was once there.
+
+- **Use invented data** in code, tests, fixtures, docs, screenshots, commit messages and PR text: made-up names, `example.org` addresses and coordinates with at most four decimals. Never use data of real people, customers or your own projects, and no links to agent sessions.
+- **No credentials.** Tokens, keys and `.env` files stay out. Public values are fine, for example a public project key or the fingerprint of a public release key. A credential that was pushed is burned: revoke it, because removing it from the history is not enough.
+- **CI scans every pull request**, forks included, with [gitleaks](https://github.com/gitleaks/gitleaks) over the history and the tree (`secrets` job, rules in `.gitleaks.toml`). A finding fails the check.
+- **If the scan flags something that is fake or public by design**, add its exact value to `.gitleaks.toml` with a comment that says where it is and why it is safe. Never allow a path or a broad pattern. A test that needs the shape of a real key builds it at run time instead of committing it.
+- **Issues are public too.** Do not paste tokens, personal data or screenshots with real content. Blur or replace them first.
+
 ## Security
 
 Please report vulnerabilities privately via GitHub Security Advisories, not public issues.

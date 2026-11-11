@@ -6,6 +6,7 @@
 
 - [ ] CI green (runs secret-free — mock LLM / mock GitHub)
 - [ ] Zero-touch-code invariant respected (nothing operator-specific in the repo)
+- [ ] No real personal data or credentials in code, fixtures, screenshots, commit messages or this text (examples are invented, `example.org`)
 - [ ] Security-relevant change? → test added
 - [ ] New strings: en + de keys
 - [ ] Migration included? → expand/contract, backward-compatible for one release
