@@ -61,6 +61,35 @@ const FEEDBACK_ID = { type: "string", minLength: 1, maxLength: 128, description:
 const RO = { readOnlyHint: true, idempotentHint: true, openWorldHint: false };
 
 const NOT_FOUND = "No feedback with this id.";
+
+// A token can be limited to some projects (auth/tokens.ts). Every tool honors that: a project outside the list looks like
+// a project that does not exist, and a report of another project like a report that does not exist. OAuth grants cover all.
+const covers = (ctx: ToolContext, projectId: string) => !ctx.principal.projects || ctx.principal.projects.includes(projectId);
+function assertProject(ctx: ToolContext, projectId: string): void {
+  if (!covers(ctx, projectId)) throw new QueryError(404, "unknown project");
+}
+
+/** searchFeedback for the projects the caller may see: one project, all of them, or the ones a token covers, newest first. */
+async function searchCovered(ctx: ToolContext, opts: { projectId?: string; query: string; limit?: number }) {
+  if (opts.projectId !== undefined) {
+    assertProject(ctx, opts.projectId);
+    return searchFeedback(ctx.env, opts);
+  }
+  const allowed = ctx.principal.projects;
+  if (!allowed) return searchFeedback(ctx.env, opts);
+  const perProject = await Promise.all(
+    allowed.map((projectId) =>
+      searchFeedback(ctx.env, { ...opts, projectId }).catch((e: unknown) => {
+        if (e instanceof QueryError && e.status === 404) return []; // a project the token names that was deleted
+        throw e;
+      }),
+    ),
+  );
+  return perProject
+    .flat()
+    .sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : -1))
+    .slice(0, opts.limit ?? 20);
+}
 const adminLink = (ctx: ToolContext, projectId: string) => `${ctx.origin}/admin/projects/${encodeURIComponent(projectId)}`;
 
 interface ToolDef {
@@ -79,8 +108,8 @@ export const TOOLS: ToolDef[] = [
         {
           title: "Who am I",
           description:
-            "The person and app behind this connection: who approved it (the Cloudflare Access email, or the signed-in account on a standalone server), the app name, " +
-            "the granted scopes, the tools this grant can call and the token lifetimes. Call it first to orient yourself.",
+            "The person and app behind this connection: who approved it (the Cloudflare Access email, the signed-in account, or for an API token its name), the app name, " +
+            "the granted scopes, the tools this grant can call and the token lifetimes (for an API token its end and its project list). Call it first to orient yourself.",
           annotations: RO,
         },
         async () =>
@@ -90,7 +119,10 @@ export const TOOLS: ToolDef[] = [
             scopes: [...ctx.principal.scopes],
             tools: TOOLS.filter((t) => !t.scope || ctx.principal.scopes.includes(t.scope)).map((t) => t.name),
             gateway: ctx.origin,
-            grant: { accessTokenTtlSeconds: ACCESS_TOKEN_TTL_S, refreshTokenTtlSeconds: REFRESH_TOKEN_TTL_S },
+            // An OAuth grant has token lifetimes. An API token has the end of its own lifetime and maybe a project list.
+            ...(ctx.principal.via === "token"
+              ? { via: "api-token", projects: ctx.principal.projects ?? null, grant: { tokenExpiresAt: ctx.principal.expiresAt ? new Date(ctx.principal.expiresAt).toISOString() : null } }
+              : { grant: { accessTokenTtlSeconds: ACCESS_TOKEN_TTL_S, refreshTokenTtlSeconds: REFRESH_TOKEN_TTL_S } }),
           }),
       ),
   },
@@ -105,7 +137,7 @@ export const TOOLS: ToolDef[] = [
           description: "Every project on this gateway: id, public key, config version and the feedback count of the last 7 days by outcome.",
           annotations: RO,
         },
-        guarded(async () => ok({ projects: await listProjects(ctx.env) })),
+        guarded(async () => ok({ projects: (await listProjects(ctx.env)).filter((p) => covers(ctx, p.id)) })),
       ),
   },
   {
@@ -138,6 +170,7 @@ export const TOOLS: ToolDef[] = [
           annotations: RO,
         },
         guarded(async ({ project, outcome, since, cursor, limit }) => {
+          assertProject(ctx, project);
           let sinceMs: number | undefined;
           if (since !== undefined) {
             sinceMs = Date.parse(since);
@@ -165,7 +198,7 @@ export const TOOLS: ToolDef[] = [
         },
         guarded(async ({ id }) => {
           const fb = await getFeedback(ctx.env, id);
-          return fb ? ok({ ...fb }) : fail("not_found", NOT_FOUND);
+          return fb && covers(ctx, fb.projectId) ? ok({ ...fb }) : fail("not_found", NOT_FOUND);
         }),
       ),
   },
@@ -191,7 +224,7 @@ export const TOOLS: ToolDef[] = [
           ),
           annotations: RO,
         },
-        guarded(async ({ project, query, limit }) => ok({ query, hits: await searchFeedback(ctx.env, { projectId: project, query, limit }) })),
+        guarded(async ({ project, query, limit }) => ok({ query, hits: await searchCovered(ctx, { projectId: project, query, limit }) })),
       ),
   },
   {
@@ -211,7 +244,10 @@ export const TOOLS: ToolDef[] = [
           ),
           annotations: RO,
         },
-        guarded(async ({ project, days }) => ok({ ...(await getFunnel(ctx.env, project, days)) })),
+        guarded(async ({ project, days }) => {
+          assertProject(ctx, project);
+          return ok({ ...(await getFunnel(ctx.env, project, days)) });
+        }),
       ),
   },
   {
@@ -228,7 +264,10 @@ export const TOOLS: ToolDef[] = [
           inputSchema: schema<{ project: string }>({ project: PROJECT }, ["project"]),
           annotations: RO,
         },
-        guarded(async ({ project }) => ok(await exportConfig(ctx.env, project))),
+        guarded(async ({ project }) => {
+          assertProject(ctx, project);
+          return ok(await exportConfig(ctx.env, project));
+        }),
       ),
   },
   // ChatGPT's connector contract (deep research, company knowledge): `search`
@@ -252,7 +291,7 @@ export const TOOLS: ToolDef[] = [
           annotations: RO,
         },
         guarded(async ({ query }) => {
-          const hits = await searchFeedback(ctx.env, { query, limit: 20 });
+          const hits = await searchCovered(ctx, { query, limit: 20 });
           return ok({
             results: hits.map((h) => ({
               id: h.id,
@@ -280,7 +319,7 @@ export const TOOLS: ToolDef[] = [
         },
         guarded(async ({ id }) => {
           const fb = await getFeedback(ctx.env, id);
-          if (!fb) return fail("not_found", NOT_FOUND);
+          if (!fb || !covers(ctx, fb.projectId)) return fail("not_found", NOT_FOUND);
           const fields = Object.entries(fb.extracted).map(([k, v]) => `- ${k}: ${v}`);
           const text = [
             fb.summary ? `Summary: ${fb.summary}` : null,

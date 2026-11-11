@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createMcpFetch, consentAuthenticator } from '../dist-server/app.mjs';
+import { createMcpFetch } from '../dist-server/app.mjs';
 import {
   ALL_TOOLS, IDENTITY_HEADER, ORIGIN, PERSON, REDIRECT, REGISTRATIONS_PER_HOUR, TOKEN,
   authorizeClient, authorizePath, browser, connect, exchange, form, gateway, openConsent, pkce, postDecision, register, rpc, toolNames,
@@ -11,9 +11,9 @@ import {
 // workers-oauth-provider and the real MCP handler on Node. Before this change every one of these paths answered 404.
 // The cases mirror test/mcp-oauth.test.ts and test/mcp-tools.test.ts (the Worker's).
 //
-// Who signs in is the one thing a standalone server cannot answer yet: it has no Cloudflare Access, and accounts are not
-// built. These tests answer it with a stub that exists in test code only (test/oauth-harness.mjs). The server's own answer
-// is "nobody", and the first tests below pin that.
+// Who signs in is answered by the account system on a standalone server (test/server-mcp-accounts.test.mjs runs it with real
+// accounts and sessions). Here the sign-in is a stub that exists in test code only (test/oauth-harness.mjs), so that the OAuth
+// protocol is tested on its own.
 
 const withGateway = (fn, options) => async (t) => { const gw = await gateway(options); try { await fn(gw, t); } finally { gw.close(); } };
 const location = (response) => new URL(response.headers.get('Location'));
@@ -21,19 +21,9 @@ const refresh = (gw, refreshToken, clientId) => gw.request('/oauth/token', { met
 const grantRows = (gw) => gw.storage.sqlite.prepare("SELECT key FROM _fk_kv WHERE key LIKE 'grant:%'").all();
 const transactionRows = (gw) => gw.storage.sqlite.prepare("SELECT key FROM _fk_kv WHERE key LIKE 'transaction:%'").all();
 
-// ---- the server's own sign-in: nobody ---------------------------------------------------------------------------
+// ---- without a sign-in ---------------------------------------------------------------------------------------------
 
-test('the server\'s own consent identity is nobody, whatever the request carries', async () => {
-  const requests = [
-    new Request(`${ORIGIN}/oauth/authorize`),
-    new Request(`${ORIGIN}/oauth/authorize`, { headers: { [IDENTITY_HEADER]: PERSON } }),
-    new Request(`${ORIGIN}/oauth/authorize`, { headers: { 'Cf-Access-Jwt-Assertion': 'a.b.c', Authorization: `Bearer ${TOKEN}`, Cookie: 'session=abc; CF_Authorization=abc' } }),
-    new Request(`${ORIGIN}/oauth/authorize?admin_token=${TOKEN}`, { method: 'POST', body: form({ admin_token: TOKEN, email: PERSON }), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }),
-  ];
-  for (const request of requests) assert.equal(await consentAuthenticator(request, {}), null);
-});
-
-test('without a sign-in nothing is granted: no page, no handle, no cookie, no stored transaction, no grant', withGateway(async (gw) => {
+test('without a sign-in nothing is granted: no page, no handle, no cookie, no stored transaction, no grant, whatever the request carries', withGateway(async (gw) => {
   const clientId = await register(gw);
   const { challenge } = await pkce();
   for (const as of [null, 'ignored@example.org']) {
@@ -41,8 +31,9 @@ test('without a sign-in nothing is granted: no page, no handle, no cookie, no st
     assert.equal(page.status, 403);
     assert.equal(page.headers.getSetCookie().length, 0);
     const html = await page.text();
-    assert.match(html, /Connecting apps is not available yet/);
-    assert.match(html, /accounts are not built/);
+    assert.match(html, /Sign-in required/);
+    assert.ok(html.includes(`${ORIGIN}/admin`), 'the page says where to sign in');
+    assert.match(html, /passkey/);
     assert.doesNotMatch(html, /name="handle"|name="admin_token"|type="password"/);
     assert.equal((await gw.request('/oauth/authorize', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: ORIGIN }, body: form({ handle: 'x', decision: 'allow' }) }, { as })).status, 403);
   }

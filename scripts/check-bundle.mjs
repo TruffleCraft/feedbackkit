@@ -33,7 +33,9 @@ if (gz > BUDGET_GZ) {
 // The admin module (P2, ADR-014) only loads on /admin, but stays a small
 // vanilla module: a framework would blow this budget first.
 // 15.25 kB since the notice for a newer release (J2, ADR-014): the first 15 kB were used up before it.
-const ADMIN_BUDGET_GZ = 15.25 * 1024;
+// 15.5 kB since passkey sessions (Gate 2, ADR-014): the CSRF header on writes, the account link and sign-out
+// in the header, and the redirect to /admin/sign-in once an owner exists took about 135 bytes more than the 96 left.
+const ADMIN_BUDGET_GZ = 15.5 * 1024;
 let admin;
 try {
   admin = readFileSync(join(root, "dist", "admin.js"));
@@ -42,6 +44,22 @@ try {
   process.exit(1);
 }
 const adminGz = gzipSync(admin).length;
+// The account screens (Gate 2) are a module of their own, loaded only by their five pages.
+// 9 kB gz: sign-in, setup, passkeys and sessions, accounts and tokens with their dialogs.
+const AUTH_BUDGET_GZ = 9 * 1024;
+let auth;
+try {
+  auth = readFileSync(join(root, "dist", "auth.js"));
+} catch {
+  console.error("check-bundle: dist/auth.js missing — run `pnpm build:widget` first");
+  process.exit(1);
+}
+const authGz = gzipSync(auth).length;
+console.log(`auth bundle: ${kb(auth.length)} kB min · ${kb(authGz)} kB gz (budget ${kb(AUTH_BUDGET_GZ)} kB gz)`);
+if (authGz > AUTH_BUDGET_GZ) {
+  console.error(`check-bundle: auth OVER BUDGET by ${kb(authGz - AUTH_BUDGET_GZ)} kB gz`);
+  process.exit(1);
+}
 console.log(`admin bundle: ${kb(admin.length)} kB min · ${kb(adminGz)} kB gz (budget ${kb(ADMIN_BUDGET_GZ)} kB gz)`);
 if (adminGz > ADMIN_BUDGET_GZ) {
   console.error(`check-bundle: admin OVER BUDGET by ${kb(adminGz - ADMIN_BUDGET_GZ)} kB gz`);

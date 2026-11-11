@@ -42,14 +42,14 @@ Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready)
 | Local AI endpoint without a placeholder key | yes | yes | planned |
 | Masked images only, uploaded after review | yes | yes | planned |
 | Move a gateway from Cloudflare (D1 and R2) into the standalone server | n/a | yes | shipped |
-| Local accounts, passkeys, recovery | yes | yes | planned |
-| Scoped API tokens for scripts and agents, replacing `ADMIN_TOKEN` | yes | yes | planned |
+| Local accounts, passkeys, recovery | yes | yes | planned (backend built, screens pending) |
+| Scoped API tokens for scripts and agents, replacing `ADMIN_TOKEN` | yes | yes | planned (backend built, screens pending) |
 | OIDC sign-in (Pocket ID or any provider) | yes | yes | planned |
 | Board view of the local inbox | yes | yes | planned |
 | Team board embedded in the host's own UI, opened with a signed link (S21) | yes | yes | planned |
 | Visitors follow their own local reports, identity signed by the host (S21) | yes | yes | planned |
 | Widget preview and theme tokens | yes | yes | planned |
-| MCP server with OAuth | yes | no | shipped on Cloudflare. On Node the plumbing exists and is off until Gate 2 gives consent an identity (S22) |
+| MCP server with OAuth, and scoped API tokens as a bearer | yes | yes | shipped, with the admin screens for sign-in, accounts and tokens. No screen lists OAuth connections |
 
 ## What FeedbackKit does not do
 
@@ -62,7 +62,6 @@ Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready)
 | A second ticket tracker (comments, assignees, custom lanes, SLAs) | The inbox is not the product's edge (CEO review 2026-10-24) | A paying use case without GitHub appears |
 | Public sign-up, mandatory mail provider, mandatory external identity | Autonomy is the point | Never as a requirement |
 | Several replicas on one database | SQLite on one disk, one process | A second storage backend is accepted by ADR |
-| MCP connections to a standalone server | Approving one needs an account sign-in, and the plumbing is built and off (S22) | Gate 2 ships and the follow-up wires the account session into `authenticateConsent` |
 | User-owned GitHub Projects, GitLab, Jira, Trello | No fine-grained permission for user Projects, and demand is unproven | A demand checkpoint is reached |
 | TLS termination, reverse proxy, backups of the host | The operator's infrastructure | Never |
 | Hosted FeedbackKit offering | Operators host it themselves, on Cloudflare or on their own Linux host | A business decision, not a code change |
@@ -86,7 +85,6 @@ Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready)
 ## Decisions
 
 Settled decisions. [Claims and their proof](claims.md) lists every statement the user documents make about the runtimes, updates, rollback and deletion, with its test or its step.
-
 | ID | Decision | Source |
 |---|---|---|
 | S1 | Three deliveries per type: issue, project draft, local. GitHub owns ticket state | `admin-inbox-plan.md`, 2026-10-24 |
@@ -110,7 +108,8 @@ Settled decisions. [Claims and their proof](claims.md) lists every statement the
 | S19 | Node 24 is the floor. `engines` says `>=24`, CI runs Node 24 and, once a newer LTS line exists, that one too, and the docs name one version. Node 22 is unsupported | Owner delegated the choice, 2026-11-10 (D-06) |
 | S20 | Masking follows the concept in [privacy-masking.md](privacy-masking.md). A project has a `privacy.profile` of `strict` or `standard`. New projects start strict, and a public or unreadable destination forces strict. In strict a screenshot keeps layout and covers text and images, console capture keeps errors and warnings with objects dropped, and host context values are filtered | Owner, 2026-11-10 (D-07) |
 | S21 | Projects without GitHub get two embeds, both after Gate 2 and Step 5 and both for local-delivery reports only. First a team board in an iframe that opens with a short-lived signed link, minted by the host backend with a scoped token. Then an own-reports view whose identity is signed by the host backend. A public board of other people's reports stays out. Comments, assignees and SLAs stay out | Owner, 2026-11-10 (D-11) |
-| S22 | MCP on the standalone server ships together with accounts. The identity at `/oauth/authorize` is the signed-in account session. Until Gate 2 the server carries the plumbing, off by default, and consent refuses everyone: `authenticateConsent(request, env)` is the one seam. No token typed into a consent form. Recorded as the amendment of ADR-015 | Owner, 2026-11-11 |
+| S22 | MCP on the standalone server ships together with accounts. The identity at `/oauth/authorize` is the signed-in account session (and Cloudflare Access where it exists), asked of one function, `authenticateConsent`. No token typed into a consent form. Scoped API tokens are a bearer on `/mcp` with the two read scopes, on both runtimes, as an addition to the OAuth flow. MCP on a standalone server is on for an https `FK_PUBLIC_URL`. Recorded as the two amendments of ADR-015 | Owner, 2026-11-11 |
+| S23 | Accounts, three answers: until Step 4 a member may use the whole admin except accounts and tokens. A token limited to some projects can neither create projects nor open the system page. Recovery revokes the API tokens that account created by default (`--keep-tokens` opts out), because recovery is also the path after a lost or exposed credential | Owner, 2026-11-11 ("Ja, wie empfohlen", relayed by the review session) |
 
 No decision is open. The open points that belong to single pull requests are listed at the end of [privacy-masking.md](privacy-masking.md).
 

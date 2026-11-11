@@ -15,7 +15,7 @@ FeedbackKit adds a small feedback widget to any website. Visitors describe a pro
 | Add an already running gateway to a site | [Create a project and install the widget](docs/GETTING_STARTED.md) | Access to the gateway admin and your website |
 | Change settings or understand the delivery log | [Admin guide](docs/ADMIN.md) | Admin access |
 
-Status of the server installation: it runs from a checkout and its tests pass, and the documented install was run on a clean Debian 13 LXC, including systemd, a crash and a reboot. The release tarball and its update command ran there too, first with fixture releases, then with the signed dev builds 0.1.19-dev.5 and 0.1.19-dev.6 from GitHub (install, update, rollback), and then with the signed stable release 0.2.0 (install and reboot). An update between two stable releases has not run yet, and it was not tested on a cloud VPS. [Claims and their proof](docs/design/claims.md) lists what is verified. For the server installation, **no Cloudflare account is required**. The gateway runs on Node.js and stores project settings, reports and attachments in SQLite on your persistent disk. Cloudflare deployments use D1 and R2 instead. Both use the same widget, feedback processing and admin UI. MCP for agents (`/mcp`, OAuth 2.1, read-only) is available on the Cloudflare installation. The server installation carries its plumbing, off by default, because approving a connection needs the accounts of a later release ([MCP for agents](docs/SELF_HOSTING.md#mcp-for-agents)).
+Status of the server installation: it runs from a checkout and its tests pass, and the documented install was run on a clean Debian 13 LXC, including systemd, a crash and a reboot. The release tarball and its update command ran there too, first with fixture releases, then with the signed dev builds 0.1.19-dev.5 and 0.1.19-dev.6 from GitHub (install, update, rollback), and then with the signed stable release 0.2.0 (install and reboot). An update between two stable releases has not run yet, and it was not tested on a cloud VPS. [Claims and their proof](docs/design/claims.md) lists what is verified. For the server installation, **no Cloudflare account is required**. The gateway runs on Node.js and stores project settings, reports and attachments in SQLite on your persistent disk. Cloudflare deployments use D1 and R2 instead. Both use the same widget, feedback processing and admin UI. Both serve MCP at `/mcp` for agents (OAuth 2.1 or a scoped API token as a bearer, read-only). On the server installation it is on for an https `FK_PUBLIC_URL`, and a person signed in with a passkey approves a connection ([MCP for agents](docs/SELF_HOSTING.md#mcp-for-agents)). It ran with the MCP SDK's client on a clean Debian 13 LXC. Claude Code, claude.ai and ChatGPT have not run against it, and no screen lists the OAuth connections yet (the admin has screens for signing in, accounts and API tokens).
 
 ## First run on a Linux server
 
@@ -29,7 +29,7 @@ cp .env.example .env
 openssl rand -hex 32
 ```
 
-Put the generated value in `.env` as `ADMIN_TOKEN`. Set `FK_PUBLIC_URL` to the address visitors will use, then start:
+Put the generated value in `.env` as `ADMIN_TOKEN` (it opens the admin until you create the first owner with `feedbackkit-admin setup-link`; see [accounts](docs/SELF_HOSTING.md#accounts-and-recovery)). Set `FK_PUBLIC_URL` to the address visitors will use, then start:
 
 ```sh
 node --env-file=.env scripts/server.mjs

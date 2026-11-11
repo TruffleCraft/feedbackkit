@@ -40,7 +40,7 @@ export FK_R2_BUCKET=feedbackkit-uploads
 ## 2. Secrets
 
 ```bash
-pnpm exec wrangler secret put ADMIN_TOKEN          # generate a long random string
+pnpm exec wrangler secret put ADMIN_TOKEN          # generate a long random string. Optional once you create the first owner (see "Admin"); delete it afterwards
 pnpm exec wrangler secret put GITHUB_PAT_default   # see the PAT recipe below
 pnpm exec wrangler secret put LLM_API_KEY          # OPTIONAL — skip to run "LLM off"
 # OPTIONAL, for signing in to /admin with Cloudflare Access (see "Admin" below):
@@ -434,11 +434,17 @@ it at Siteverify and requires success, action `feedback` and a hostname from
 
 ## Admin
 
-Open `https://<your-gateway>/admin`. There are two ways in:
+Open `https://<your-gateway>/admin`. There are three ways in:
 
-- Cloudflare Access (recommended): each person signs in with their own
-  account and nothing has to be pasted. Setup below.
-- The admin token: paste your `ADMIN_TOKEN`. The page keeps it in
+- Accounts with passkeys: one owner is created with a one-time link, and
+  people, scripts and agents come after that (see "Accounts" below). `ADMIN_TOKEN`
+  stops working when the first owner exists. Open the link, choose a name and
+  create a passkey.
+- Cloudflare Access (recommended for teams that already use it): each person
+  signs in with their own account and nothing has to be pasted. Setup below.
+  Access stays accepted beside accounts. It is not an account, so it cannot
+  create tokens or manage accounts.
+- The admin token: paste your `ADMIN_TOKEN`, until the first owner exists. The page keeps it in
   `sessionStorage` for this tab only and sends it as a Bearer header. curl and
   scripts use the token too, but only on paths Access does not cover: with the
   Access setup below, `/api/admin/*` answers a token request with a redirect to
@@ -517,14 +523,36 @@ Optional hardening: in the application's cookie settings, set **SameSite** to
 `Lax`. The gateway already refuses Access sign-ins on cross-site `POST` and
 `DELETE` requests, so this is a second layer.
 
+## Accounts
+
+Accounts replace `ADMIN_TOKEN` on Cloudflare as on a server ([design](design/gate2-accounts.md), [threat model](SECURITY.md#accounts-and-sessions)). The first owner proves control of the deployment with a one-time link that you create with your own Cloudflare login. Nothing asks for a credential, and the script only talks to your D1 database through wrangler:
+
+```bash
+pnpm materialize                                              # wrangler.toml, as for the migrations
+pnpm admin:link --url https://<your-gateway>                  # first owner
+pnpm admin:link --url https://<your-gateway> --recovery       # recovery link for the only owner
+pnpm admin:link --url https://<your-gateway> --recovery --account "Robin"
+pnpm admin:link --url https://<your-gateway> --print-sql      # print the SQL, paste it into the D1 console, no tooling needed
+```
+
+The link works once and expires after 30 minutes (`--minutes 1` to `240`). It goes to stdout; the token is generated on your machine and only its SHA-256 reaches the database. Run it after `pnpm migrate:remote` has applied migration 0005.
+
+- **Passkeys bind to the address you open.** The relying party is the host name of the request, or of the optional variable `FK_PUBLIC_URL` if you set it. A passkey made on the `workers.dev` address does not work on a custom domain: pick the address first.
+- **After the first owner exists, delete the `ADMIN_TOKEN` secret** (`pnpm exec wrangler secret delete ADMIN_TOKEN`). It grants nothing any more, but `wrangler rollback` to a release without accounts would honor it again.
+- Recovery needs your Cloudflare credentials by design. There is no mail and no vendor to ask.
+- Owners create API tokens for scripts and agents in the admin: read or write, all projects or a list, 1 to 365 days, shown once.
+
 ## MCP for agents
 
 The gateway can run an MCP server at `/mcp`, so Claude Code, claude.ai, ChatGPT
 or Hermes can read projects, feedback, the funnel and project configs. It is
 read-only and optional. Clients connect with OAuth 2.1, and a person approves
-each connection on a consent page after signing in through Cloudflare Access.
-The admin token does not work here. Set up [Access](#sign-in-with-cloudflare-access)
-first. (A server install cannot do this yet: see
+each connection on a consent page after signing in through Cloudflare Access
+(or with an account's passkey session, if you use accounts). A scoped API token
+that an owner created also works as a bearer, for a gateway such as LiteLLM
+(`auth_type: bearer_token`). The admin token does not work here. Set up
+[Access](#sign-in-with-cloudflare-access) first, or accounts. (A server install
+turns MCP on by itself for an https address: see
 [MCP for agents](SELF_HOSTING.md#mcp-for-agents).)
 
 1. Create a KV namespace for OAuth clients, grants and tokens:

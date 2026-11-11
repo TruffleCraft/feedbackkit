@@ -12,7 +12,8 @@ import { embedSnippet } from "./snippet.js";
 import { checkRepoAccess } from "../providers/github.js";
 import { retentionImpact, retentionNotice } from "../storage/retention.js";
 import { releaseOf, bindingsPresence, secretsPresence } from "../status.js";
-import { adminCheck, adminGate } from "./auth.js";
+import { adminCheck, adminGate, allowedProjects, identityOf } from "./auth.js";
+import { ownerExists } from "../auth/accounts.js";
 import { DAY_MS, QueryError, exportConfig, getFunnel, listFeedback, listProjects, parseConfig, type ProjectRow } from "./queries.js";
 import type { Env } from "../env.js";
 
@@ -31,6 +32,22 @@ const err = (c: Ctx, status: 400 | 404 | 409 | 413 | 500 | 502, error: string, c
 
 const DISPOSITIONS = new Set(["open", "done", "dismissed"]);
 const NOTE_MAX = 2000;
+
+/** The project a report belongs to, for a token that is limited to some projects. null when there is no such report. */
+export const feedbackProject = (env: Env, id: string) => async (): Promise<string | null> =>
+  (await env.DB.prepare("SELECT project_id FROM feedback WHERE id = ?1").bind(id).first<{ project_id: string }>())?.project_id ?? null;
+
+/** The project an attachment belongs to. */
+export const assetProject = (env: Env, key: string) => async (): Promise<string | null> =>
+  (await env.DB.prepare("SELECT project_id FROM assets WHERE key = ?1 AND deleted = 0").bind(key).first<{ project_id: string }>())?.project_id ?? null;
+
+const assetKey = (c: Ctx): string => {
+  try {
+    return decodeURIComponent(new URL(c.req.url).pathname.slice("/admin/assets/".length));
+  } catch {
+    return "";
+  }
+};
 
 /** The editor sends the export shape; these two live outside the stored blob. */
 function stripColumns(raw: unknown): Record<string, unknown> | null {
@@ -64,16 +81,22 @@ export function registerAdminRoutes(app: AppT): void {
   // credentials at all gets a 401 that does not count toward the lockout.
   app.get("/api/admin/me", async (c) => {
     const r = await adminCheck(c, { countAnonymous: false });
-    if (!r.ok) return r.res;
+    // A visitor without credentials learns whether to sign in (an owner exists) or to set up: the page goes to the right screen.
+    if (!r.ok) return r.res.status === 401 ? c.json({ v: WIRE_VERSION, status: "error", error: "unauthorized", ownerExists: await ownerExists(c.env) }, 401) : r.res;
     const id = r.identity;
-    return c.json(id.via === "access" ? { v: WIRE_VERSION, via: "access", email: id.email } : { v: WIRE_VERSION, via: "token" });
+    if (id.via === "access") return c.json({ v: WIRE_VERSION, via: "access", email: id.email });
+    if (id.via === "session") return c.json({ v: WIRE_VERSION, via: "session", account: { id: id.accountId, name: id.name, role: id.role }, csrf: id.csrf });
+    if (id.via === "api-token") return c.json({ v: WIRE_VERSION, via: "api-token", access: id.access, projects: id.projects });
+    return c.json({ v: WIRE_VERSION, via: "token" });
   });
 
   // ── Project list with a 7-day feedback count ────────────────────────────────
   app.get("/api/admin/projects", async (c) => {
-    const denied = await adminGate(c);
+    const denied = await adminGate(c, { list: true });
     if (denied) return denied;
-    return c.json({ v: WIRE_VERSION, projects: await listProjects(c.env) });
+    const allowed = allowedProjects(identityOf(c)!);
+    const projects = await listProjects(c.env);
+    return c.json({ v: WIRE_VERSION, projects: allowed ? projects.filter((p) => allowed.includes(p.id)) : projects });
   });
 
   // Create-only: unlike import, this cannot overwrite an existing project.
@@ -97,7 +120,7 @@ export function registerAdminRoutes(app: AppT): void {
 
   // ── Config export (re-importable through POST /api/admin/config/import) ─────
   app.get("/api/admin/projects/:id/config", async (c) => {
-    const denied = await adminGate(c);
+    const denied = await adminGate(c, { project: c.req.param("id") });
     if (denied) return denied;
     // The raw blob as stored (no defaults filled in), plus the columns kept
     // outside it. The import pins publicKey and ignores configVersion.
@@ -106,7 +129,7 @@ export function registerAdminRoutes(app: AppT): void {
 
   // ── Feedback history, newest first, keyset-paginated ────────────────────────
   app.get("/api/admin/projects/:id/feedback", async (c) => {
-    const denied = await adminGate(c);
+    const denied = await adminGate(c, { project: c.req.param("id") });
     if (denied) return denied;
     const limitRaw = c.req.query("limit");
     return answer(c, async () => ({
@@ -123,7 +146,7 @@ export function registerAdminRoutes(app: AppT): void {
 
   // ── Funnel: widget events by name + feedback outcomes in the window ─────────
   app.get("/api/admin/projects/:id/funnel", async (c) => {
-    const denied = await adminGate(c);
+    const denied = await adminGate(c, { project: c.req.param("id") });
     if (denied) return denied;
     const daysRaw = c.req.query("days");
     return answer(c, async () => ({ v: WIRE_VERSION, ...(await getFunnel(c.env, c.req.param("id"), daysRaw === undefined ? undefined : Number(daysRaw))) }));
@@ -131,7 +154,7 @@ export function registerAdminRoutes(app: AppT): void {
 
   // ── Local inbox (#111): disposition and note, for local and undecided rows ───
   app.patch("/api/admin/feedback/:id", async (c) => {
-    const denied = await adminGate(c);
+    const denied = await adminGate(c, { project: feedbackProject(c.env, c.req.param("id")) });
     if (denied) return denied;
     const id = c.req.param("id");
     const body = (await c.req.json().catch(() => null)) as { disposition?: unknown; note?: unknown } | null;
@@ -168,7 +191,7 @@ export function registerAdminRoutes(app: AppT): void {
   // ── Delete a report (#111): attachments first, then the row ─────────────────
   // A partial failure keeps the row and names the keys, so a second try finishes it.
   app.delete("/api/admin/feedback/:id", async (c) => {
-    const denied = await adminGate(c);
+    const denied = await adminGate(c, { project: feedbackProject(c.env, c.req.param("id")) });
     if (denied) return denied;
     const id = c.req.param("id");
     const row = await c.env.DB.prepare("SELECT project_id, client_feedback_id, payload FROM feedback WHERE id = ?1")
@@ -197,7 +220,7 @@ export function registerAdminRoutes(app: AppT): void {
 
   // ── Config editor (#111): validate, then publish with optimistic concurrency ─
   app.post("/api/admin/projects/:id/config/validate", async (c) => {
-    const denied = await adminGate(c);
+    const denied = await adminGate(c, { project: c.req.param("id") });
     if (denied) return denied;
     const projectId = c.req.param("id");
     const stored = await c.env.DB.prepare("SELECT config, config_version FROM projects WHERE id = ?1").bind(projectId).first<{ config: string; config_version: number }>();
@@ -220,7 +243,7 @@ export function registerAdminRoutes(app: AppT): void {
   });
 
   app.put("/api/admin/projects/:id/config", async (c) => {
-    const denied = await adminGate(c);
+    const denied = await adminGate(c, { project: c.req.param("id") });
     if (denied) return denied;
     const projectId = c.req.param("id");
     const body = (await c.req.json().catch(() => null)) as { config?: unknown; expectedVersion?: unknown } | null;
@@ -262,7 +285,7 @@ export function registerAdminRoutes(app: AppT): void {
   // operator must confirm with {"createAnyway": true}. Uses the destination
   // stored on the row, not today's config.
   app.post("/api/admin/feedback/:id/retry", async (c) => {
-    const denied = await adminGate(c);
+    const denied = await adminGate(c, { project: feedbackProject(c.env, c.req.param("id")) });
     if (denied) return denied;
     const id = c.req.param("id");
     const body = (await c.req.json().catch(() => ({}))) as { createAnyway?: unknown };
@@ -294,7 +317,7 @@ export function registerAdminRoutes(app: AppT): void {
 
   // ── Test report (#110): one real delivery, LLM off, is_test = 1 ─────────────
   app.post("/api/admin/projects/:id/test-report", async (c) => {
-    const denied = await adminGate(c);
+    const denied = await adminGate(c, { project: c.req.param("id") });
     if (denied) return denied;
     const projectId = c.req.param("id");
     const rl = await hitRateLimit(c.env, `testrep:${projectId}`, hourWindow(), 10);
@@ -346,9 +369,9 @@ export function registerAdminRoutes(app: AppT): void {
   // Drafts in a GitHub Project and local reports link here instead of the public
   // R2 URL, so a forwarded link does not open for anyone without a sign-in.
   app.get("/admin/assets/*", async (c) => {
-    const denied = await adminGate(c);
+    const denied = await adminGate(c, { project: assetProject(c.env, assetKey(c)) });
     if (denied) return denied;
-    const key = decodeURIComponent(new URL(c.req.url).pathname.slice("/admin/assets/".length));
+    const key = assetKey(c);
     const known = await c.env.DB.prepare("SELECT key FROM assets WHERE key = ?1 AND deleted = 0").bind(key).first<{ key: string }>();
     if (!known) return err(c, 404, "no such attachment");
     const obj = await c.env.UPLOADS.get(key);

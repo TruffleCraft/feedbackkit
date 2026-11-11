@@ -40,6 +40,11 @@ function principalOf(props: Partial<AuthProps> | undefined): AuthProps | null {
     clientId: String(props.clientId ?? ""),
     clientName: String(props.clientName ?? "an app"),
     scopes: (Array.isArray(props.scopes) ? props.scopes : []).filter(isScope),
+    ...(typeof props.accountId === "string" && props.accountId ? { accountId: props.accountId } : {}),
+    ...(props.via === "token" ? { via: "token" as const } : {}),
+    // A project list that is not a list of strings is the narrowest reading: no project.
+    ...(props.projects === null || props.projects === undefined ? {} : { projects: Array.isArray(props.projects) ? props.projects.filter((p): p is string => typeof p === "string") : [] }),
+    ...(typeof props.expiresAt === "number" ? { expiresAt: props.expiresAt } : {}),
   };
 }
 
@@ -67,6 +72,13 @@ export const mcpApi = {
     // was minted for something else.
     if (!principal) return detail(401, "This token carries no FeedbackKit grant. Connect again.");
     if (request.method !== "POST") return detail(405, "MCP endpoint: POST JSON-RPC only", { Allow: "POST" });
+
+    // A connection that an account approved ends with the account. (A token was checked against its account just now,
+    // in mcp/api-token.ts, so it needs no second look.)
+    if (principal.accountId && principal.via !== "token") {
+      const live = await env.DB.prepare("SELECT 1 AS x FROM accounts WHERE id = ?1 AND state = 'active'").bind(principal.accountId).first().catch(() => null);
+      if (!live) return detail(401, "The account that approved this connection is no longer active. Connect again.", { "WWW-Authenticate": 'Bearer realm="OAuth", error="invalid_token"' });
+    }
 
     // Per grant: one grant per user, client and resource (workers-oauth-provider 1.x).
     // Hashed like the IP limiter keys, so the counters table holds no email.

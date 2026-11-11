@@ -45,7 +45,13 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+      # The browser comes from Playwright's own download. The system libraries come from apt only
+      # when Chromium does not start without them: the runner image already carries most of them,
+      # and an unreachable Ubuntu mirror (azure.archive.ubuntu.com, seen on 2026-11-11) used to fail
+      # every e2e job at `--with-deps` before a single test ran.
+      - run: pnpm exec playwright install chromium
+      - name: System libraries for Chromium, only if it does not start
+        run: node -e "require('@playwright/test').chromium.launch().then(b => b.close())" || pnpm exec playwright install-deps chromium
       - run: pnpm e2e # builds the widget, then runs Playwright against mocked gateway (secret-free)
 
   standalone:

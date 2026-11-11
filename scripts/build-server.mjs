@@ -6,3 +6,4 @@ import { fileURLToPath } from "node:url";
 export const CLOUDFLARE_WORKERS_ALIAS = { "cloudflare:workers": fileURLToPath(new URL("../src/worker/standalone/cloudflare-workers.ts", import.meta.url)) };
 await build({ entryPoints: ["src/worker/standalone.ts"], outfile: "dist-server/app.mjs", platform: "node", format: "esm", bundle: true, target: "node24", alias: CLOUDFLARE_WORKERS_ALIAS });
 await build({ entryPoints: ["src/worker/storage/r2.ts", "src/worker/storage/retention.ts"], outdir: "dist-server", outExtension: { ".js": ".mjs" }, platform: "node", format: "esm", bundle: true, target: "node24" });
+await build({ entryPoints: { auth: "src/worker/auth/host.ts" }, outdir: "dist-server", outExtension: { ".js": ".mjs" }, platform: "node", format: "esm", bundle: true, target: "node24" });

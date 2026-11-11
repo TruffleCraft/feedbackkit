@@ -14,7 +14,7 @@ Read [the README](../README.md) and the selected [hosting guide](SELF_HOSTING.md
 | Delivery | Inbox, GitHub issue or GitHub Project; defaults and overrides for each feedback type |
 | AI/privacy | AI off, local endpoint or external provider; exact model ID, capture and masking requirements |
 
-The runtime, LLM and delivery destination are separate choices. A fully local installation uses the standalone runtime, its own disk, local authentication and an AI endpoint on the operator's network, with inbox delivery. Do not enable GitHub, Turnstile, remote AI or OIDC merely because they appear in an example. Passkey/account and masking capabilities must be checked against the installed release; never claim a planned feature is available.
+The runtime, LLM and delivery destination are separate choices. A fully local installation uses the standalone runtime, its own disk, local authentication and an AI endpoint on the operator's network, with inbox delivery. Do not enable GitHub, Turnstile, remote AI or OIDC merely because they appear in an example. Passkey/account and masking capabilities must be checked against the installed release; never claim a planned feature is available. Accounts count as available only when both checks pass on the target: `GET /api/auth/state` answers 200 with `ownerExists` (the account API is there) and `GET /admin/setup` answers 200 (the setup page is there). A release that fails either check has only `ADMIN_TOKEN`: say so, and do not tell the operator to sign in with a passkey.
 
 Inspect the current version, service and stored configuration before changing an existing installation. Do not create another gateway if the operator already has one. Use a supported release, preserve its lockfile, and report the actual tag/commit used.
 
@@ -22,7 +22,11 @@ Inspect the current version, service and stored configuration before changing an
 
 For direct Linux/LXC, install Node.js 24 or newer and the newest stable release tarball with the steps in [SELF_HOSTING.md](SELF_HOSTING.md#install-from-a-release-tarball): download the tarball, `SHA256SUMS` and `SHA256SUMS.sig`, and verify the signature against the stable key in [RELEASES.md](RELEASES.md#release-keys) and the checksum before you extract anything. A tarball needs no Git, pnpm or build. Use the checkout path (`git clone`, `pnpm install --frozen-lockfile`, `pnpm build:widget`, `pnpm build:server`) only when the operator wants a commit that is not released. Follow [the systemd instructions](SELF_HOSTING.md#keep-it-running-with-systemd) for persistent operation. A tarball install asks GitHub once a day whether a newer release exists and sends nothing about the installation; set `FK_UPDATE_CHECK=off` if the operator wants no such request. Cloudflare uses its own resource and migration workflow.
 
-Generate a random `ADMIN_TOKEN` in the target's approved secret/environment store. Never print it, put it in an issue, or ask the operator to paste it into chat. The standalone service refuses tokens shorter than 32 characters. Set `FK_PUBLIC_URL` to the actual external origin, and verify data-directory permissions before startup.
+Set `FK_PUBLIC_URL` to the actual external origin (passkeys bind to its host name, so settle it first), and verify data-directory permissions before startup.
+
+**A release with accounts** (both checks above pass): do not generate an `ADMIN_TOKEN`. The server starts without one. Run the host command, `sudo feedbackkit-admin setup-link` (on Cloudflare the operator runs `pnpm admin:link` with their own Cloudflare login; never ask for those credentials), and hand the link to the operator in the channel they use, not in an issue or a log. **You never complete the passkey ceremony and never hold an owner's credentials.** Wait until the operator reports that they are signed in, then ask them to create an API token for you in the admin (write access, limited to the projects you set up, the shortest lifetime that fits the job) and to hand it over the way they hand over any secret. Keep it in the target's approved secret store, never print it, and use it as `$FEEDBACKKIT_TOKEN` below. Passkeys need HTTPS or `localhost`: on a host without TLS the operator needs a reverse proxy or an SSH tunnel first ([SELF_HOSTING.md](SELF_HOSTING.md#accounts-and-recovery)).
+
+**A release without accounts:** generate a random `ADMIN_TOKEN` in the target's approved secret/environment store and use it as `$FEEDBACKKIT_TOKEN`. Never print it, put it in an issue, or ask the operator to paste it into chat. The standalone service refuses tokens shorter than 32 characters.
 
 Check `/diag` from the target. Schema readiness is necessary, but it is not proof that GitHub or AI calls succeed. Keep each result separate.
 
@@ -32,7 +36,7 @@ The admin UI's **New project** dialog is the simplest route. For automation, use
 
 ```sh
 curl --fail-with-body "$GATEWAY/api/admin/projects" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Authorization: Bearer $FEEDBACKKIT_TOKEN" \
   -H 'Content-Type: application/json' \
   -H "Origin: $GATEWAY" \
   --data @project-create.json
@@ -42,7 +46,7 @@ curl --fail-with-body "$GATEWAY/api/admin/projects" \
 
 For an existing project, read `GET /api/admin/projects/<id>/config`, preserve unrelated fields and the public key, validate with `POST /api/admin/projects/<id>/config/validate`, then publish with `PUT /api/admin/projects/<id>/config` carrying `{ "config": ..., "expectedVersion": ... }`. A 409 publication conflict needs a fresh read and a deliberate merge. Settings revisions are project-edit counters, not software releases.
 
-Install the returned snippet on the confirmed website. Use only the **public project key** in the snippet; never the admin token. Keep CSP and the exact allowed origins aligned. Do not bypass a rejected origin by allowing every website.
+Install the returned snippet on the confirmed website. Use only the **public project key** in the snippet; never the token you use for the admin API. Keep CSP and the exact allowed origins aligned. Do not bypass a rejected origin by allowing every website.
 
 ## 4. Configure integrations and verify the actual path
 
@@ -56,10 +60,10 @@ Privacy verification must cover the transmitted bytes. Do not use real personal 
 
 ## 5. Leave an actionable handoff
 
-Report the installed release, gateway/admin addresses, configured project and website origins, data/backup location and the observed result of each test. Explain how the operator signs in through the approved access path without exposing credentials. State any gaps plainly: a successful Node test is not an observed Proxmox deployment; a successful image transfer is not an observed GitHub issue.
+Report the installed release, gateway/admin addresses, configured project and website origins, data/backup location and the observed result of each test. Explain how the operator signs in: with a passkey on a release with accounts (and how recovery works: `feedbackkit-admin recovery-link` on the host), or through the approved access path on a release without them. Say which API token you used, its scope and its end date, and that the operator can revoke it. Never put a credential in the handoff. State any gaps plainly: a successful Node test is not an observed Proxmox deployment; a successful image transfer is not an observed GitHub issue.
 
-Link [GETTING_STARTED.md](GETTING_STARTED.md), [ADMIN.md](ADMIN.md) and the relevant update instructions: a tarball install updates and rolls back with `feedbackkit-update` ([Updating](RELEASES.md#updating)). List the next required action only if the operator must still do it. Do not claim account/passkey login or screenshot masking until the installed release's flow has been verified.
+Link [GETTING_STARTED.md](GETTING_STARTED.md), [ADMIN.md](ADMIN.md) and the relevant update instructions: a tarball install updates and rolls back with `feedbackkit-update` ([Updating](RELEASES.md#updating)). List the next required action only if the operator must still do it. Do not claim account/passkey login until both checks in step 1 pass on the installed release and the operator has signed in once, and do not claim screenshot masking until the installed release's flow has been verified.
 
-If the operator wants an agent to read feedback through MCP: on Cloudflare see [MCP for agents](QUICKSTART.md#mcp-for-agents); a server installation cannot approve connections yet ([MCP for agents](SELF_HOSTING.md#mcp-for-agents)), so say so and do not enable `FK_MCP`. The person who approves a connection signs in themselves. Never sign in for them or hand an agent their credentials.
+If the operator wants an agent to read feedback through MCP: on Cloudflare see [MCP for agents](QUICKSTART.md#mcp-for-agents), on a server [MCP for agents](SELF_HOSTING.md#mcp-for-agents). The person who approves a connection signs in themselves, and an owner creates an API token themselves. Never sign in for them, create a token with their session, or hand an agent their credentials. Report whether the install has an https `FK_PUBLIC_URL` (MCP is off without it) and that you did not run a real MCP client unless you did.
 
 Co-created by Michel with NORA (AI Agent)
