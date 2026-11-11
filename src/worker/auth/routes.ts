@@ -316,7 +316,7 @@ export function registerAuthRoutes(app: AppT): void {
       if (denied) return denied;
       const me = identityOf(c);
       const account = await getAccount(c.env, c.req.param("id"));
-      if (!account || account.state === "removed") throw new AuthError(404, "FK_ACCOUNT_NOT_FOUND", "No such account.");
+      if (!account || account.state === "removed") throw new AuthError(404, "FK_ACCOUNT_NOT_FOUND", "No such user.");
       if (account.state === "active" && account.role === "owner") throw new AuthError(403, "FK_HOST_REQUIRED", "An owner is recovered with the host command (feedbackkit-admin recovery-link, or pnpm admin:link on Cloudflare), not from the admin.");
       const purpose = account.state === "invited" ? "invite" : "recovery";
       const link = await issueLink(c.env, { purpose, accountId: account.id, createdBy: me?.via === "session" ? me.accountId : "owner" });

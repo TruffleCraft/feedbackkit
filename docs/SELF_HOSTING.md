@@ -90,7 +90,7 @@ The gateway serves an MCP server at `/mcp`, so Claude Code, claude.ai, ChatGPT, 
 
 **When it is on.** MCP is on when `FK_PUBLIC_URL` is an https origin, and off when it is not. `FK_MCP=off` turns it off anyway, and `FK_MCP=on` turns it on for a test on this machine (`FK_PUBLIC_URL=http://localhost:8787`, `HOST=127.0.0.1`). The start log says which: `MCP on (issuer https://…, resource https://…/mcp)`, and `/diag` shows the same line as `mcp`. Where it is off, every `/mcp`, `/oauth/*` and `/.well-known/oauth-*` path answers 404 and says how to turn it on. The server refuses to start MCP where a sign-in would travel in clear text: an http address that is not localhost, or `HOST` open to other addresses with an http address. Before the first owner exists nothing can connect.
 
-**What is not there yet.** No admin screen lists the OAuth connections, so a connection ends when you remove its account or its grant runs out (see [Accounts and recovery](#accounts-and-recovery) for the screens that exist). Claude Code, claude.ai and ChatGPT have not been run against it.
+**What is not there yet.** No admin screen lists the OAuth connections, so a connection ends when you remove the user who approved it or its grant runs out (see [Accounts and recovery](#accounts-and-recovery) for the screens that exist). Claude Code, claude.ai and ChatGPT have not been run against it.
 
 **Connect with OAuth.**
 
@@ -105,7 +105,7 @@ The gateway serves an MCP server at `/mcp`, so Claude Code, claude.ai, ChatGPT, 
 3. The client opens the consent page in your browser. If you are not signed in it says so and where to sign in; sign in, then start again from the app. Check that the address bar shows your gateway and that the page names the app and the host the tokens go to, then click **Allow**.
 4. In the client, call `whoami`, then `list_projects`.
 
-**Connect with a token.** Point the client at `https://<your-gateway>/mcp` and send the token in the `Authorization` header. A token in the URL is ignored. `whoami` shows the token's name, its projects and when it ends. A revoked or ended token, or one whose account was removed, gets `401` from the next request on. After 30 failed tokens from one address in an hour that address gets `429`, and a valid token still works.
+**Connect with a token.** Point the client at `https://<your-gateway>/mcp` and send the token in the `Authorization` header. A token in the URL is ignored. `whoami` shows the token's name, its projects and when it ends. A revoked or ended token, or one whose user was removed, gets `401` from the next request on. After 30 failed tokens from one address in an hour that address gets `429`, and a valid token still works.
 
 A page in a browser cannot call `/mcp`: the MCP SDK refuses any `Origin` that is not a localhost name, with `403`. Agents, command-line clients and gateways send no `Origin` and are not affected. A client that asks for neither scope gets `feedback:read`. One connection or token may make 1000 calls an hour. Feedback text comes from the visitors of your sites, and the tool descriptions tell the agent to treat it as data.
 
@@ -115,8 +115,8 @@ A page in a browser cannot call `/mcp`: the MCP SDK refuses any `Origin` that is
 
 | | Cloudflare | Standalone |
 |---|---|---|
-| Who may approve a connection | Whoever your Access application lets in, or an account with a session | An account with a session |
-| Identity in `whoami` | The Access email, or the account's name | The account's name |
+| Who may approve a connection | Whoever your Access application lets in, or a user with a session | A user with a session |
+| Identity in `whoami` | The Access email, or the user's name | The user's name |
 | Client registration | Dynamic, and Client ID Metadata Documents | Dynamic only |
 | Storage of OAuth state | A KV namespace (`FK_OAUTH_KV_ID`) | A table in the SQLite file |
 | Turned on by | Binding the KV namespace | An https `FK_PUBLIC_URL`, or `FK_MCP=on` |
@@ -125,7 +125,7 @@ A page in a browser cannot call `/mcp`: the MCP SDK refuses any `Origin` that is
 
 ### End agent connections
 
-- **One person's connections:** remove the account in the admin. Every connection it approved answers `401` from the next call, and its tokens are revoked.
+- **One person's connections:** remove the user in the admin. Every connection it approved answers `401` from the next call, and its tokens are revoked.
 - **One token:** revoke it in the admin. It stops with the next request.
 - **Every OAuth connection at once** (a client you no longer trust): stop the service, remove the grants, and start it again. The agents have to connect again. API tokens are not touched.
 
@@ -157,7 +157,7 @@ For issue screenshots, set the project's public attachment base to `https://<gat
 
 ## Accounts and recovery
 
-Accounts replace `ADMIN_TOKEN`: two roles (owner and member), passkey sign-in, no password, no mail, no public sign-up. Scripts and agents use scoped API tokens. The design and the threat model are in [design/gate2-accounts.md](design/gate2-accounts.md) and [SECURITY.md](SECURITY.md#accounts-and-sessions). The screens are part of the admin: `/admin/setup` (the page the links open), `/admin/sign-in`, `/admin/account` (your passkeys and sessions), `/admin/accounts` (invitations, roles, removal) and `/admin/tokens` (API tokens). Accounts and tokens are for owners; a member uses the rest of the admin.
+Users replace `ADMIN_TOKEN`: two roles (owner and member), passkey sign-in, no password, no mail, no public sign-up. Each user has an account of their own, which **Your account** shows. Scripts and agents use scoped API tokens. The design and the threat model are in [design/gate2-accounts.md](design/gate2-accounts.md) and [SECURITY.md](SECURITY.md#accounts-and-sessions). The screens are part of the admin: `/admin/setup` (the page the links open), `/admin/sign-in`, `/admin/account` (your passkeys and sessions), `/admin/users` (invitations, roles, removal; the old address `/admin/accounts` redirects there) and `/admin/tokens` (API tokens). Users and tokens are for owners; a member uses the rest of the admin.
 
 **Passkeys need HTTPS or `localhost`.** Browsers refuse WebAuthn on plain http to any other host. The relying party ID is the host name of `FK_PUBLIC_URL`, so set `FK_PUBLIC_URL` to the address people really use before the first owner enrolls, and do not change its host afterwards (a passkey belongs to the host name; use a recovery link to enroll again). An IP address cannot be a relying party ID. A server without TLS is reachable for the first setup through a tunnel: `ssh -L 8787:127.0.0.1:8787 you@host`, then `http://localhost:8787` with `FK_PUBLIC_URL=http://localhost:8787`.
 
@@ -167,16 +167,16 @@ Accounts replace `ADMIN_TOKEN`: two roles (owner and member), passkey sign-in, n
 sudo ln -s /opt/feedbackkit/current/feedbackkit-admin /usr/local/bin/feedbackkit-admin
 sudo feedbackkit-admin setup-link          # link for the first owner
 sudo feedbackkit-admin recovery-link       # link that replaces the owner's passkeys
-sudo feedbackkit-admin accounts            # who exists, no secrets
+sudo feedbackkit-admin users               # who can sign in, no secrets
 ```
 
-The command reads `FK_DATA_DIR` and `FK_PUBLIC_URL` from `/etc/feedbackkit.env` (which only root can read), then continues as the owner of the data directory, so the files it touches stay readable for the service. It prints the link alone on stdout (everything else goes to stderr) and never writes it anywhere. A link works once and expires after 30 minutes (`--minutes 1` to `240`). A new `setup-link` replaces an older unused one, and `setup-link` refuses once an owner exists. `recovery-link` picks the owner when there is exactly one; with several, name the account with `--account`. A checkout install runs `node scripts/server.mjs admin setup-link`.
+The command reads `FK_DATA_DIR` and `FK_PUBLIC_URL` from `/etc/feedbackkit.env` (which only root can read), then continues as the owner of the data directory, so the files it touches stay readable for the service. It prints the link alone on stdout (everything else goes to stderr) and never writes it anywhere. A link works once and expires after 30 minutes (`--minutes 1` to `240`). A new `setup-link` replaces an older unused one, and `setup-link` refuses once an owner exists. `recovery-link` picks the owner when there is exactly one; with several, name the user with `--user`. `accounts` and `--account` are the old names of `users` and `--user` and keep working until November 2027. A checkout install runs `node scripts/server.mjs admin setup-link`.
 
 **First owner.** Run `setup-link`, open the link in the browser you will sign in with, enter a name and create a passkey, then add a second one under Your account (a security key or another device): the last passkey cannot be removed, and with only one a lost device means a recovery link. From then on `ADMIN_TOKEN` grants nothing, the server logs that it is ignored, and you can remove it from the environment file. Two browsers that open the link at the same time produce one owner.
 
-**Recovery.** If every passkey is lost, run `recovery-link` on the host. The link replaces the account's passkeys, signs out all its sessions and **revokes the API tokens that account created**, because recovery is also the path after a lost or exposed credential; the owner creates new tokens afterwards, and the setup page says how many ended. `--keep-tokens` opts out. Tokens of other accounts are not touched. Recovery needs host access by design: there is no mail and no vendor to ask. Owners can invite members and renew a member's link from the admin; an owner is only ever recovered from the host.
+**Recovery.** If every passkey is lost, run `recovery-link` on the host. The link replaces the user's passkeys, signs out all their sessions and **revokes the API tokens that user created**, because recovery is also the path after a lost or exposed credential; the owner creates new tokens afterwards, and the setup page says how many ended. `--keep-tokens` opts out. Tokens of other users are not touched. Recovery needs host access by design: there is no mail and no vendor to ask. Owners can invite members and renew a member's link from the admin; an owner is only ever recovered from the host.
 
-**API tokens** are created by an owner in the admin. A token is shown once, is read-only or can write, covers all projects or a list, and ends after 1 to 365 days (90 by default). Use it as `Authorization: Bearer fk_tok_...`. A token cannot create tokens or accounts. Revoking takes effect on the next request.
+**API tokens** are created by an owner in the admin. A token is shown once, is read-only or can write, covers all projects or a list, and ends after 1 to 365 days (90 by default). Use it as `Authorization: Bearer fk_tok_...`. A token cannot create tokens or users. Revoking takes effect on the next request.
 
 **Behind a reverse proxy**, set `FK_TRUSTED_PROXY_HOPS` so that failed-attempt counters are per client. Without it every client shares the proxy's address; valid sign-ins and tokens still work, and failures there read as `429`.
 

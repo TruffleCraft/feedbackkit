@@ -2,6 +2,12 @@
 
 Open `/admin` on your gateway. The project list, project settings and delivery log use the same API on both installations.
 
+## Layout
+
+The sidebar lists the projects. The open project shows Reports, Setup, Types and Settings under its name. Below the projects: System and, for owners, API tokens and Users. At the bottom: your name (it opens Your account), the theme (Auto, Light or Dark) and Sign out. On a phone the sidebar sits behind **Menu**.
+
+Under Reports, a report opens beside the list from 1180 px. On narrower screens it replaces the list, and **‹ Reports** brings the list back. A report's address is `/admin/projects/<id>#history/<report>`, so you can link to one. The actions of a report are in its header: **Retry delivery** for a failed delivery, **Mark as done** and **Dismiss** for an inbox report, and a **More** menu with the note, **Copy as Markdown** and **Delete report…**.
+
 ## Project settings
 
 | Section | What you manage |
@@ -12,7 +18,7 @@ Open `/admin` on your gateway. The project list, project settings and delivery l
 | Appearance | Automatic/light/dark theme, accent color and widget heading |
 | Advanced JSON | The same draft in JSON, for automation or bulk edits |
 
-Use **Configure** or **Add a setting** to add optional settings. Removing an optional setting restores its schema default; for retention, omission means keep records until explicit deletion. Existing type/field IDs are fixed in forms so renaming a label does not orphan stored data. Review removals before publishing. Secret inputs are environment variable **names**, never credentials.
+Use **Set** (in the list *Not set, using defaults*) or **Add a setting** to add optional settings. Removing an optional setting restores its schema default; for retention, omission means keep records until explicit deletion. Existing type/field IDs are fixed in forms so renaming a label does not orphan stored data. Review removals before publishing. Secret inputs are environment variable **names**, never credentials.
 
 Choose **Review changes** before **Publish**. Validation checks the full draft on the gateway and shows destinations and a diff. A changed draft must be reviewed again. If another admin saved in the meantime, publication returns a conflict instead of silently overwriting their work. Your draft stays available for comparison.
 
@@ -38,15 +44,15 @@ Only reports delivered to the **FeedbackKit inbox** have a local Open/Done/Dismi
 
 Retention applies to log records, inbox reports and attachments whether handled or not. It is not an indefinite audit archive. Retention must be at least 7 days, the notice period for unhandled reports; the gateway refuses a shorter value when settings are written. When a review changes the retention, it states how many stored reports and attachments the next daily cleanup deletes, and you cannot publish before you have seen it. Deleting a FeedbackKit record or attachment does not close or delete its GitHub ticket.
 
-## Accounts and tokens
+## Users and tokens
 
-People sign in with passkeys. An **owner** can invite members and other owners, renew a link, change roles, remove accounts and create **API tokens**; a **member** can use every other admin route (authorization by project comes with Step 4). Scripts and agents use an API token, never a person's session: it is shown once, is read-only or can write, covers all projects or a list, and ends after 1 to 365 days (90 by default). A token cannot create tokens or accounts, and a token limited to projects cannot open the system page, import settings or create projects. Revoking a token or removing an account takes effect on the next request.
+People sign in with passkeys. An **owner** can invite members and other owners, renew a link, change roles, remove users and create **API tokens**; a **member** can use every other admin route (authorization by project comes with Step 4). Scripts and agents use an API token, never a person's session: it is shown once, is read-only or can write, covers all projects or a list, and ends after 1 to 365 days (90 by default). A token cannot create tokens or users, and a token limited to projects cannot open the system page, import settings or create projects. Revoking a token or removing a user takes effect on the next request.
 
-The last owner cannot be demoted or removed, and an account always keeps one passkey. If every passkey is lost, an operator with host access issues a recovery link (`feedbackkit-admin recovery-link`, or `pnpm admin:link --recovery` on Cloudflare): it replaces the account's passkeys, signs out its sessions and revokes the API tokens that account created (recovery is also the path after a lost or exposed credential; `--keep-tokens` opts out). Create new tokens afterwards. How to set it up: [SELF_HOSTING.md](SELF_HOSTING.md#accounts-and-recovery) and [QUICKSTART.md](QUICKSTART.md#accounts). The API errors are in [ERRORS.md](ERRORS.md#accounts-sessions-and-tokens). The screens are **Your account** (your passkeys and sessions; the name in the header opens it), **Accounts** and **API tokens**, with the sign-in and setup pages beside them.
+The last owner cannot be demoted or removed, and a user always keeps one passkey. If every passkey is lost, an operator with host access issues a recovery link (`feedbackkit-admin recovery-link`, or `pnpm admin:link --recovery` on Cloudflare): it replaces the user's passkeys, signs out their sessions and revokes the API tokens that user created (recovery is also the path after a lost or exposed credential; `--keep-tokens` opts out). Create new tokens afterwards. The command that lists the users is `feedbackkit-admin users` (`accounts` and `--account` are the old names and keep working until November 2027). How to set it up: [SELF_HOSTING.md](SELF_HOSTING.md#accounts-and-recovery) and [QUICKSTART.md](QUICKSTART.md#accounts). The API errors are in [ERRORS.md](ERRORS.md#accounts-sessions-and-tokens). The screens are **Your account** (your passkeys and sessions; the name in the sidebar opens it), **Users** (`/admin/users`; the old address `/admin/accounts` redirects there) and **API tokens**, with the sign-in and setup pages beside them.
 
 ## Agents
 
-On Cloudflare an agent can read projects, feedback and the funnel through the gateway's MCP server, without the admin token in its hands. Whoever approves a connection signs in through Cloudflare Access first, and the agent gets read-only scopes ([setup](QUICKSTART.md#mcp-for-agents)). On a server installation a person signed in with a passkey approves them, and an owner can create a scoped API token that an agent or gateway sends as a bearer ([MCP for agents](SELF_HOSTING.md#mcp-for-agents)). Removing an account ends the connections it approved and revokes its tokens.
+On Cloudflare an agent can read projects, feedback and the funnel through the gateway's MCP server, without the admin token in its hands. Whoever approves a connection signs in through Cloudflare Access first, and the agent gets read-only scopes ([setup](QUICKSTART.md#mcp-for-agents)). On a server installation a person signed in with a passkey approves them, and an owner can create a scoped API token that an agent or gateway sends as a bearer ([MCP for agents](SELF_HOSTING.md#mcp-for-agents)). Removing a user ends the connections they approved and revokes their tokens.
 
 ## Credentials and hosting
 

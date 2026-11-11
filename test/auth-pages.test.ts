@@ -24,7 +24,7 @@ const VIEWS: Record<string, string> = {
   "/admin/sign-in": "sign-in",
   "/admin/setup": "setup",
   "/admin/account": "account",
-  "/admin/accounts": "accounts",
+  "/admin/users": "users",
   "/admin/tokens": "tokens",
 };
 
@@ -44,7 +44,7 @@ describe("account screen shells", () => {
     expect(res.headers.get("Cache-Control")).toBe("no-store");
 
     const html = await res.text();
-    expect(html).toContain(`<body data-view="${view}">`);
+    expect(html).toMatch(new RegExp(`<body data-view="${view}"( class="bare")?>`));
     expect(html).toContain('<meta name="robots" content="noindex,nofollow">');
     expect(html).toContain(`<script src="/auth.js" nonce="${nonce}" defer></script>`);
     expect(html).not.toContain("/admin.js"); // the account screens load their own module only
@@ -65,6 +65,26 @@ describe("account screen shells", () => {
     expect(html).not.toContain("Robin");
   });
 
+  it("redirects the old /admin/accounts to /admin/users", async () => {
+    // The page was called Accounts until 2026-11-11; docs, bookmarks and an Access application still point at it.
+    const res = await app.request("/admin/accounts", { redirect: "manual" }, env());
+    expect(res.status).toBe(301);
+    expect(res.headers.get("Location")).toBe("/admin/users");
+    expect(dbCalls).toBe(0);
+  });
+
+  it("names the page Users and the own page Your account", async () => {
+    const users = await (await app.request("/admin/users", {}, env())).text();
+    expect(users).toContain("<title>Users · FeedbackKit admin</title>");
+    expect(users).toContain("<h1>Users</h1>");
+    expect(users).toContain(">Invite user</button>");
+    expect(users).toContain('<a href="/admin/users" data-nav="users">Users</a>');
+    expect(users).not.toContain("Accounts");
+    expect(users).not.toContain("Invite someone");
+    const own = await (await app.request("/admin/account", {}, env())).text();
+    expect(own).toContain("<h1>Your account</h1>");
+  });
+
   it("only answers GET", async () => {
     for (const path of Object.keys(VIEWS)) expect([404, 405]).toContain((await app.request(path, { method: "POST" }, env())).status);
   });
@@ -81,7 +101,7 @@ describe("account screen shells", () => {
   });
 
   it("gives every dialog a label and every button a type", async () => {
-    for (const path of ["/admin/account", "/admin/accounts", "/admin/tokens"]) {
+    for (const path of ["/admin/account", "/admin/users", "/admin/tokens"]) {
       const html = await (await app.request(path, {}, env())).text();
       for (const d of html.matchAll(/<dialog id="([^"]+)" aria-labelledby="([^"]+)"/g)) expect(html, `${path} ${d[1]}`).toContain(`id="${d[2]}"`);
       for (const b of html.matchAll(/<button\b[^>]*>/g)) expect(b[0], `${path} ${b[0]}`).toMatch(/\stype="(button|submit)"/);

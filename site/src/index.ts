@@ -17,7 +17,7 @@
 import { URBANIST_WOFF2_B64 } from "./font.js";
 import { WIDGET_VER } from "./widget-ver.js";
 
-const GATEWAY = "https://feedbackkit.trufflecraft.workers.dev";
+const GATEWAY = "https://feedback.trufflecraft.de";
 const DEMO_PROJECT_KEY = "fk_pub_64a564982de5";
 
 const CSP = [

@@ -7,12 +7,12 @@
 //
 //   pnpm admin:link --url https://feedbackkit.example.org            first owner
 //   pnpm admin:link --url https://… --recovery                       recovery link for the only owner (revokes the API tokens it created)
-//   pnpm admin:link --url https://… --recovery --account "Robin"     recovery link for one account
+//   pnpm admin:link --url https://… --recovery --user "Robin"        recovery link for one user
 //   pnpm admin:link --url https://… --print-sql                      print the SQL instead of running it
 //
 // Options: --minutes N (1 to 240, default 30), --database NAME (default
 // feedbackkit), --local (the local D1 of `wrangler dev`), --keep-tokens (recovery
-// only: keep the account's API tokens instead of revoking them).
+// only: keep the user's API tokens instead of revoking them). --account is the old name of --user and keeps working until November 2027.
 //
 // The link goes to stdout and nothing else does. The token is generated here and
 // only its SHA-256 reaches the database, as on the standalone server. With
@@ -22,7 +22,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
-const USAGE = `Usage: pnpm admin:link --url <public url> [--recovery [--account NAME] [--keep-tokens]] [--minutes N] [--database NAME] [--local] [--print-sql]`;
+const USAGE = `Usage: pnpm admin:link --url <public url> [--recovery [--user NAME] [--keep-tokens]] [--minutes N] [--database NAME] [--local] [--print-sql]`;
 const sql = (text) => `'${String(text).replaceAll("'", "''")}'`;
 
 export function parseArgs(argv) {
@@ -31,7 +31,7 @@ export function parseArgs(argv) {
     const a = argv[i];
     if (a === "--url") out.url = argv[++i];
     else if (a === "--recovery") out.recovery = true;
-    else if (a === "--account") out.account = argv[++i];
+    else if (a === "--user" || a === "--account") out.account = argv[++i];
     else if (a === "--keep-tokens") out.keepTokens = true;
     else if (a === "--minutes") out.minutes = Number(argv[++i]);
     else if (a === "--database") out.database = argv[++i];
@@ -51,7 +51,7 @@ export function buildLink(opts, now = Date.now(), token = `fk_link_${randomBytes
     origin = new URL(opts.url ?? process.env.FK_PUBLIC_URL ?? "");
     if (!["http:", "https:"].includes(origin.protocol) || origin.pathname !== "/" || origin.search || origin.hash || origin.username || origin.password) throw new Error("bad");
   } catch { throw new Error(`--url must be the public address of the gateway, for example https://feedbackkit.example.org (an http(s) origin without path).\n${USAGE}`); }
-  if (opts.account !== undefined && !opts.recovery) throw new Error("--account only goes with --recovery.");
+  if (opts.account !== undefined && !opts.recovery) throw new Error("--user only goes with --recovery.");
   if (opts.keepTokens && !opts.recovery) throw new Error("--keep-tokens only goes with --recovery.");
   const id = createHash("sha256").update(token).digest("hex");
   const expires = now + opts.minutes * 60_000;
@@ -97,20 +97,20 @@ export function main(argv, io = { out: (s) => console.log(s), err: (s) => consol
   try {
     if (opts.recovery) {
       const rows = wrangler(opts, "SELECT name, role FROM accounts WHERE state = 'active' ORDER BY created_at")[0]?.results ?? [];
-      if (!rows.length) { io.err("There is no account yet. Run this without --recovery to create the first owner."); return 1; }
+      if (!rows.length) { io.err("There is no user yet. Run this without --recovery to create the first owner."); return 1; }
       const owners = rows.filter((r) => r.role === "owner");
-      if (opts.account === undefined && owners.length !== 1) { io.err(`Name the account with --account. Owners: ${owners.map((r) => r.name).join(", ") || "none"}.`); return 1; }
-      if (opts.account !== undefined && !rows.some((r) => r.name.toLowerCase() === String(opts.account).normalize("NFKC").trim().toLowerCase())) { io.err(`No active account named "${opts.account}". Accounts: ${rows.map((r) => r.name).join(", ")}.`); return 1; }
+      if (opts.account === undefined && owners.length !== 1) { io.err(`Name the user with --user. Owners: ${owners.map((r) => r.name).join(", ") || "none"}.`); return 1; }
+      if (opts.account !== undefined && !rows.some((r) => r.name.toLowerCase() === String(opts.account).normalize("NFKC").trim().toLowerCase())) { io.err(`No active user named "${opts.account}". Users: ${rows.map((r) => r.name).join(", ")}.`); return 1; }
     }
     const results = wrangler(opts, link.statements.join(";\n"));
     const inserted = results[results.length - 1]?.meta?.changes ?? 0;
-    if (!inserted) { io.err(opts.recovery ? "No link was stored. Check the account name." : "An owner already exists. Use --recovery to get a link for an existing account."); return 1; }
+    if (!inserted) { io.err(opts.recovery ? "No link was stored. Check the user name." : "An owner already exists. Use --recovery to get a link for an existing user."); return 1; }
   } catch (e) {
     io.err(`wrangler could not run the statement: ${e.message}\nCheck that you are signed in (wrangler login) and that wrangler.toml exists (pnpm materialize), or use --print-sql.`);
     return 1;
   }
   io.err(opts.recovery
-    ? `Open this link to set up a new passkey. It replaces the passkeys, signs out every session and ${opts.keepTokens ? "keeps" : "revokes"} the API tokens of the account, works once and expires at ${new Date(link.expires).toISOString()}.`
+    ? `Open this link to set up a new passkey. It replaces the passkeys, signs out every session and ${opts.keepTokens ? "keeps" : "revokes"} the API tokens of the user, works once and expires at ${new Date(link.expires).toISOString()}.`
     : `Open this link in the browser you will sign in with. It creates the first owner, works once and expires at ${new Date(link.expires).toISOString()}.`);
   io.out(link.url);
   return 0;

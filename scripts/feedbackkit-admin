@@ -3,8 +3,8 @@
 # (docs/SELF_HOSTING.md). POSIX sh, runs the server file of the release it sits in.
 #
 #   feedbackkit-admin setup-link [--minutes N]                      link for the first owner
-#   feedbackkit-admin recovery-link [--account NAME] [--minutes N]  link that replaces an account's passkeys
-#   feedbackkit-admin accounts                                      list the accounts
+#   feedbackkit-admin recovery-link [--user NAME] [--minutes N]     link that replaces a user's passkeys
+#   feedbackkit-admin users                                         list the users (`accounts` still works)
 #
 # Run it with sudo: it reads /etc/feedbackkit.env as root, then continues as the user that owns
 # the data directory:

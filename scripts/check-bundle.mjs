@@ -35,7 +35,10 @@ if (gz > BUDGET_GZ) {
 // 15.25 kB since the notice for a newer release (J2, ADR-014): the first 15 kB were used up before it.
 // 15.5 kB since passkey sessions (Gate 2, ADR-014): the CSRF header on writes, the account link and sign-out
 // in the header, and the redirect to /admin/sign-in once an owner exists took about 135 bytes more than the 96 left.
-const ADMIN_BUDGET_GZ = 15.5 * 1024;
+// 16.75 kB since the plain layout (ADR-014, 2026-11-11): the sidebar with the projects and their sections, the
+// report beside its list with the actions that used to sit on every row, and the section address took 1,063 bytes,
+// 853 more than the 210 left; the stylesheet (4.3 kB gz before, about 3 kB now) is in the HTML shell and does not count.
+const ADMIN_BUDGET_GZ = 16.75 * 1024;
 let admin;
 try {
   admin = readFileSync(join(root, "dist", "admin.js"));
@@ -45,7 +48,7 @@ try {
 }
 const adminGz = gzipSync(admin).length;
 // The account screens (Gate 2) are a module of their own, loaded only by their five pages.
-// 9 kB gz: sign-in, setup, passkeys and sessions, accounts and tokens with their dialogs.
+// 9 kB gz: sign-in, setup, passkeys and sessions, users and tokens with their dialogs.
 const AUTH_BUDGET_GZ = 9 * 1024;
 let auth;
 try {

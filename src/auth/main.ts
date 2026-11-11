@@ -1,10 +1,12 @@
-// The account screens (Gate 2): sign-in, setup, your account, accounts and API
+// The account screens (Gate 2): sign-in, setup, your account, users and API
 // tokens. One module for the five static shells in src/worker/admin/auth-pages.ts,
 // loaded by them only, so the admin module keeps its budget (ADR-014). It calls
 // the account API (src/worker/auth/routes.ts) and the browser's own WebAuthn
 // JSON helpers; no library. Every API value reaches the page through
 // textContent or a value property, never as HTML. The wording is the approved
 // mock's (docs/design/mockups/accounts.md).
+
+import { fillProjects, initShell, markCurrent } from "../admin/shell.js";
 
 type J = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 interface Reply {
@@ -13,7 +15,6 @@ interface Reply {
   retryAfter: number;
 }
 
-const THEME_KEY = "fk-admin-theme";
 const TOKEN_KEY = "fk-admin-token";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -40,12 +41,6 @@ function store(kind: "session" | "local", key: string, value?: string): string |
     /* storage unavailable: the page still works for this load */
   }
   return null;
-}
-function toggleTheme() {
-  const root = document.documentElement;
-  const dark = root.dataset["theme"] ? root.dataset["theme"] === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
-  root.dataset["theme"] = dark ? "light" : "dark";
-  store("local", THEME_KEY, dark ? "light" : "dark");
 }
 
 // ── the API ──────────────────────────────────────────────────────────────────
@@ -167,14 +162,21 @@ interface Me {
   name: string;
   role: string;
 }
-function chrome(me: Me) {
+function chrome(me: Me, view: string) {
   show("nav");
-  show("who");
-  setText("who-link", me.name);
+  show("side-owner", me.role === "owner");
+  const who = $("who");
+  who.replaceChildren(el("span", { class: "sr" }, "Signed in as "), el("a", { href: "/admin/account", title: "Your account" }, me.name));
+  who.hidden = false;
   show("signout");
+  markCurrent(view);
   $("signout").addEventListener("click", async () => {
     await call("POST", "/api/auth/signout");
     location.replace("/admin/sign-in");
+  });
+  // The projects in the sidebar. A failure here is not the page's failure.
+  void call("GET", "/api/admin/projects").then((r) => {
+    if (r.status === 200) fillProjects((r.json["projects"] as Array<{ id: string }> | undefined) ?? [], null);
   });
 }
 function notice(s: string) {
@@ -333,32 +335,21 @@ async function areaPage(view: string) {
   if (r.json["via"] !== "session") return notice("This page needs a signed-in account. You are signed in another way. Sign in with a passkey to continue.");
   csrf = String(r.json["csrf"]);
   me = r.json["account"] as Me;
-  chrome(me);
+  chrome(me, view);
   show("area");
-  const nav = $("area-nav");
-  if (me.role !== "owner") {
-    nav.hidden = true;
-    $("area").style.gridTemplateColumns = "1fr";
-  }
-  nav.querySelectorAll<HTMLElement>("a").forEach((a) => {
-    const here = a.dataset["nav"] === view;
-    a.classList.toggle("active", here);
-    if (here) a.setAttribute("aria-current", "page");
-  });
   // A 401 later in the page means the session ended: back to sign-in, with the reason.
   const guard = (x: Reply) => {
     if (x.status === 401) location.replace("/admin/sign-in#ended");
     return x;
   };
-  const loaders: Record<string, (g: typeof guard) => Promise<void>> = { account: accountPage, accounts: accountsPage, tokens: tokensPage };
+  const loaders: Record<string, (g: typeof guard) => Promise<void>> = { account: accountPage, users: usersPage, tokens: tokensPage };
   reload = () => loaders[view]!(guard);
   await reload();
 }
 
 const tag = (t: string) => el("span", { class: "t" }, t);
-const badge = (kind: string, t: string) => el("span", { class: `badge ${kind}` }, t);
 const smallBtn = (label: string, on: () => void, opts: { danger?: boolean; off?: string } = {}) => {
-  const b = el("button", { class: `b ghost sm${opts.danger ? " danger" : ""}`, type: "button" }, label);
+  const b = el("button", { class: `b text${opts.danger ? " danger" : ""}`, type: "button" }, label);
   if (opts.off) {
     b.disabled = true;
     b.setAttribute("aria-describedby", opts.off);
@@ -397,13 +388,13 @@ async function accountPage(guard: (r: Reply) => Reply) {
       const used = p["lastUsedAt"] === null ? "Never used" : sameDay(p["lastUsedAt"]) ? "Last used today" : `Last used ${day(p["lastUsedAt"])}`;
       return el(
         "div",
-        null,
-        el("div", { class: "pk" }, el("div", { class: "top-line" }, el("b", null, p["name"]), tag(p["backedUp"] ? "Synced" : "Device-bound")), el("div", { class: "help" }, `Created ${day(p["createdAt"])} · ${used}`)),
+        { class: "item" },
+        el("div", { class: "pk" }, el("div", { class: "ttl" }, p["name"]), el("div", { class: "meta" }, tag(p["backedUp"] ? "Synced" : "Device-bound"), tag(`Created ${day(p["createdAt"])}`), tag(used))),
         smallBtn("Remove", () => {
           setText("rm-pk-name", p["name"]);
           $("rm-pk-go").onclick = () => void commit("rm-pk", "rm-pk-msg", () => call("DELETE", `/api/admin/account/passkeys/${encodeURIComponent(p["id"])}`));
           open("rm-pk");
-        }, one ? { off: "pk-last" } : {}),
+        }, one ? { danger: true, off: "pk-last" } : { danger: true }),
       );
     }),
   );
@@ -411,12 +402,12 @@ async function accountPage(guard: (r: Reply) => Reply) {
     ...sessions.map((s) =>
       el(
         "div",
-        null,
+        { class: "item" },
         el(
           "div",
           { class: "pk" },
-          el("div", { class: "top-line" }, el("b", null, s["current"] ? "This browser" : agent(s["userAgent"])), s["current"] ? badge("ok", "This session") : null),
-          el("div", { class: "help" }, `${s["current"] ? `${agent(s["userAgent"])} · ` : ""}Signed in ${day(s["createdAt"])} · ${s["current"] ? "Active now" : `Last active ${day(s["lastSeenAt"])}`}`),
+          el("div", { class: "ttl" }, s["current"] ? "This browser" : agent(s["userAgent"])),
+          el("div", { class: "meta" }, s["current"] ? tag("This session") : null, tag(`${s["current"] ? `${agent(s["userAgent"])} · ` : ""}Signed in ${day(s["createdAt"])}`), tag(s["current"] ? "Active now" : `Last active ${day(s["lastSeenAt"])}`)),
         ),
         smallBtn(s["current"] ? "Sign out" : "Revoke", async () => {
           if (s["current"]) return void $("signout").click();
@@ -462,20 +453,20 @@ function wireAccountDialogs() {
   });
 }
 
-// Accounts
+// Users (the people who can sign in; the API still calls them accounts)
 let showRemoved = false;
-async function accountsPage(guard: (r: Reply) => Reply) {
+async function usersPage(guard: (r: Reply) => Reply) {
   const r = guard(await call("GET", `/api/admin/accounts${showRemoved ? "?removed=1" : ""}`));
   if (r.status === 403) {
     show("accts-body", false);
     show("inv-open", false);
     return show("accts-denied");
   }
-  if (r.status !== 200) return notice(`Couldn't load accounts. ${errText(r)} Reload the page to try again.`);
+  if (r.status !== 200) return notice(`Couldn't load users. ${errText(r)} Reload the page to try again.`);
   const all = r.json["accounts"] as J[];
   const live = all.filter((a) => a["state"] !== "removed");
   const owners = live.filter((a) => a["role"] === "owner" && a["state"] === "active");
-  setText("accts-sub", `${plural(live.length, "account")} · ${plural(live.filter((a) => a["role"] === "owner").length, "owner")}`);
+  setText("accts-sub", `${plural(live.length, "user")} · ${plural(live.filter((a) => a["role"] === "owner").length, "owner")}`);
   $("acct-list").replaceChildren(
     ...all.map((a) => {
       const you = a["id"] === me.id;
@@ -499,13 +490,13 @@ async function accountsPage(guard: (r: Reply) => Reply) {
           ];
       return el(
         "li",
-        { class: `arow${removed ? " gone" : ""}` },
+        { class: `item${removed ? " gone" : ""}` },
         el(
           "div",
-          { class: "am" },
-          el("div", { class: "top-line" }, el("b", { class: "name" }, a["name"]), you ? el("span", { class: "muted sm" }, "(you)") : null, tag(a["role"] === "owner" ? "Owner" : "Member"), badge(removed ? "stored" : invited ? "incomplete" : "ok", stateLabel)),
-          el("div", { class: "meta" }, meta),
-          lastOwner ? el("p", { class: "help mt4", id: helpId }, `${a["name"]} is the only owner, so this account cannot be demoted or removed. Make another account an owner first.`) : null,
+          { class: "main" },
+          el("div", { class: "ttl" }, a["name"], you ? el("span", { class: "muted" }, " (you)") : null),
+          el("div", { class: "meta" }, tag(a["role"] === "owner" ? "Owner" : "Member"), tag(stateLabel), tag(meta)),
+          lastOwner ? el("p", { class: "help mt4", id: helpId }, `${a["name"]} is the only owner, so this user cannot be demoted or removed. Make another user an owner first.`) : null,
         ),
         el("div", { class: "acts" }, ...acts),
       );
@@ -525,7 +516,7 @@ function roleDialog(a: J) {
   const toMember = a["role"] === "owner";
   names("mo-who", a["name"]);
   setText("mo-role", toMember ? "a member" : "an owner");
-  setText("mo-text", toMember ? `${a["name"]} can no longer manage accounts or API tokens. ${a["name"]} stays signed in.` : `${a["name"]} can manage accounts and API tokens, and remove other owners.`);
+  setText("mo-text", toMember ? `${a["name"]} can no longer manage users or API tokens. ${a["name"]} stays signed in.` : `${a["name"]} can manage users and API tokens, and remove other owners.`);
   setText("mo-go", toMember ? "Make member" : "Make owner");
   $("mo-go").onclick = () => void commit("mk-role", "mo-msg", () => call("PATCH", `/api/admin/accounts/${a["id"]}`, { role: toMember ? "member" : "owner" }));
   open("mk-role");
@@ -535,7 +526,7 @@ function removeDialog(a: J) {
   $("ra-go").onclick = () => void commit("rm-acct", "ra-msg", () => call("DELETE", `/api/admin/accounts/${a["id"]}`));
   open("rm-acct");
 }
-function wireAccountsDialogs() {
+function wireUsersDialogs() {
   $("show-removed").addEventListener("click", async (e) => {
     showRemoved = !showRemoved;
     (e.currentTarget as HTMLElement).setAttribute("aria-pressed", String(showRemoved));
@@ -574,14 +565,15 @@ async function tokensPage(guard: (r: Reply) => Reply) {
   $("tok-list").replaceChildren(
     ...tokens.map((t) => {
       const active = t["state"] === "active";
-      const meta = active ? `Created by ${t["createdBy"] ?? "a removed account"} ${day(t["createdAt"])} · Expires ${day(t["expiresAt"])} · Last used ${ago(t["lastUsedAt"])}` : t["state"] === "revoked" ? `Revoked ${t["revokedAt"] ? day(t["revokedAt"]) : ""}`.trim() : `Expired ${day(t["expiresAt"])}`;
+      const meta = active ? `Created by ${t["createdBy"] ?? "a removed user"} ${day(t["createdAt"])} · Expires ${day(t["expiresAt"])} · Last used ${ago(t["lastUsedAt"])}` : t["state"] === "revoked" ? `Revoked ${t["revokedAt"] ? day(t["revokedAt"]) : ""}`.trim() : `Expired ${day(t["expiresAt"])}`;
       return el(
         "li",
-        { class: `arow${active ? "" : " gone"}` },
+        { class: `item${active ? "" : " gone"}` },
         el(
           "div",
-          { class: "am" },
-          el("div", { class: "top-line" }, el("b", { class: "name" }, t["name"]), tag(t["access"] === "write" ? "Write" : "Read"), tag(t["projects"] ? (t["projects"] as string[]).join(", ") : "All projects"), badge(active ? "ok" : "stored", active ? "Active" : t["state"] === "revoked" ? "Revoked" : "Expired")),
+          { class: "main" },
+          el("div", { class: "ttl" }, t["name"]),
+          el("div", { class: "meta" }, tag(t["access"] === "write" ? "Write" : "Read"), tag(t["projects"] ? (t["projects"] as string[]).join(", ") : "All projects"), tag(active ? "Active" : t["state"] === "revoked" ? "Revoked" : "Expired")),
           el("div", { class: "meta" }, el("span", { class: "mono" }, `${t["prefix"]}…`), ` · ${meta}`),
         ),
         el(
@@ -628,16 +620,14 @@ function wireTokenDialogs() {
 
 // ── boot ─────────────────────────────────────────────────────────────────────
 function boot() {
-  const t = store("local", THEME_KEY);
-  if (t === "light" || t === "dark") document.documentElement.dataset["theme"] = t;
-  $("theme").addEventListener("click", toggleTheme);
+  initShell();
   wireDialogs();
   const view = document.body.dataset["view"] ?? "";
   if (view === "sign-in") void signInPage();
   else if (view === "setup") void setupPage();
   else {
     if (view === "account") wireAccountDialogs();
-    if (view === "accounts") wireAccountsDialogs();
+    if (view === "users") wireUsersDialogs();
     if (view === "tokens") wireTokenDialogs();
     void areaPage(view);
   }

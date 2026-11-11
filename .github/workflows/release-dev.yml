@@ -40,6 +40,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0 # the version is derived from the tags
+          # Kept: "Keep the newest 3 dev builds" falls back to git push --delete with the stored credentials.
+          persist-credentials: true
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -73,7 +75,10 @@ jobs:
 
       - name: Smoke check
         if: vars.FK_DEV_URL != ''
-        run: node scripts/smoke-check.mjs "${{ vars.FK_DEV_URL }}" "${{ steps.v.outputs.version }}" dev
+        env:
+          DEV_URL: ${{ vars.FK_DEV_URL }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: node scripts/smoke-check.mjs "$DEV_URL" "$VERSION" dev
 
       - name: Prerelease
         env:
