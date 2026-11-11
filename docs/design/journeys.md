@@ -28,6 +28,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 | J16 | Robin creates a scoped token for an agent or script | planned | autonomy |
 | J17 | Robin embeds the team board in the product's own admin UI | planned | autonomy |
 | J18 | Sam follows their own reports | planned | autonomy |
+| J19 | Robin moves a gateway from Cloudflare to the standalone server | planned | autonomy |
 
 ## Diagrams
 
@@ -215,5 +216,15 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Evidence:** a test that a forged `FeedbackKitContext` shows nothing, a test that two visitors never see each other's reports, a deletion by identity (S21).
 - **Today:** not built. The widget passes `FeedbackKitContext` as plain, unsigned values, and no public route lists reports.
 - **Verified:** `code` `src/widget/lib/host-context.ts` copies the host's object as is, `src/worker/admin/queries.ts:366` documents the context as "never verified by the gateway", and the public routes in `src/worker/app.ts` (`/diag`, `/api/config`, `/api/upload`, `/api/feedback`, `/api/events`, `/api/test-preview`, `/t/:key`, `/`) return no report list.
+
+## J19 Robin moves a gateway from Cloudflare to the standalone server
+
+- **Goal:** Robin runs FeedbackKit on Cloudflare and wants the same projects, reports and attachments on a Linux host. The snippets already embedded in sites keep working.
+- **Steps:** install the standalone server from the release tarball (J1) and do not start it. On a machine where wrangler is signed in to Robin's Cloudflare account, run `feedbackkit-migrate export`. Copy the export directory to the host. Run `feedbackkit-migrate import --dry-run`, then `import`. Set the secrets that the dry run names, start the service, check `/diag` and the System page, then point the gateway's hostname at the host.
+- **Guarantees:** the export only reads. The import refuses a data directory that already holds data, a schema or delivery capability newer than the release knows, a damaged or edited export, and an attachment whose checksum or image type is wrong. It copies in one transaction, and checks row counts and a checksum of every table and the checksum of every attachment before it commits and again after. Project public keys, settings revisions, reports with their delivery state and error, inbox dispositions and notes, attachments and the delivery capability arrive unchanged. Rate-limit and AI budget counters stay behind. No secret is in an export, because D1 holds variable names only, and none is printed.
+- **Failure paths:** no wrangler login or a wrong bucket name (the export stops), an attachment that the database lists but the bucket does not have (reported, the row stays as it is on Cloudflare), an export of a newer schema, a data directory that already has data, an interrupted import (one transaction: all or nothing), an import run as root (the files go to the owner of the data directory).
+- **Evidence:** the tool run against a local D1 and R2 that a Worker filled with fictional data, then the standalone server started on the result: `/diag`, the inbox, an attachment download, the public config through the old project key. A unit test for each refusal.
+- **Today:** not built. Nothing moves data from D1 and R2 into SQLite. `docs/SELF_HOSTING.md` says nothing about leaving Cloudflare.
+- **Verified:** `code` a search of `scripts` and `docs` for `d1 export` and `r2 object` finds nothing. The shape of the dump was read from a real `wrangler d1 export --local` on 2026-11-11: plain SQL (`CREATE TABLE`, `INSERT`, `sqlite_sequence`, `d1_migrations`) that SQLite loads as it is.
 
 Co-created by Michel with NORA (AI Agent)

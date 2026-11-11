@@ -161,6 +161,18 @@ Release strategy for the tarball:
 | Rollback | The two newest releases stay on disk. Migrations only add, so one release back works on the newer schema. Beyond that the update command restores the data copy |
 | Support | Only the latest stable release gets fixes. A bad stable release is pulled by marking it pre-release and publishing a fixed patch |
 
+### Step M: move a gateway from Cloudflare to the standalone server
+
+- **Why:** an operator who starts on Cloudflare must be able to leave without losing reports, attachments or the snippets embedded in sites (J19). Nothing in the plan covered it.
+- **Needs first:** Step D (the tarball), because the tool ships in it and imports into the server's own database.
+- **Capabilities:**
+  - `feedbackkit-migrate export` reads the D1 database and the attachments with the operator's own wrangler login (`wrangler d1 export`, `wrangler r2 object get`) and writes a directory: `d1.sql`, the objects and a manifest with counts and checksums.
+  - `feedbackkit-migrate import` loads the dump into a scratch SQLite file, brings it to the schema of the installed release with the same migrations the server runs, copies projects, reports, attachments, events and the idempotency table into the standalone database in one transaction, and checks counts and checksums before and after the commit. `--dry-run` writes nothing.
+  - `docs/SELF_HOSTING.md` has a section "Move from Cloudflare" with what stays different.
+- **Constraints:** read-only on the Cloudflare side. Never touch production in tests: they run against a local D1 and R2. Refuse a non-empty destination, a newer schema or capability, and a damaged export. Secrets are not in D1, so the guide names the variables to set on the new host. No credentials are asked for or stored.
+- **Non-goals:** a live sync, moving back to Cloudflare, rate-limit counters, OAuth and MCP grants (the standalone server has neither), Cloudflare Access settings.
+- **Success signals:** a Worker fills a local D1 and R2 with fictional data, the tool moves it, and the standalone server started on the result shows the same projects, public keys, inbox and attachments.
+
 ### Step 3: verification on a fresh host
 
 - **Why:** a build that passes on a laptop says little about an LXC.
