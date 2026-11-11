@@ -8,7 +8,7 @@ What is verified and what is not: the server and its tests run on a developer ma
 
 Coming from Cloudflare? [Move from Cloudflare](#move-from-cloudflare) copies your data across.
 
-The server carries the plumbing for MCP (the OAuth provider and the MCP server at `/mcp`), off by default, because approving a connection needs the account sign-in of Gate 2, which exists but is not yet connected to the consent page. Agents cannot connect to a standalone server yet ([MCP for agents](#mcp-for-agents)).
+The server also serves MCP at `/mcp`, so an agent can read projects, feedback and the funnel with the same tools and read-only scopes as on Cloudflare ([MCP for agents](#mcp-for-agents)). It is on for an https `FK_PUBLIC_URL`. A person signed in with a passkey approves an OAuth connection, and a scoped API token is a bearer for gateways such as LiteLLM. It has run with the MCP SDK's own client against the release tarball on a clean Debian 13 LXC ([evidence](design/evidence/2026-11-11-mcp-accounts-tokens.md)), but not against Claude Code, claude.ai or ChatGPT, and no admin screen lists the OAuth connections yet (see [Accounts and recovery](#accounts-and-recovery)).
 
 ## Node.js on a server or Proxmox LXC
 
@@ -83,11 +83,59 @@ Both checks must pass before you extract anything. The unit expects Node at `/us
 
 ## MCP for agents
 
-Not available yet. On Cloudflare an agent such as Claude Code connects to `/mcp` with OAuth 2.1 after a person approves it on a consent page behind Cloudflare Access. A standalone server has no Access, and the sign-in that replaces it is the account system of Gate 2, which exists but is not yet connected to the consent page. Until it is, nobody can approve a connection, so no agent can connect, and the server does not pretend otherwise.
+The gateway serves an MCP server at `/mcp`, so Claude Code, claude.ai, ChatGPT, Hermes or a gateway such as LiteLLM can read your projects, feedback items, the widget funnel and the project configs. It is read-only. There are two ways in, and both need an account:
 
-What is there: the OAuth provider and the MCP server run in the same server with the same tools and read-only scopes as on Cloudflare, and their state lives in the table `_fk_kv` of `feedbackkit.sqlite`, so backups and a rollback carry it and an older release ignores it. The plumbing is off. The start log says so (`MCP off (approving a connection needs accounts, which are not built yet)`), `/diag` shows the same line as `mcp`, and every `/mcp`, `/oauth/*` and `/.well-known/oauth-*` path answers 404 and names the reason.
+- **OAuth 2.1**, for a client that has a browser: the client opens a consent page of your gateway, you are signed in there with your passkey, and you click **Allow**. The agent gets `feedback:read`, `config:read` or both, an access token for an hour and a refresh token for 30 days.
+- **A scoped API token** as `Authorization: Bearer fk_tok_…`, for a gateway or script without a browser flow (LiteLLM calls it `bearer_token`). An owner creates the token in the admin ([API tokens](#accounts-and-recovery)). The tools only read, so a read and a write token see the same; a token limited to some projects sees only those. This is not the MCP authorization flow, only a side door that you control and can revoke ([why](SECURITY.md#scoped-api-tokens-as-a-bearer)).
 
-`FK_MCP=on` serves the plumbing anyway, for people who build on it: the metadata, the client registration and `/mcp` answer, and `/oauth/authorize` refuses every request because no identity exists. It needs an https `FK_PUBLIC_URL` (or `http://localhost` with `HOST=127.0.0.1` for a test), and the server refuses to start where a sign-in would travel in clear text. Leave it unset otherwise. What the plumbing exposes: [SECURITY.md](SECURITY.md#identity-on-the-standalone-server).
+**When it is on.** MCP is on when `FK_PUBLIC_URL` is an https origin, and off when it is not. `FK_MCP=off` turns it off anyway, and `FK_MCP=on` turns it on for a test on this machine (`FK_PUBLIC_URL=http://localhost:8787`, `HOST=127.0.0.1`). The start log says which: `MCP on (issuer https://…, resource https://…/mcp)`, and `/diag` shows the same line as `mcp`. Where it is off, every `/mcp`, `/oauth/*` and `/.well-known/oauth-*` path answers 404 and says how to turn it on. The server refuses to start MCP where a sign-in would travel in clear text: an http address that is not localhost, or `HOST` open to other addresses with an http address. Before the first owner exists nothing can connect.
+
+**What is not there yet.** No admin screen lists the OAuth connections, so a connection ends when you remove its account or its grant runs out (see [Accounts and recovery](#accounts-and-recovery) for the screens that exist). Claude Code, claude.ai and ChatGPT have not been run against it.
+
+**Connect with OAuth.**
+
+1. Serve the gateway over https at `FK_PUBLIC_URL` through your reverse proxy, with `FK_TRUSTED_PROXY_HOPS` set to the number of proxies. Without it every client shares the proxy's address and one failed-login limit.
+2. Add the server in the client. In Claude Code:
+
+   ```sh
+   claude mcp add --transport http feedbackkit https://<your-gateway>/mcp
+   ```
+
+   Other clients take the same address as a remote MCP server or custom connector. The client must support OAuth with dynamic client registration; the gateway does not offer Client ID Metadata Documents on a standalone server.
+3. The client opens the consent page in your browser. If you are not signed in it says so and where to sign in; sign in, then start again from the app. Check that the address bar shows your gateway and that the page names the app and the host the tokens go to, then click **Allow**.
+4. In the client, call `whoami`, then `list_projects`.
+
+**Connect with a token.** Point the client at `https://<your-gateway>/mcp` and send the token in the `Authorization` header. A token in the URL is ignored. `whoami` shows the token's name, its projects and when it ends. A revoked or ended token, or one whose account was removed, gets `401` from the next request on. After 30 failed tokens from one address in an hour that address gets `429`, and a valid token still works.
+
+A page in a browser cannot call `/mcp`: the MCP SDK refuses any `Origin` that is not a localhost name, with `403`. Agents, command-line clients and gateways send no `Origin` and are not affected. A client that asks for neither scope gets `feedback:read`. One connection or token may make 1000 calls an hour. Feedback text comes from the visitors of your sites, and the tool descriptions tell the agent to treat it as data.
+
+**Where it lives.** Clients, grants and tokens of OAuth are rows in the table `_fk_kv` of `feedbackkit.sqlite`, so backups, `feedbackkit-update` and a rollback carry them. API tokens are in the accounts tables. A release that has no MCP ignores `_fk_kv`, and the grants work again when you update. Expired rows are removed at start and every hour.
+
+**Differences from the Cloudflare installation.**
+
+| | Cloudflare | Standalone |
+|---|---|---|
+| Who may approve a connection | Whoever your Access application lets in, or an account with a session | An account with a session |
+| Identity in `whoami` | The Access email, or the account's name | The account's name |
+| Client registration | Dynamic, and Client ID Metadata Documents | Dynamic only |
+| Storage of OAuth state | A KV namespace (`FK_OAUTH_KV_ID`) | A table in the SQLite file |
+| Turned on by | Binding the KV namespace | An https `FK_PUBLIC_URL`, or `FK_MCP=on` |
+| API tokens as a bearer | yes | yes |
+| Limits | 1000 calls per grant or token and hour | The same, plus 30 registrations per address and hour |
+
+### End agent connections
+
+- **One person's connections:** remove the account in the admin. Every connection it approved answers `401` from the next call, and its tokens are revoked.
+- **One token:** revoke it in the admin. It stops with the next request.
+- **Every OAuth connection at once** (a client you no longer trust): stop the service, remove the grants, and start it again. The agents have to connect again. API tokens are not touched.
+
+```sh
+sudo systemctl stop feedbackkit
+sudo -u feedbackkit node -e 'const { DatabaseSync } = require("node:sqlite"); const db = new DatabaseSync("/var/lib/feedbackkit/feedbackkit.sqlite"); console.log(db.prepare("DELETE FROM _fk_kv WHERE key LIKE ? OR key LIKE ?").run("grant:%", "token:%").changes, "rows removed"); db.close()'
+sudo systemctl start feedbackkit
+```
+
+There is no list of OAuth connections in the admin yet.
 
 ## Configuration
 
@@ -100,7 +148,7 @@ What is there: the OAuth provider and the MCP server run in the same server with
 | `LLM_API_KEY`, `GITHUB_PAT_<name>`, `TURNSTILE_SECRET_<name>` | Optional integration secrets; project settings reference the variable names |
 | `FK_UPDATE_CHECK` | Default `on`. On a release tarball install the System page tells you when a newer release exists. The server asks the GitHub Releases API at most once a day (once an hour after a failed check) and sends nothing about your installation. `off` turns the check and the notice off. Any other value stops the start. A checkout install never checks |
 | `FK_UPDATE_API` | The releases API the notice asks. Default: this project's GitHub API. Set it for a mirror or a test |
-| `FK_MCP` | Unset or `off`: MCP is off. `on` serves the OAuth plumbing, but nothing can be approved until accounts exist ([MCP for agents](#mcp-for-agents)). Any other value stops the start, and so does `on` with an address that would carry a sign-in in clear text |
+| `FK_MCP` | Unset: MCP is on when `FK_PUBLIC_URL` is an https origin. `off` turns it off, `on` turns it on for a test on localhost. Any other value stops the start, and so does `on` with an address that would carry a sign-in in clear text ([MCP for agents](#mcp-for-agents)) |
 | `FK_TRUSTED_PROXY_HOPS` | Default 0. The number of reverse proxies in front of this server, for example 1 for one nginx or Caddy. The visitor address for rate limits and the failed-login limit is then read from `X-Forwarded-For` through that many proxies, counted from the right. With 0 every client behind a proxy shares the proxy's address, and the server logs a warning once |
 
 Never expose a plain HTTP admin endpoint to the internet. Use HTTPS through your own reverse proxy and preserve the external Host/Origin. Incoming Cloudflare Access assertion headers are discarded by the standalone server; sign-in uses accounts with passkeys. `FK_TRUSTED_PROXY_HOPS` is a network trust decision, not an automatic detector: set it to the real number of proxies, or a client can pick its own address. The earlier `FK_TRUST_PROXY=true` is refused at start. Request paths that start with two slashes are answered with 400, and the server builds every request URL from `FK_PUBLIC_URL`, never from the `Host` header.
@@ -148,7 +196,7 @@ You run FeedbackKit on Cloudflare and want it on your own host. `feedbackkit-mig
 
 **What moves:** projects with their settings and settings revisions; the public project keys, so the snippets already embedded in your sites keep their `data-project`; reports with their delivery state, error and retry count; inbox state (open, done, dismissed, note); attachments; the funnel events; the delivery capability.
 
-**What does not move:** rate-limit counters and the daily AI call count, which start at zero, and accounts, passkeys, sessions and API tokens (a passkey belongs to a host name, a token and a session to one instance). Create the first owner on the new host with `sudo feedbackkit-admin setup-link` ([accounts](#accounts-and-recovery)). Secrets: D1 holds the names of variables such as `GITHUB_PAT_<name>`, never their values, so you set those on the new host (the dry run lists them). OAuth and MCP: the standalone server has neither, so a coding agent connected through `/mcp` loses that connection, and the admin sign-in is the `ADMIN_TOKEN` because Cloudflare Access is not part of the standalone server.
+**What does not move:** rate-limit counters and the daily AI call count, which start at zero, and accounts, passkeys, sessions and API tokens (a passkey belongs to a host name, a token and a session to one instance). Create the first owner on the new host with `sudo feedbackkit-admin setup-link` ([accounts](#accounts-and-recovery)). Secrets: D1 holds the names of variables such as `GITHUB_PAT_<name>`, never their values, so you set those on the new host (the dry run lists them). OAuth and MCP: grants and tokens do not move, so an agent connected through `/mcp` has to connect again to the new address, and a gateway that used a token needs a new one from the new host. The admin sign-in is an account (or the `ADMIN_TOKEN` until the first owner exists) because Cloudflare Access is not part of the standalone server.
 
 1. Install the release on the new host as described [above](#install-from-a-release-tarball) and do not start the service yet.
 2. Export. Unpack the same tarball on a machine where wrangler is signed in to your Cloudflare account. The tool reads the database and bucket names from your fork's `wrangler.toml` (`pnpm materialize` writes it), or you pass `--bucket <your R2 bucket>` and `--database <name>`. It starts wrangler with `npx --yes wrangler`; `--wrangler "pnpm exec wrangler"` uses another command.

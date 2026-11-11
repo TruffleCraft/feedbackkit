@@ -13,11 +13,12 @@ import type { Env } from "../env.js";
 // parseAuthRequest() returns; this code answers two questions: who is the user,
 // and do they allow this app.
 //
-// Who: a Cloudflare Access sign-in, nothing else. The operator puts this path
-// behind the same Access application as /admin, and verifyAccess() checks the
-// JWT Access adds. There is no ADMIN_TOKEN fallback: a consent page with a token
-// field would teach people to paste the admin token into a page an app sent
-// them to.
+// Who: a Cloudflare Access sign-in or an account's session, asked of one function
+// (authenticateConsent, consent-identity.ts). With Access the operator puts this path
+// behind the same Access application as /admin, and verifyAccess() checks the JWT
+// Access adds. With accounts it is the session cookie of the passkey sign-in. There is
+// no ADMIN_TOKEN fallback: a consent page with a token field would teach people to
+// paste the admin token into a page an app sent them to.
 //
 // Allow: an explicit click on a form that carries a single-use handle bound to
 // this browser (beginConsent / approveConsent of workers-oauth-provider), posted
@@ -134,7 +135,7 @@ export function registerOAuthRoutes(app: AppT): void {
     const oauth = c.env.OAUTH_PROVIDER;
     if (!oauth) return mcpDisabledResponse();
     const identity = await authenticateConsent(c.req.raw, c.env);
-    if (!identity) return message(403, ...signInRequired(c.env));
+    if (!identity) return message(403, ...signInRequired(c.env, new URL(c.req.url).origin));
 
     let authReq: AuthRequest;
     let details: ConsentDescription;
@@ -159,7 +160,7 @@ export function registerOAuthRoutes(app: AppT): void {
     // form came from before trusting the Access identity on a POST.
     if (!sameOrigin(c)) return message(403, ...BLOCKED);
     const identity = await authenticateConsent(c.req.raw, c.env);
-    if (!identity) return message(403, ...signInRequired(c.env));
+    if (!identity) return message(403, ...signInRequired(c.env, new URL(c.req.url).origin));
 
     let form: FormData;
     try {
@@ -180,11 +181,11 @@ export function registerOAuthRoutes(app: AppT): void {
       // the same request the page was built from.
       const scopes = grantedScopes(approved.request.scope);
       const clientName = await clientNameOf(c.env, approved.request);
-      const props: AuthProps = { email: identity.email, sub: identity.sub, clientId: approved.request.clientId, clientName, scopes };
+      const props: AuthProps = { email: identity.email, sub: identity.sub, clientId: approved.request.clientId, clientName, scopes, ...(identity.accountId ? { accountId: identity.accountId } : {}) };
       const { redirectTo } = await oauth.completeAuthorization({
         request: approved.request,
         // The provider forbids ":" in user ids; encoding keeps any email valid.
-        userId: encodeURIComponent(identity.email),
+        userId: encodeURIComponent(identity.accountId ?? identity.email),
         metadata: { clientName, email: identity.email, grantedAt: new Date().toISOString() },
         scope: scopes,
         props,

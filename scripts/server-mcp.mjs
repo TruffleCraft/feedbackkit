@@ -1,15 +1,14 @@
-// Whether the standalone server serves MCP (ADR-015, amendment of 2026-11-11), decided
+// Whether the standalone server serves MCP (ADR-015, amendments of 2026-11-11), decided
 // from FK_MCP, FK_PUBLIC_URL and the address the server listens on.
 //
-//   FK_MCP unset   off. The server has no sign-in for approving a connection yet (accounts, Gate 2),
-//                  so there is nothing to turn on. The accounts change makes this "on when
-//                  FK_PUBLIC_URL is an https origin"
-//   FK_MCP=on      the plumbing is served: the OAuth endpoints and /mcp answer, and /oauth/authorize
-//                  refuses every connection because no identity exists. A preview for people who
-//                  build on it, not a feature. Needs https, or localhost for a test
-//   FK_MCP=off     off
+//   FK_MCP unset   on when FK_PUBLIC_URL is an https origin, else off
+//   FK_MCP=on      on; an http FK_PUBLIC_URL is accepted only for localhost (a local test)
+//   FK_MCP=off     off, whatever FK_PUBLIC_URL says
 //
-// Where a sign-in would travel in clear text, the server does not start with MCP on.
+// MCP is safe to have on without further setup: a connection needs an account's session
+// or a scoped API token an owner created, so before the first owner exists nothing can
+// connect, and a failed attempt is counted and answered with 429 once it is over its
+// limit. It is still refused where the sign-in would travel in clear text, with the reason.
 
 const LOOPBACK = /^(localhost|\[?::1\]?|127\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i;
 
@@ -18,7 +17,7 @@ export const isLoopbackHost = (hostname) => LOOPBACK.test(hostname);
 export const MCP_OFF_BODY = {
   error: "not_found",
   error_description:
-    "MCP is not available on this server yet: approving a connection needs an account sign-in, and accounts are not built. See docs/SELF_HOSTING.md, section MCP for agents.",
+    "MCP is not enabled on this server. Set FK_PUBLIC_URL to the public https address of this server (or FK_MCP=on for a test on localhost), then restart. See docs/SELF_HOSTING.md, section MCP for agents.",
 };
 
 /**
@@ -29,14 +28,16 @@ export function planMcp({ origin, setting, host = "127.0.0.1" }) {
   const value = (setting ?? "").trim().toLowerCase();
   if (!["", "on", "off"].includes(value)) throw new Error("FK_MCP must be on, off or unset.");
   if (value === "off") return { enabled: false, note: "off (FK_MCP=off)" };
-  if (value === "") return { enabled: false, note: "off (approving a connection needs accounts, which are not built yet)" };
+  if (value === "" && origin.protocol !== "https:") {
+    return { enabled: false, note: "off (FK_PUBLIC_URL is not an https address; set it, or FK_MCP=on for a local test)" };
+  }
   if (origin.protocol !== "https:") {
     if (!isLoopbackHost(origin.hostname)) {
-      throw new Error(`FK_MCP=on needs an https FK_PUBLIC_URL: ${origin.origin} would carry the sign-in in clear text. Use the public https address, or unset FK_MCP.`);
+      throw new Error(`FK_MCP=on needs an https FK_PUBLIC_URL: ${origin.origin} would carry the sign-in in clear text. Use the public https address, or FK_MCP=off.`);
     }
     if (!isLoopbackHost(host)) {
       throw new Error(`FK_MCP=on with FK_PUBLIC_URL ${origin.origin} is for a test on this machine only, but HOST=${host} listens on other addresses, where a sign-in would cross the network in clear text. Set HOST=127.0.0.1, or put the server behind https and set FK_PUBLIC_URL to that address.`);
     }
   }
-  return { enabled: true, note: `on, but no connection can be approved yet: accounts are not built (issuer ${origin.origin}, resource ${origin.origin}/mcp)` };
+  return { enabled: true, note: `on (issuer ${origin.origin}, resource ${origin.origin}/mcp)` };
 }
