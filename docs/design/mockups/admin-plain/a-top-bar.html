@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Mock: plain admin, variant A (top bar and tabs)</title>
+<style>
+:root{--ground:#fbfbfa;--surface:#fff;--raised:#f2f2f0;--line:#e6e6e3;--field:#8d8d93;--ink:#1b1b1d;--muted:#68686f;--accent:#6d28d9;--on-accent:#fff;--danger:#b42318;
+--sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ground:#161617;--surface:#1d1d1f;--raised:#26262a;--line:#2c2c30;--field:#6f6f76;--ink:#ececee;--muted:#9a9aa1;--accent:#a78bfa;--on-accent:#14101f;--danger:#f19a93;color-scheme:dark}}
+:root[data-theme="dark"]{--ground:#161617;--surface:#1d1d1f;--raised:#26262a;--line:#2c2c30;--field:#6f6f76;--ink:#ececee;--muted:#9a9aa1;--accent:#a78bfa;--on-accent:#14101f;--danger:#f19a93;color-scheme:dark}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font:400 15px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+a{color:inherit}
+h1,h2,h3,p,ul,ol,dl,dd{margin:0}
+h1{font-size:24px;line-height:30px;font-weight:600;letter-spacing:-.01em}
+h2{font-size:17px;line-height:24px;font-weight:600}
+code,.mono{font-family:var(--mono);font-size:13px}
+b,strong{font-weight:600}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.muted{color:var(--muted)}.sm{font-size:13px}.num{font-variant-numeric:tabular-nums}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.brand{display:inline-flex;align-items:center;gap:8px;font-weight:600;text-decoration:none;white-space:nowrap}
+.brand small{font-weight:400;color:var(--muted);font-size:14px}
+.brand svg{width:20px;height:20px}
+
+/* buttons: one filled button per screen; the rest are outlined or plain text */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--field);background:transparent;color:var(--ink);font:500 14px var(--sans);cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn:hover{background:var(--raised)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.primary:hover{filter:brightness(1.08);background:var(--accent)}
+.btn.quiet{border-color:transparent;background:var(--raised)}
+.btn.text{border-color:transparent;padding:0 8px;min-height:32px}
+.btn.text.danger,.danger{color:var(--danger)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+summary.btn{list-style:none}summary.btn::-webkit-details-marker{display:none}
+
+/* rows: lists are hairline rows, never cards in cards */
+.list{border-top:1px solid var(--line)}
+.item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 16px;align-items:center;padding:12px 4px;border-bottom:1px solid var(--line);text-decoration:none;color:inherit}
+a.item:hover{background:var(--raised)}
+.item .ttl{font-weight:500;overflow-wrap:anywhere}
+.item .meta{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.item .end{display:flex;align-items:center;gap:8px;justify-self:end;color:var(--muted);font-size:13px;text-align:right}
+.item .main{min-width:0;display:flex;flex-direction:column;gap:2px}
+.chev::after{content:"\203A";margin-left:6px;color:var(--muted);font-size:18px;line-height:1}
+.st{white-space:nowrap}
+.st.bad{color:var(--danger)}
+.st.bad::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--danger);margin-right:6px;vertical-align:1px}
+.grp{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.grp>.item{padding:12px 16px}
+.grp>.item:last-child{border-bottom:0}
+.grp-label{margin:24px 0 8px;font-size:13px;font-weight:500;color:var(--muted)}
+.grp-note{margin:8px 4px 0;font-size:13px;color:var(--muted)}
+.kv .item{grid-template-columns:minmax(0,160px) minmax(0,1fr);align-items:baseline}
+.kv .item>:first-child{color:var(--muted);font-size:14px}
+.kv .item>:last-child{overflow-wrap:anywhere}
+.note{padding:12px 14px;border-radius:8px;background:var(--raised);font-size:14px}
+.empty{padding:28px 4px;color:var(--muted)}
+.pagehead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.pagehead p{color:var(--muted);margin-top:4px;font-size:14px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.back{display:inline-block;margin-bottom:12px;color:var(--muted);text-decoration:none;font-size:14px}
+.back:hover{color:var(--ink)}
+.code{margin:0;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--raised);font:13px/1.6 var(--mono);overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+.shot{display:grid;place-items:center;aspect-ratio:16/10;max-width:420px;border:1px dashed var(--field);border-radius:8px;color:var(--muted);font-size:13px}
+
+/* forms: label above, input across, never a placeholder as label */
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.field>label,.field>.lbl{font-size:14px;font-weight:500}
+.field .help{font-size:13px;color:var(--muted)}
+.in{height:40px;padding:0 12px;border:1px solid var(--field);border-radius:8px;background:var(--surface);color:var(--ink);font:15px var(--sans);width:100%;min-width:0}
+select.in{padding-right:8px}
+.in[readonly]{color:var(--muted);background:var(--raised)}
+.opts{display:flex;flex-direction:column;gap:8px}
+.opt{display:flex;gap:10px;align-items:flex-start;font-size:15px}
+.opt input{margin-top:4px;accent-color:var(--accent)}
+.opt small{display:block;color:var(--muted);font-size:13px}
+.switch{appearance:none;width:42px;height:26px;border-radius:13px;background:var(--field);position:relative;cursor:pointer;flex:none;margin:0}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .15s}
+.switch:checked{background:var(--accent)}
+.switch:checked::after{transform:translateX(16px)}
+@media (prefers-reduced-motion:reduce){.switch::after{transition:none}}
+@media (max-width:640px){.kv .item{grid-template-columns:minmax(0,1fr);gap:2px}}
+
+/* menu (details) */
+.menu{position:relative}
+.menu .pop{position:absolute;right:0;top:calc(100% + 6px);z-index:30;min-width:200px;padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column}
+.menu .pop a,.menu .pop button{display:block;width:100%;text-align:left;padding:9px 10px;border:0;border-radius:6px;background:none;color:var(--ink);font:14px var(--sans);text-decoration:none;cursor:pointer}
+.menu .pop a:hover,.menu .pop button:hover{background:var(--raised)}
+.menu .pop hr{border:0;border-top:1px solid var(--line);margin:6px 0;width:100%}
+
+/* dialog */
+dialog{width:calc(100% - 32px);max-width:480px;padding:24px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink)}
+dialog::backdrop{background:rgba(0,0,0,.4)}
+dialog h2{margin-bottom:6px}
+dialog .actions{margin-top:20px}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:60;background:var(--ink);color:var(--ground);padding:10px 16px;border-radius:8px;font-size:14px}
+
+/* mock chrome, not part of the product */
+.mock{position:sticky;top:0;z-index:50;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 16px;background:#1d1d1f;color:#d4d4d8;font:12px/1.4 var(--sans)}
+.mock b{color:#fff;font-weight:600}
+.mock select,.mock button{font:12px var(--sans);background:#2c2c30;color:#fff;border:1px solid #48484d;border-radius:6px;padding:4px 8px;cursor:pointer}
+.mock button[aria-pressed="true"]{background:#fff;color:#111}
+.mock .sp{margin-left:auto}
+.nochrome .mock{display:none}
+@media (max-width:640px){.mock .sp{margin-left:0}}
+
+.top{display:flex;align-items:center;gap:20px;min-height:56px;padding:0 24px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.nav{display:flex;gap:4px}
+.nav a{padding:6px 10px;text-decoration:none;color:var(--muted);font-weight:500;border-bottom:2px solid transparent}
+.nav a:hover{color:var(--ink)}
+.nav a[aria-current]{color:var(--ink);border-bottom-color:var(--accent)}
+.top .who{margin-left:auto}
+main{max-width:820px;margin:0 auto;padding:32px 24px 96px}
+.secnav{display:flex;gap:22px;border-bottom:1px solid var(--line);margin:16px 0 20px;overflow-x:auto}
+.secnav a{padding:10px 0;text-decoration:none;color:var(--muted);font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.secnav a[aria-current]{color:var(--ink);border-bottom-color:var(--accent)}
+.projhead h1{margin-top:2px}
+.projhead .meta{color:var(--muted);font-size:13px;margin-top:2px}
+.a-sub .pagehead h1{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.a-sub .pagehead{margin-bottom:16px}
+.a-sub .pagehead p{margin-top:0}
+.toolbar{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:14px 0}
+.funnel summary{cursor:pointer}
+@media (max-width:640px){
+  .top{padding:8px 16px;gap:4px 12px}
+  main{padding:20px 16px 80px}
+  .item{padding:14px 2px}
+  .btn{min-height:44px}.btn.text{min-height:44px}
+  .nav a{padding:10px}
+  .secnav{gap:20px}.secnav a{padding:12px 0}
+  .in{height:44px}
+  .item .end .btn.text{min-height:44px}
+}
+@media (max-width:480px){.top .brand small{display:none}}
+</style>
+</head>
+<body>
+<div class="mock"><b>Mock · Variant A · Top bar and tabs</b><span>All names and numbers are invented.</span>
+<label class="sr" for="jump">Jump to a screen</label><select id="jump" data-jump><option value="#/projects">Projects</option><option value="#/p/harborline/reports">Reports</option><option value="#/p/harborline/reports/srv-1">Report, failed</option><option value="#/p/harborline/reports/srv-7">Report, inbox</option><option value="#/p/harborline/setup">Setup</option><option value="#/p/harborline/types">Types</option><option value="#/p/harborline/settings">Settings</option><option value="#/system">System</option><option value="#/tokens">API tokens</option><option value="#/users">Users</option><option value="#/account">Your account</option><option value="#/sign-in">Sign in</option><option value="#/p/ledgerkite-docs/reports">Empty project</option></select>
+<span class="sp"><button type="button" data-theme-btn="auto" aria-pressed="true">Auto</button> <button type="button" data-theme-btn="light" aria-pressed="false">Light</button> <button type="button" data-theme-btn="dark" aria-pressed="false">Dark</button></span></div>
+<div data-shell>
+<header class="top"><a class="brand" href="#/projects"><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="3" y="8" width="30" height="14" rx="7" fill="#7c3aed"/><rect x="15" y="26" width="30" height="14" rx="7" fill="#a78bfa"/></svg>FeedbackKit <small>Admin</small></a>
+<nav class="nav" aria-label="Admin"><a data-nav="projects reports report setup types settings" href="#/projects">Projects</a><a data-nav="system" href="#/system">System</a></nav><details class="menu who"><summary class="btn text" aria-label="Account menu">Robin</summary><div class="pop"><a href="#/account">Your account</a><a href="#/users">Users</a><a href="#/tokens">API tokens</a><hr><button class="btn text" type="button" data-theme-cycle>Theme: Auto</button><button type="button" data-todo>Sign out</button></div></details></header>
+<main>
+<section data-screen="projects"><div class="pagehead"><div><h1>Projects</h1><p>3 projects on this gateway</p></div><button class="btn primary" type="button" data-open="dlg-project">New project</button></div><div class="list"><a class="item" href="#/p/harborline/reports"><span class="main"><span class="ttl">harborline</span><span class="meta">38 reports in 7 days · <span class="st bad">2 failed</span> · Issues and inbox · edited 3 days ago</span></span><span class="end chev"></span></a><a class="item" href="#/p/ledgerkite-docs/reports"><span class="main"><span class="ttl">ledgerkite-docs</span><span class="meta">0 reports in 7 days · Not set up · edited Yesterday</span></span><span class="end chev"></span></a><a class="item" href="#/p/pantry-planner/reports"><span class="main"><span class="ttl">pantry-planner</span><span class="meta">11 reports in 7 days · Inbox · edited 7 Oct</span></span><span class="end chev"></span></a></div><dialog id="dlg-project"><form method="dialog"><h2>New project</h2><p class="muted sm" style="margin-bottom:16px">Starts with the FeedbackKit inbox. GitHub and AI credentials are optional and can be added later.</p>
+<div class="field"><label for="np-id">Project ID</label><input class="in" id="np-id" placeholder="my-website"></div>
+<div class="field"><label for="np-o">Website origin</label><input class="in" id="np-o" placeholder="https://example.org"><span class="help">Scheme and host, no path.</span></div>
+<div class="field"><label for="np-l">Issue language</label><select class="in" id="np-l"><option>English</option><option>Deutsch</option></select></div>
+<div class="actions"><button class="btn primary" type="button" data-todo data-close>Create project</button><button class="btn" type="button" data-close>Cancel</button></div></form></dialog></section>
+<section data-screen="reports setup types settings"><a class="back" href="#/projects">‹ Projects</a><div class="projhead"><h1 data-pname>harborline</h1><p class="meta mono">fk_pub_3a91c07e5d22 · settings revision 12</p></div><nav class="secnav" aria-label="Project sections"><a data-nav="x" data-sec="reports" data-proj="harborline" data-href-p="reports" href="#/p/harborline/reports">Reports</a><a data-nav="x" data-sec="setup" data-proj="harborline" data-href-p="setup" href="#/p/harborline/setup">Setup</a><a data-nav="x" data-sec="types" data-proj="harborline" data-href-p="types" href="#/p/harborline/types">Types</a><a data-nav="x" data-sec="settings" data-proj="harborline" data-href-p="settings" href="#/p/harborline/settings">Settings</a></nav></section>
+<section data-screen="reports" class="a-sub"><div data-has-reports><details class="funnel"><summary class="muted sm">Last 30 days: 171 of 412 visitors who opened the widget sent a report (42%). <span style="text-decoration:underline">Details</span></summary>
+<div class="kv list" style="margin-top:8px"><div class="item"><span>Opened</span><span class="num">412 · 100%</span></div><div class="item"><span>Typed</span><span class="num">238 · 58%</span></div><div class="item"><span>Sent</span><span class="num">171 · 42%</span></div><div class="item"><span>Asked back</span><span class="num">64 · 16%</span></div><div class="item"><span>Answered the follow-up</span><span class="num">49</span></div><div class="item"><span>Sent anyway · closed without sending</span><span class="num">11 · 71</span></div></div></details><div class="toolbar"><div class="field" style="margin:0;max-width:260px"><label class="sr" for="flt">Show</label><select class="in" id="flt" data-filter><option value="all">All reports</option><option value="open">Inbox: open</option><option value="done">Inbox: handled</option><option value="undecided">Needs a decision</option><option value="created">Issue created</option><option value="saved">Saved, no issue</option><option value="accepted_incomplete">Sent incomplete</option><option value="issue_failed">Issue failed</option><option value="ai-failed">AI failed</option></select></div></div><div class="list" id="report-list"><a class="item report" href="#/p/harborline/reports/srv-1" data-group="issue_failed" data-report-id="srv-1"><span class="main"><span class="ttl">Payment spinner never stops after the card check on iPhone</span><span class="meta">Bug · 2 h ago · Screenshot</span></span><span class="end"><span class="st bad">Issue failed</span></span></a><a class="item report" href="#/p/harborline/reports/srv-2" data-group="created" data-report-id="srv-2"><span class="main"><span class="ttl">Calendar skips Sunday when a stay runs into the next month</span><span class="meta">Bug · 5 h ago · Screenshot</span></span><span class="end"><span class="st">Issue #214</span></span></a><a class="item report" href="#/p/harborline/reports/srv-3" data-group="created" data-report-id="srv-3"><span class="main"><span class="ttl">Let harbor staff export the weekly arrivals list as CSV</span><span class="meta">Idea · Yesterday</span></span><span class="end"><span class="st">Issue #213</span></span></a><a class="item report" href="#/p/harborline/reports/srv-4" data-group="accepted_incomplete" data-report-id="srv-4"><span class="main"><span class="ttl">Berth labels overlap on the harbor map when zoomed out</span><span class="meta">Improvement · 2 days ago · Screenshot</span></span><span class="end"><span class="st">Sent incomplete</span></span></a><a class="item report" href="#/p/harborline/reports/srv-5" data-group="issue_failed" data-report-id="srv-5"><span class="main"><span class="ttl">Confirmation email shows the wrong time zone</span><span class="meta">Bug · 16 Oct</span></span><span class="end"><span class="st bad">Issue failed</span></span></a><a class="item report" href="#/p/harborline/reports/srv-6" data-group="ai-failed" data-report-id="srv-6"><span class="main"><span class="ttl">Search ignores the “pets allowed” filter</span><span class="meta">Bug · 14 Oct</span></span><span class="end"><span class="st">AI failed</span></span></a><a class="item report" href="#/p/harborline/reports/srv-7" data-group="open" data-report-id="srv-7"><span class="main"><span class="ttl">Booking a berth for two boats at once works really well</span><span class="meta">Praise · 13 Oct</span></span><span class="end"><span class="st">Inbox: open</span></span></a></div>
+<p class="empty" id="report-empty" hidden>No reports match this filter.</p>
+<div style="margin-top:16px"><button class="btn" type="button" data-todo>Load 25 more</button></div></div><div data-no-reports hidden><p class="empty">No reports in the last 30 days. Add the snippet from Setup, then send a test report.</p></div></section>
+<section data-screen="report"><a class="back" href="#/p/harborline/reports" data-href-p="reports">‹ Reports</a><article class="report-detail" data-report="srv-1" hidden>
+<div class="pagehead"><div><h1>Payment spinner never stops after the card check on iPhone</h1><p>Bug · 2 h ago · <span class="st bad">Issue failed</span></p></div>
+<div class="actions"><button class="btn primary" type="button" data-todo>Retry delivery</button><details class="menu"><summary class="btn quiet">More</summary><div class="pop"><button type="button" data-todo>Add note</button><button type="button" data-todo>Copy as Markdown</button><hr><button type="button" class="danger" data-todo>Delete report…</button></div></details></div></div>
+<p class="note" style="margin-bottom:20px">GitHub answered 403: the token cannot create issues in harborline/web.</p>
+
+<div class="grp-label" style="margin-top:0">Summary</div><p>The card check finishes, but the spinner stays on screen on an iPhone 15 with iOS 19. After a reload the booking shows as paid.</p>
+<div class="grp-label">In the visitor's words</div><p>I paid for the berth and the wheel kept spinning. After reloading it said paid, but I never got an email.</p>
+<div class="grp-label">Screenshot</div><div class="shot">Screenshot, 640 × 400</div>
+<div class="grp-label">Details</div><div class="kv list"><div class="item"><span>Type</span><span>Bug</span></div><div class="item"><span>Received</span><span>11 Nov 2026, 17:48</span></div><div class="item"><span>Delivery</span><span>No issue yet</span></div><div class="item"><span>Page</span><span><span class="mono">harborline.app/checkout</span></span></div><div class="item"><span>AI model</span><span><span class="mono">openai/gpt-4o-mini</span></span></div></div>
+</article>
+<article class="report-detail" data-report="srv-2" hidden>
+<div class="pagehead"><div><h1>Calendar skips Sunday when a stay runs into the next month</h1><p>Bug · 5 h ago · <span class="st">Issue #214</span></p></div>
+<div class="actions"><details class="menu"><summary class="btn quiet">More</summary><div class="pop"><button type="button" data-todo>Add note</button><button type="button" data-todo>Copy as Markdown</button><hr><button type="button" class="danger" data-todo>Delete report…</button></div></details></div></div>
+
+
+<div class="grp-label" style="margin-top:0">Summary</div><p>A stay from 29 Nov to 3 Dec shows no Sunday in the booking calendar. The same stay inside one month looks right.</p>
+<div class="grp-label">In the visitor's words</div><p>Booked 29 Nov to 3 Dec and the calendar jumps from Saturday to Monday.</p>
+<div class="grp-label">Screenshot</div><div class="shot">Screenshot, 640 × 400</div>
+<div class="grp-label">Details</div><div class="kv list"><div class="item"><span>Type</span><span>Bug</span></div><div class="item"><span>Received</span><span>11 Nov 2026, 14:50</span></div><div class="item"><span>Delivery</span><span>GitHub issue <a href="#" data-todo>harborline/web#214</a></span></div><div class="item"><span>Page</span><span><span class="mono">harborline.app/bookings</span></span></div><div class="item"><span>AI model</span><span><span class="mono">openai/gpt-4o-mini</span></span></div></div>
+</article>
+<article class="report-detail" data-report="srv-3" hidden>
+<div class="pagehead"><div><h1>Let harbor staff export the weekly arrivals list as CSV</h1><p>Idea · Yesterday · <span class="st">Issue #213</span></p></div>
+<div class="actions"><details class="menu"><summary class="btn quiet">More</summary><div class="pop"><button type="button" data-todo>Add note</button><button type="button" data-todo>Copy as Markdown</button><hr><button type="button" class="danger" data-todo>Delete report…</button></div></details></div></div>
+
+
+<div class="grp-label" style="margin-top:0">Summary</div><p>Staff want the weekly arrivals list as a CSV file to forward to the fuel dock.</p>
+<div class="grp-label">In the visitor's words</div><p>Can we get the arrivals list as a spreadsheet? I retype it every Monday.</p>
+
+<div class="grp-label">Details</div><div class="kv list"><div class="item"><span>Type</span><span>Idea</span></div><div class="item"><span>Received</span><span>10 Nov 2026, 15:22</span></div><div class="item"><span>Delivery</span><span>GitHub issue <a href="#" data-todo>harborline/web#213</a></span></div><div class="item"><span>Page</span><span><span class="mono">harborline.app/staff/arrivals</span></span></div><div class="item"><span>AI model</span><span><span class="mono">openai/gpt-4o-mini</span></span></div></div>
+</article>
+<article class="report-detail" data-report="srv-4" hidden>
+<div class="pagehead"><div><h1>Berth labels overlap on the harbor map when zoomed out</h1><p>Improvement · 2 days ago · <span class="st">Sent incomplete</span></p></div>
+<div class="actions"><details class="menu"><summary class="btn quiet">More</summary><div class="pop"><button type="button" data-todo>Add note</button><button type="button" data-todo>Copy as Markdown</button><hr><button type="button" class="danger" data-todo>Delete report…</button></div></details></div></div>
+
+<p class="note" style="margin-bottom:20px">The visitor closed the follow-up before answering.</p>
+<div class="grp-label" style="margin-top:0">Summary</div><p>Labels for berths A12 to A18 overlap below zoom level 15.</p>
+<div class="grp-label">In the visitor's words</div><p>Map is unreadable when zoomed out, labels sit on top of each other.</p>
+<div class="grp-label">Screenshot</div><div class="shot">Screenshot, 640 × 400</div>
+<div class="grp-label">Details</div><div class="kv list"><div class="item"><span>Type</span><span>Improvement</span></div><div class="item"><span>Received</span><span>9 Nov 2026, 12:05</span></div><div class="item"><span>Delivery</span><span>GitHub issue <a href="#" data-todo>harborline/web#211</a></span></div><div class="item"><span>Page</span><span><span class="mono">harborline.app/map</span></span></div><div class="item"><span>AI model</span><span><span class="mono">openai/gpt-4o-mini</span></span></div></div>
+</article>
+<article class="report-detail" data-report="srv-5" hidden>
+<div class="pagehead"><div><h1>Confirmation email shows the wrong time zone</h1><p>Bug · 16 Oct · <span class="st bad">Issue failed</span></p></div>
+<div class="actions"><details class="menu"><summary class="btn quiet">More</summary><div class="pop"><button type="button" data-todo>Add note</button><button type="button" data-todo>Copy as Markdown</button><hr><button type="button" class="danger" data-todo>Delete report…</button></div></details></div></div>
+<p class="note" style="margin-bottom:20px">No issue draft was saved for this report, so it cannot be retried.</p>
+
+<div class="grp-label" style="margin-top:0">Summary</div><p>The confirmation email shows arrival times in UTC instead of the marina's local time.</p>
+<div class="grp-label">In the visitor's words</div><p>Email says arrive 14:00 but the booking page says 16:00.</p>
+
+<div class="grp-label">Details</div><div class="kv list"><div class="item"><span>Type</span><span>Bug</span></div><div class="item"><span>Received</span><span>16 Oct 2026, 08:31</span></div><div class="item"><span>Delivery</span><span>No issue yet</span></div><div class="item"><span>Page</span><span><span class="mono">harborline.app/bookings/confirm</span></span></div><div class="item"><span>AI model</span><span>Not recorded</span></div></div>
+</article>
+<article class="report-detail" data-report="srv-6" hidden>
+<div class="pagehead"><div><h1>Search ignores the “pets allowed” filter</h1><p>Bug · 14 Oct · <span class="st">AI failed</span></p></div>
+<div class="actions"><details class="menu"><summary class="btn quiet">More</summary><div class="pop"><button type="button" data-todo>Add note</button><button type="button" data-todo>Copy as Markdown</button><hr><button type="button" class="danger" data-todo>Delete report…</button></div></details></div></div>
+
+<p class="note" style="margin-bottom:20px">The AI step failed. The issue was created from the visitor's own words.</p>
+
+<div class="grp-label">In the visitor's words</div><p>Search ignores the “pets allowed” filter</p>
+
+<div class="grp-label">Details</div><div class="kv list"><div class="item"><span>Type</span><span>Bug</span></div><div class="item"><span>Received</span><span>14 Oct 2026, 19:10</span></div><div class="item"><span>Delivery</span><span>GitHub issue <a href="#" data-todo>harborline/web#205</a></span></div><div class="item"><span>Page</span><span><span class="mono">harborline.app/search</span></span></div><div class="item"><span>AI model</span><span><span class="mono">openai/gpt-4o-mini</span></span></div></div>
+</article>
+<article class="report-detail" data-report="srv-7" hidden>
+<div class="pagehead"><div><h1>Booking a berth for two boats at once works really well</h1><p>Praise · 13 Oct · <span class="st">Inbox: open</span></p></div>
+<div class="actions"><button class="btn primary" type="button" data-todo>Mark as done</button><button class="btn" type="button" data-todo>Dismiss</button><details class="menu"><summary class="btn quiet">More</summary><div class="pop"><button type="button" data-todo>Add note</button><button type="button" data-todo>Copy as Markdown</button><hr><button type="button" class="danger" data-todo>Delete report…</button></div></details></div></div>
+
+
+<div class="grp-label" style="margin-top:0">Summary</div><p>Praise for booking two berths in one go.</p>
+<div class="grp-label">In the visitor's words</div><p>Booking a berth for two boats at once works really well. Thank you!</p>
+
+<div class="grp-label">Details</div><div class="kv list"><div class="item"><span>Type</span><span>Praise</span></div><div class="item"><span>Received</span><span>13 Oct 2026, 09:02</span></div><div class="item"><span>Delivery</span><span>FeedbackKit inbox</span></div><div class="item"><span>Page</span><span><span class="mono">harborline.app/bookings</span></span></div><div class="item"><span>AI model</span><span><span class="mono">openai/gpt-4o-mini</span></span></div></div>
+</article></section>
+<section data-screen="setup" class="a-sub"><div class="pagehead"><div><h1>Setup</h1><p>Three things to do on <span data-pname>harborline</span>'s website.</p></div></div>
+<div class="grp-label" style="margin-top:0">1. Add the snippet</div>
+<pre class="code">&lt;script src="https://feedback.example.org/widget.js?v=bfcadd8d2cc0"
+  data-project="fk_pub_3a91c07e5d22"&gt;&lt;/script&gt;</pre>
+<p class="grp-note">Paste it before the closing body tag of every page that should show the button.</p>
+<div style="margin-top:12px"><button class="btn" type="button" data-todo>Copy snippet</button></div>
+<div class="grp-label">2. Allowed websites</div>
+<div class="list"><div class="item"><span class="mono">https://harborline.app</span></div><div class="item"><span class="mono">https://staging.harborline.app</span></div></div>
+<p class="grp-note">The widget refuses to load anywhere else. Change the list under Settings, General.</p>
+<div class="grp-label">3. Send a test report</div>
+<div class="actions"><button class="btn" type="button" data-todo>Send test report</button><a class="btn" href="#" data-todo>Open test page</a></div>
+<p class="grp-note">A test report goes to the first type's real destination without the AI. It is marked as a test and left out of the counts.</p></section>
+<section data-screen="types" class="a-sub"><div class="pagehead"><div><h1>Types</h1><p>What visitors can send, and where each type goes.</p></div></div>
+<div class="list">
+<a class="item" href="#" data-todo><span class="main"><span class="ttl">Bug</span><span class="meta">5 fields · labels bug, triage</span></span><span class="end">GitHub issue<span class="chev"></span></span></a>
+<a class="item" href="#" data-todo><span class="main"><span class="ttl">Idea</span><span class="meta">2 fields · label idea</span></span><span class="end">GitHub issue<span class="chev"></span></span></a>
+<a class="item" href="#" data-todo><span class="main"><span class="ttl">Improvement</span><span class="meta">1 field · label enhancement</span></span><span class="end">GitHub issue<span class="chev"></span></span></a>
+<a class="item" href="#" data-todo><span class="main"><span class="ttl">Praise</span><span class="meta">No fields</span></span><span class="end">Inbox<span class="chev"></span></span></a></div>
+<p class="grp-note">A type ID never changes once published. Archive a type to hide it from visitors while its reports keep their label.</p></section>
+<section data-screen="settings" class="a-sub"><div class="pagehead"><div><h1>Settings</h1><p>Revision 12. Review changes, then publish. Widgets pick up published settings within a minute.</p></div></div>
+<div class="grp-label" style="margin-top:0">General</div>
+<div class="grp" style="padding:16px 16px 0">
+<div class="field"><label for="s-id">Project ID</label><input class="in mono" id="s-id" value="harborline" readonly><span class="help">Fixed, so snippets and stored feedback keep working.</span></div>
+<div class="field"><label for="s-l">Issue language</label><select class="in" id="s-l"><option>English</option><option>Deutsch</option></select></div>
+<div class="field"><label for="s-t">Let visitors choose the type</label><select class="in" id="s-t"><option>No</option><option>Yes</option></select></div></div>
+<div class="grp-label">Accepting feedback</div>
+<div class="grp"><div class="item"><label for="s-acc" class="main"><span class="ttl">Accept feedback</span><span class="meta">Turn off to pause the widget without removing the snippet.</span></label><input class="switch" id="s-acc" type="checkbox" role="switch" checked></div></div>
+<div class="grp-label">Allowed website origins</div>
+<div class="grp"><div class="item"><span class="mono">https://harborline.app</span><button class="btn text danger" type="button" data-todo>Remove</button></div><div class="item"><span class="mono">https://staging.harborline.app</span><button class="btn text danger" type="button" data-todo>Remove</button></div><div class="item"><button class="btn text" type="button" data-todo style="justify-self:start;margin-left:-8px">Add an origin</button></div></div>
+<div class="grp-label">Not set, using defaults</div>
+<div class="grp">
+<div class="item"><span class="main"><span class="ttl">Rate limit</span></span><span class="end">Default<button class="btn text" type="button" data-todo>Set</button></span></div>
+<div class="item"><span class="main"><span class="ttl">Automatic capture</span></span><span class="end">Default<button class="btn text" type="button" data-todo>Set</button></span></div>
+<div class="item"><span class="main"><span class="ttl">Privacy policy URL</span></span><span class="end">Default<button class="btn text" type="button" data-todo>Set</button></span></div>
+<div class="item"><span class="main"><span class="ttl">Bot protection (Turnstile)</span></span><span class="end">Default<button class="btn text" type="button" data-todo>Set</button></span></div></div>
+<div class="actions" style="margin-top:24px"><button class="btn" type="button" data-todo>Review changes</button><button class="btn primary" type="button" disabled>Publish</button></div>
+<p class="grp-note">Publish is available after a review. AI and follow-ups, Types and delivery, Appearance and Advanced JSON work the same way.</p></section>
+<section data-screen="system"><div class="pagehead"><div><h1>System</h1><p>FeedbackKit 0.3.0 on stable · schema v5</p></div></div>
+<div class="grp-label" style="margin-top:0">Needs attention · 4</div>
+<div class="list">
+<div class="item"><span><b>harborline</b> GitHub token expires on 23 Nov 2026 (in 12 days).</span></div>
+<div class="item"><span><b>harborline</b> has used 172 of 200 AI calls today. The count resets at 00:00 UTC.</span></div>
+<div class="item"><span><b>ledgerkite-docs</b> cannot create issues: <code>GITHUB_PAT_LEDGER</code> is not set.</span></div>
+<div class="item"><span><b>pantry-planner</b> has 2 unhandled reports that retention deletes within 7 days. <a href="#/p/pantry-planner/reports">Open the reports</a></span></div></div>
+<div class="grp-label">AI calls today</div>
+<div class="list">
+<div class="item"><span class="main"><span class="ttl">harborline</span><span class="meta"><meter style="width:160px;height:6px" min="0" max="200" value="172" aria-label="172 of 200"></meter></span></span><span class="end num">172 / 200</span></div>
+<div class="item"><span class="main"><span class="ttl">ledgerkite-docs</span></span><span class="end">AI off</span></div>
+<div class="item"><span class="main"><span class="ttl">pantry-planner</span><span class="meta"><meter style="width:160px;height:6px" min="0" max="150" value="31" aria-label="31 of 150"></meter></span></span><span class="end num">31 / 150</span></div></div>
+<div class="grp-label">Gateway</div>
+<div class="kv list">
+<div class="item"><span>Release</span><span class="mono">0.3.0 · stable · up to date</span></div>
+<div class="item"><span>Database schema</span><span>v5, matches the code</span></div>
+<div class="item"><span>Storage</span><span>SQLite file, attachments on disk</span></div>
+<div class="item"><span>Secrets</span><span>ADMIN_TOKEN retired · LLM_API_KEY set · 2 of 3 GitHub tokens set</span></div></div></section>
+<section data-screen="tokens"><div class="pagehead"><div><h1>API tokens</h1><p>For scripts and agents. A token cannot manage users or tokens.</p></div><button class="btn primary" type="button" data-open="dlg-token">New token</button></div>
+<div class="list"><div class="item"><span class="main"><span class="ttl">Setup agent <span class="muted" style="font-weight:400">· Read · All projects</span></span><span class="meta"><span class="mono">fk_tok_HBmSnc…</span> · created by Robin on 11 Nov 2026 · expires 9 Feb 2027 · last used never</span></span><span class="end"><button class="btn text danger" type="button" data-open="dlg-revoke">Revoke</button></span></div><div class="item"><span class="main"><span class="ttl">Release script <span class="muted" style="font-weight:400">· Read and write · harborline</span></span><span class="meta"><span class="mono">fk_tok_q82Lfd…</span> · created by Robin on 2 Nov 2026 · expires 1 Feb 2027 · last used today, 09:14</span></span><span class="end"><button class="btn text danger" type="button" data-open="dlg-revoke">Revoke</button></span></div></div>
+<details style="margin-top:20px"><summary class="muted sm" style="cursor:pointer">1 revoked token</summary><div class="list" style="margin-top:8px"><div class="item"><span class="main"><span class="ttl muted">Old CI token</span><span class="meta"><span class="mono">fk_tok_Zr41Qa…</span> · revoked 28 Oct 2026</span></span></div></div></details>
+<dialog id="dlg-revoke"><h2>Revoke “Setup agent”?</h2><p class="muted sm">Anything that uses this token loses access on its next request. This cannot be undone.</p><div class="actions"><button class="btn" type="button" data-close autofocus>Cancel</button><button class="btn danger" type="button" data-todo data-close style="border-color:var(--danger)">Revoke token</button></div></dialog>
+<dialog id="dlg-token"><div data-step="1"><h2>New token</h2><p class="muted sm" style="margin-bottom:16px">Shown once, right after you create it.</p>
+<div class="field"><label for="tk-n">Name</label><input class="in" id="tk-n" value="Triage agent"></div>
+<div class="field"><span class="lbl">Access</span><div class="opts" role="radiogroup" aria-label="Access"><label class="opt"><input type="radio" name="acc" checked><span>Read<small>List projects and reports. The safe default.</small></span></label><label class="opt"><input type="radio" name="acc"><span>Read and write<small>Also publish settings and handle reports.</small></span></label></div></div>
+<div class="field"><span class="lbl">Projects</span><div class="opts"><label class="opt"><input type="radio" name="pr" checked><span>All projects</span></label><label class="opt"><input type="radio" name="pr"><span>Only these<small>harborline, ledgerkite-docs, pantry-planner</small></span></label></div></div>
+<div class="field"><label for="tk-e">Expires</label><select class="in" id="tk-e"><option>After 30 days</option><option selected>After 90 days</option><option>After 365 days</option></select></div>
+<div class="actions"><button class="btn primary" type="button" data-next>Create token</button><button class="btn" type="button" data-close>Cancel</button></div></div>
+<div data-step="2" hidden><h2>Copy your token</h2><p class="muted sm" style="margin-bottom:16px">This is the only time it is shown. Closing this dialog is final.</p>
+<div class="field"><label for="tk-o">Token</label><input class="in mono" id="tk-o" readonly value="fk_tok_example0000000000000000000000"></div>
+<div class="actions"><button class="btn primary" type="button" data-todo>Copy token</button><button class="btn" type="button" data-close>Done</button></div></div></dialog></section>
+<section data-screen="users"><div class="pagehead"><div><h1>Users</h1><p>3 users · 1 owner</p></div><button class="btn primary" type="button" data-todo>Invite someone</button></div>
+<div class="list">
+<div class="item"><span class="main"><span class="ttl">Robin <span class="muted" style="font-weight:400">(you)</span></span><span class="meta">Owner · active · 2 passkeys · the only owner</span></span><span class="end"></span></div>
+<div class="item"><span class="main"><span class="ttl">Taylor</span><span class="meta">Member · active · signed in yesterday</span></span><span class="end"><details class="menu"><summary class="btn text">Manage</summary><div class="pop"><button type="button" data-todo>Make owner</button><hr><button type="button" class="danger" data-todo>Remove…</button></div></details></span></div>
+<div class="item"><span class="main"><span class="ttl">Sam</span><span class="meta">Member · invited · link valid until 18 Nov 2026</span></span><span class="end"><button class="btn text" type="button" data-todo>New link</button></span></div></div>
+<p class="grp-note">Owners invite people, change roles and create API tokens. Members can use every other admin page.</p></section>
+<section data-screen="account"><div class="pagehead"><div><h1>Your account</h1><p>Robin · owner</p></div></div>
+<div class="grp-label" style="margin-top:0">Passkeys</div>
+<div class="list">
+<div class="item"><span class="main"><span class="ttl">MacBook Touch ID</span><span class="meta">Synced · created 11 Nov 2026 · last used today</span></span><span class="end"><button class="btn text danger" type="button" data-todo>Remove</button></span></div>
+<div class="item"><span class="main"><span class="ttl">Security key</span><span class="meta">Device-bound · created 11 Nov 2026 · never used</span></span><span class="end"><button class="btn text danger" type="button" data-todo>Remove</button></span></div></div>
+<div style="margin-top:12px"><button class="btn" type="button" data-todo>Add a passkey</button></div>
+<div class="grp-label">Sessions</div>
+<div class="list">
+<div class="item"><span class="main"><span class="ttl">This browser</span><span class="meta">Chrome on macOS · signed in today, 20:05</span></span><span class="end"><button class="btn text" type="button" data-todo>Sign out</button></span></div>
+<div class="item"><span class="main"><span class="ttl">Chrome on Android</span><span class="meta">Signed in yesterday, 08:12</span></span><span class="end"><button class="btn text danger" type="button" data-todo>Revoke</button></span></div></div>
+<div style="margin-top:12px"><button class="btn" type="button" data-todo>Revoke all other sessions</button></div></section>
+<section data-screen="sign-in"><div style="max-width:380px;margin:48px auto 0;text-align:left"><h1>Sign in</h1><p class="muted" style="margin:6px 0 20px">Use the passkey you created for this gateway.</p>
+<button class="btn primary" type="button" data-todo style="width:100%;min-height:44px">Sign in with a passkey</button>
+<details style="margin-top:20px"><summary class="muted sm" style="cursor:pointer">Locked out?</summary><div style="margin-top:10px"><p class="sm muted" style="margin-bottom:8px">An operator with access to the server can print a recovery link:</p><pre class="code">feedbackkit-admin recovery-link</pre><p class="sm muted" style="margin-top:8px">On Cloudflare, run <code>pnpm admin:link --recovery</code> instead. The link works once and replaces your passkeys.</p></div></details></div></section>
+</main></div>
+<script>
+(function(){
+var $=function(s,r){return (r||document).querySelector(s)},$$=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+var qs=new URLSearchParams(location.search),root=document.documentElement;
+if(qs.get('chrome')==='0')root.classList.add('nochrome');
+function setTheme(t){if(t==='auto'){root.removeAttribute('data-theme')}else{root.setAttribute('data-theme',t)}$$('.mock [data-theme-btn]').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.themeBtn===t))})}
+setTheme(qs.get('theme')||'auto');
+$$('.mock [data-theme-btn]').forEach(function(b){b.addEventListener('click',function(){setTheme(b.dataset.themeBtn)})});
+$$('[data-theme-cycle]').forEach(function(b){b.addEventListener('click',function(){var c=root.getAttribute('data-theme')||'auto',n={auto:'light',light:'dark',dark:'auto'}[c];setTheme(n);b.textContent='Theme: '+n[0].toUpperCase()+n.slice(1)})});
+var PN={'harborline':'harborline','ledgerkite-docs':'ledgerkite-docs','pantry-planner':'pantry-planner'};
+function route(){
+  var h=location.hash.replace(/^#\//,'')||'projects',p=h.split('/'),key=p[0],proj='harborline',sec='',rep='';
+  if(key==='p'){proj=p[1]||'harborline';sec=p[2]||(false?'overview':'reports');rep=p[3]||'';key=rep?'report':sec}
+  $$('[data-href-p]').forEach(function(a){a.setAttribute('href','#/p/'+proj+(a.dataset.hrefP?'/'+a.dataset.hrefP:''))});
+  $$('[data-pj]').forEach(function(n){n.classList.toggle('cur',n.dataset.pj===proj&&['reports','report','setup','types','settings'].indexOf(key)>=0)});
+  $$('[data-screen]').forEach(function(s){s.hidden=s.dataset.screen.split(' ').indexOf(key)<0});
+  $$('[data-pname]').forEach(function(n){n.textContent=proj});
+  $$('[data-has-reports]').forEach(function(n){n.hidden=proj!=='harborline'});
+  $$('[data-no-reports]').forEach(function(n){n.hidden=proj==='harborline'});
+  $$('.report-detail').forEach(function(a){a.hidden=a.dataset.report!==rep});
+  var shell=$('[data-shell]');if(shell){shell.classList.toggle('has-detail',!!rep);shell.dataset.route=key}
+  if(false&&key==='reports'&&!rep&&matchMedia('(min-width:1180px)').matches&&proj==='harborline'){var first=$('.report-detail');if(first){first.hidden=false;shell.classList.add('has-detail');$$('.report').forEach(function(r){r.setAttribute('aria-current',String(r.dataset.reportId===first.dataset.report))})}}
+  $$('.report').forEach(function(r){if(rep)r.setAttribute('aria-current',String(r.dataset.reportId===rep))});
+  $$('[data-nav]').forEach(function(a){var m=a.dataset.nav.split(' ');var on=m.indexOf(key)>=0&&(!a.dataset.proj||a.dataset.proj===proj);if(a.dataset.sec){on=(sec===a.dataset.sec||(a.dataset.sec==='reports'&&key==='report'))&&key!=='projects'&&a.dataset.proj===proj}if(on)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
+  var sel=$('.mock select[data-jump]');if(sel){var cur='#/'+h;var o=$$('option',sel).filter(function(o){return o.value===cur})[0];if(o)sel.value=cur}
+  if(!rep)window.scrollTo(0,0);
+  var sd=$('.side');if(sd){sd.classList.remove('open');var mb0=$('[data-menu-btn]');if(mb0)mb0.setAttribute('aria-expanded','false')}
+}
+addEventListener('hashchange',route);route();
+var jump=$('.mock select[data-jump]');if(jump)jump.addEventListener('change',function(){location.hash=jump.value});
+document.addEventListener('click',function(ev){
+  var t=ev.target.closest&&ev.target.closest('[data-open],[data-close],[data-next],[data-todo]');
+  $$('details.menu[open]').forEach(function(d){if(!d.contains(ev.target))d.removeAttribute('open')});
+  if(!t)return;
+  if(t.dataset.open){ev.preventDefault();var d=document.getElementById(t.dataset.open);var s=$('[data-step="1"]',d);if(s){s.hidden=false;$('[data-step="2"]',d).hidden=true}d.showModal()}
+  else if(t.hasAttribute('data-next')){var dd=t.closest('dialog');$('[data-step="1"]',dd).hidden=true;$('[data-step="2"]',dd).hidden=false}
+  else if(t.hasAttribute('data-close')){var dl=t.closest('dialog');if(dl)dl.close();if(t.dataset.todo!==undefined)toast('Not drawn in this mock')}
+  else if(t.dataset.todo!==undefined){ev.preventDefault();toast('Not drawn in this mock')}
+});
+var tm;function toast(m){var n=$('.toast');if(!n){n=document.createElement('div');n.className='toast';n.setAttribute('role','status');document.body.appendChild(n)}n.textContent=m;n.hidden=false;clearTimeout(tm);tm=setTimeout(function(){n.hidden=true},1800)}
+var f=$('[data-filter]');if(f)f.addEventListener('change',function(){var v=f.value,n=0;$$('.report').forEach(function(r){var g=r.dataset.group;var show=v==='all'||g===v||(v==='saved'&&false)||(v==='undecided'&&false);r.hidden=!show;if(show)n++});$('#report-empty').hidden=n>0});
+var mb=$('[data-menu-btn]');if(mb)mb.addEventListener('click',function(){var s=mb.closest('.side');var o=s.classList.toggle('open');mb.setAttribute('aria-expanded',String(o))});
+})();
+</script>
+</body>
+</html>

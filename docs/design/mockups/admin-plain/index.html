@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">
+<title>Mock: plain admin, three variants</title>
+<style>
+:root{--ground:#fbfbfa;--surface:#fff;--raised:#f2f2f0;--line:#e6e6e3;--field:#8d8d93;--ink:#1b1b1d;--muted:#68686f;--accent:#6d28d9;--on-accent:#fff;--danger:#b42318;
+--sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ground:#161617;--surface:#1d1d1f;--raised:#26262a;--line:#2c2c30;--field:#6f6f76;--ink:#ececee;--muted:#9a9aa1;--accent:#a78bfa;--on-accent:#14101f;--danger:#f19a93;color-scheme:dark}}
+:root[data-theme="dark"]{--ground:#161617;--surface:#1d1d1f;--raised:#26262a;--line:#2c2c30;--field:#6f6f76;--ink:#ececee;--muted:#9a9aa1;--accent:#a78bfa;--on-accent:#14101f;--danger:#f19a93;color-scheme:dark}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font:400 15px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+a{color:inherit}
+h1,h2,h3,p,ul,ol,dl,dd{margin:0}
+h1{font-size:24px;line-height:30px;font-weight:600;letter-spacing:-.01em}
+h2{font-size:17px;line-height:24px;font-weight:600}
+code,.mono{font-family:var(--mono);font-size:13px}
+b,strong{font-weight:600}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.muted{color:var(--muted)}.sm{font-size:13px}.num{font-variant-numeric:tabular-nums}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.brand{display:inline-flex;align-items:center;gap:8px;font-weight:600;text-decoration:none;white-space:nowrap}
+.brand small{font-weight:400;color:var(--muted);font-size:14px}
+.brand svg{width:20px;height:20px}
+
+/* buttons: one filled button per screen; the rest are outlined or plain text */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:0 14px;border-radius:8px;border:1px solid var(--field);background:transparent;color:var(--ink);font:500 14px var(--sans);cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn:hover{background:var(--raised)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.primary:hover{filter:brightness(1.08);background:var(--accent)}
+.btn.quiet{border-color:transparent;background:var(--raised)}
+.btn.text{border-color:transparent;padding:0 8px;min-height:32px}
+.btn.text.danger,.danger{color:var(--danger)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+summary.btn{list-style:none}summary.btn::-webkit-details-marker{display:none}
+
+/* rows: lists are hairline rows, never cards in cards */
+.list{border-top:1px solid var(--line)}
+.item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 16px;align-items:center;padding:12px 4px;border-bottom:1px solid var(--line);text-decoration:none;color:inherit}
+a.item:hover{background:var(--raised)}
+.item .ttl{font-weight:500;overflow-wrap:anywhere}
+.item .meta{color:var(--muted);font-size:13px;overflow-wrap:anywhere}
+.item .end{display:flex;align-items:center;gap:8px;justify-self:end;color:var(--muted);font-size:13px;text-align:right}
+.item .main{min-width:0;display:flex;flex-direction:column;gap:2px}
+.chev::after{content:"\203A";margin-left:6px;color:var(--muted);font-size:18px;line-height:1}
+.st{white-space:nowrap}
+.st.bad{color:var(--danger)}
+.st.bad::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--danger);margin-right:6px;vertical-align:1px}
+.grp{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.grp>.item{padding:12px 16px}
+.grp>.item:last-child{border-bottom:0}
+.grp-label{margin:24px 0 8px;font-size:13px;font-weight:500;color:var(--muted)}
+.grp-note{margin:8px 4px 0;font-size:13px;color:var(--muted)}
+.kv .item{grid-template-columns:minmax(0,160px) minmax(0,1fr);align-items:baseline}
+.kv .item>:first-child{color:var(--muted);font-size:14px}
+.kv .item>:last-child{overflow-wrap:anywhere}
+.note{padding:12px 14px;border-radius:8px;background:var(--raised);font-size:14px}
+.empty{padding:28px 4px;color:var(--muted)}
+.pagehead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.pagehead p{color:var(--muted);margin-top:4px;font-size:14px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.back{display:inline-block;margin-bottom:12px;color:var(--muted);text-decoration:none;font-size:14px}
+.back:hover{color:var(--ink)}
+.code{margin:0;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--raised);font:13px/1.6 var(--mono);overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+.shot{display:grid;place-items:center;aspect-ratio:16/10;max-width:420px;border:1px dashed var(--field);border-radius:8px;color:var(--muted);font-size:13px}
+
+/* forms: label above, input across, never a placeholder as label */
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.field>label,.field>.lbl{font-size:14px;font-weight:500}
+.field .help{font-size:13px;color:var(--muted)}
+.in{height:40px;padding:0 12px;border:1px solid var(--field);border-radius:8px;background:var(--surface);color:var(--ink);font:15px var(--sans);width:100%;min-width:0}
+select.in{padding-right:8px}
+.in[readonly]{color:var(--muted);background:var(--raised)}
+.opts{display:flex;flex-direction:column;gap:8px}
+.opt{display:flex;gap:10px;align-items:flex-start;font-size:15px}
+.opt input{margin-top:4px;accent-color:var(--accent)}
+.opt small{display:block;color:var(--muted);font-size:13px}
+.switch{appearance:none;width:42px;height:26px;border-radius:13px;background:var(--field);position:relative;cursor:pointer;flex:none;margin:0}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .15s}
+.switch:checked{background:var(--accent)}
+.switch:checked::after{transform:translateX(16px)}
+@media (prefers-reduced-motion:reduce){.switch::after{transition:none}}
+@media (max-width:640px){.kv .item{grid-template-columns:minmax(0,1fr);gap:2px}}
+
+/* menu (details) */
+.menu{position:relative}
+.menu .pop{position:absolute;right:0;top:calc(100% + 6px);z-index:30;min-width:200px;padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column}
+.menu .pop a,.menu .pop button{display:block;width:100%;text-align:left;padding:9px 10px;border:0;border-radius:6px;background:none;color:var(--ink);font:14px var(--sans);text-decoration:none;cursor:pointer}
+.menu .pop a:hover,.menu .pop button:hover{background:var(--raised)}
+.menu .pop hr{border:0;border-top:1px solid var(--line);margin:6px 0;width:100%}
+
+/* dialog */
+dialog{width:calc(100% - 32px);max-width:480px;padding:24px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink)}
+dialog::backdrop{background:rgba(0,0,0,.4)}
+dialog h2{margin-bottom:6px}
+dialog .actions{margin-top:20px}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:60;background:var(--ink);color:var(--ground);padding:10px 16px;border-radius:8px;font-size:14px}
+
+/* mock chrome, not part of the product */
+.mock{position:sticky;top:0;z-index:50;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 16px;background:#1d1d1f;color:#d4d4d8;font:12px/1.4 var(--sans)}
+.mock b{color:#fff;font-weight:600}
+.mock select,.mock button{font:12px var(--sans);background:#2c2c30;color:#fff;border:1px solid #48484d;border-radius:6px;padding:4px 8px;cursor:pointer}
+.mock button[aria-pressed="true"]{background:#fff;color:#111}
+.mock .sp{margin-left:auto}
+.nochrome .mock{display:none}
+@media (max-width:640px){.mock .sp{margin-left:0}}
+
+body{padding:0}
+.wrap{max-width:1500px;margin:0 auto;padding:28px 24px 80px}
+.wrap>p.lead{max-width:76ch;color:var(--muted);margin:6px 0 0}
+.sec{margin-top:40px}
+.sec h2{font-size:20px;margin-bottom:4px}
+.sec p{color:var(--muted);max-width:76ch;margin-bottom:14px}
+.row{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
+.fr{margin:0}
+.fw{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:10px;background:var(--ground)}
+.fw iframe{border:0;transform-origin:0 0;position:absolute;left:0;top:0;background:var(--ground)}
+.cap{font-size:12px;color:var(--muted);margin-top:6px}
+.bar{display:flex;gap:8px;align-items:center;margin-top:16px;flex-wrap:wrap}
+.bar button[aria-pressed="true"]{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+</style></head><body><div class="wrap">
+<h1>Plain admin, three variants</h1>
+<p class="lead">Each frame is the real clickable mock, scaled down. Open a variant to click through every screen, resize the window to see the phone layout, and switch light and dark. All names and numbers are invented.</p>
+<div class="bar"><span class="muted sm">Theme</span><button class="btn" type="button" data-th="light" aria-pressed="true">Light</button><button class="btn" type="button" data-th="dark" aria-pressed="false">Dark</button></div>
+<section class="sec" id="sec-a"><h2>A · Top bar and tabs</h2><p>Closest to today's structure. A text navigation, project sections as tabs, one list at a time, a report opens as its own page. <a href="a-top-bar.html">Open the clickable mock</a></p>
+<div class="row"><figure class="fr"><div class="fw" style="width:640px;height:400px"><iframe title="a-top-bar.html #/p/harborline/reports" data-src="a-top-bar.html?chrome=0" data-hash="#/p/harborline/reports" style="width:1280px;height:800px;transform:scale(0.5)"></iframe></div></figure><figure class="fr"><div class="fw" style="width:640px;height:400px"><iframe title="a-top-bar.html #/p/harborline/reports/srv-1" data-src="a-top-bar.html?chrome=0" data-hash="#/p/harborline/reports/srv-1" style="width:1280px;height:800px;transform:scale(0.5)"></iframe></div></figure></div>
+<div class="row" style="margin-top:20px"><figure class="fr"><div class="fw" style="width:640px;height:400px"><iframe title="a-top-bar.html #/tokens" data-src="a-top-bar.html?chrome=0" data-hash="#/tokens" style="width:1280px;height:800px;transform:scale(0.5)"></iframe></div></figure><figure class="fr"><div class="fw" style="width:242px;height:484px"><iframe title="a-top-bar.html #/p/harborline/reports" data-src="a-top-bar.html?chrome=0" data-hash="#/p/harborline/reports" style="width:390px;height:780px;transform:scale(0.62)"></iframe></div></figure><figure class="fr"><div class="fw" style="width:242px;height:484px"><iframe title="a-top-bar.html #/p/harborline/reports/srv-1" data-src="a-top-bar.html?chrome=0" data-hash="#/p/harborline/reports/srv-1" style="width:390px;height:780px;transform:scale(0.62)"></iframe></div></figure><figure class="fr"><div class="fw" style="width:242px;height:484px"><iframe title="a-top-bar.html #/tokens" data-src="a-top-bar.html?chrome=0" data-hash="#/tokens" style="width:390px;height:780px;transform:scale(0.62)"></iframe></div></figure></div></section>
+<section class="sec" id="sec-b"><h2>B · Sidebar and split view</h2><p>The pattern of NORA Web and the iCloud-MCP dashboard. Projects and their sections live in a sidebar, reports show list and detail side by side from 1180 px. <a href="b-sidebar.html">Open the clickable mock</a></p>
+<div class="row"><figure class="fr"><div class="fw" style="width:640px;height:400px"><iframe title="b-sidebar.html #/p/harborline/reports/srv-1" data-src="b-sidebar.html?chrome=0" data-hash="#/p/harborline/reports/srv-1" style="width:1280px;height:800px;transform:scale(0.5)"></iframe></div></figure><figure class="fr"><div class="fw" style="width:640px;height:400px"><iframe title="b-sidebar.html #/p/harborline/reports/srv-7" data-src="b-sidebar.html?chrome=0" data-hash="#/p/harborline/reports/srv-7" style="width:1280px;height:800px;transform:scale(0.5)"></iframe></div></figure></div>
+<div class="row" style="margin-top:20px"><figure class="fr"><div class="fw" style="width:640px;height:400px"><iframe title="b-sidebar.html #/tokens" data-src="b-sidebar.html?chrome=0" data-hash="#/tokens" style="width:1280px;height:800px;transform:scale(0.5)"></iframe></div></figure><figure class="fr"><div class="fw" style="width:242px;height:484px"><iframe title="b-sidebar.html #/p/harborline/reports" data-src="b-sidebar.html?chrome=0" data-hash="#/p/harborline/reports" style="width:390px;height:780px;transform:scale(0.62)"></iframe></div></figure><figure class="fr"><div class="fw" style="width:242px;height:484px"><iframe title="b-sidebar.html #/p/harborline/reports/srv-1" data-src="b-sidebar.html?chrome=0" data-hash="#/p/harborline/reports/srv-1" style="width:390px;height:780px;transform:scale(0.62)"></iframe></div></figure><figure class="fr"><div class="fw" style="width:242px;height:484px"><iframe title="b-sidebar.html #/tokens" data-src="b-sidebar.html?chrome=0" data-hash="#/tokens" style="width:390px;height:780px;transform:scale(0.62)"></iframe></div></figure></div></section>
+<section class="sec" id="sec-c"><h2>C · Drill-down lists</h2><p>The iOS Settings pattern. Every level is one grouped list and one question, nothing else on the screen. Quietest, most clicks. <a href="c-drill-down.html">Open the clickable mock</a></p>
+<div class="row"><figure class="fr"><div class="fw" style="width:640px;height:400px"><iframe title="c-drill-down.html #/p/harborline/reports" data-src="c-drill-down.html?chrome=0" data-hash="#/p/harborline/reports" style="width:1280px;height:800px;transform:scale(0.5)"></iframe></div></figure><figure class="fr"><div class="fw" style="width:640px;height:400px"><iframe title="c-drill-down.html #/p/harborline/reports/srv-1" data-src="c-drill-down.html?chrome=0" data-hash="#/p/harborline/reports/srv-1" style="width:1280px;height:800px;transform:scale(0.5)"></iframe></div></figure></div>
+<div class="row" style="margin-top:20px"><figure class="fr"><div class="fw" style="width:640px;height:400px"><iframe title="c-drill-down.html #/tokens" data-src="c-drill-down.html?chrome=0" data-hash="#/tokens" style="width:1280px;height:800px;transform:scale(0.5)"></iframe></div></figure><figure class="fr"><div class="fw" style="width:242px;height:484px"><iframe title="c-drill-down.html #/p/harborline/reports" data-src="c-drill-down.html?chrome=0" data-hash="#/p/harborline/reports" style="width:390px;height:780px;transform:scale(0.62)"></iframe></div></figure><figure class="fr"><div class="fw" style="width:242px;height:484px"><iframe title="c-drill-down.html #/p/harborline/reports/srv-1" data-src="c-drill-down.html?chrome=0" data-hash="#/p/harborline/reports/srv-1" style="width:390px;height:780px;transform:scale(0.62)"></iframe></div></figure><figure class="fr"><div class="fw" style="width:242px;height:484px"><iframe title="c-drill-down.html #/tokens" data-src="c-drill-down.html?chrome=0" data-hash="#/tokens" style="width:390px;height:780px;transform:scale(0.62)"></iframe></div></figure></div></section>
+</div>
+<script>
+(function(){var q=new URLSearchParams(location.search);var th=q.get('theme')||'light';
+function go(t){th=t;document.documentElement.setAttribute('data-theme',t);document.querySelectorAll('iframe').forEach(function(f){f.src=f.dataset.src+'&theme='+t+f.dataset.hash});document.querySelectorAll('[data-th]').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.th===t))})}
+document.querySelectorAll('[data-th]').forEach(function(b){b.addEventListener('click',function(){go(b.dataset.th)})});go(th);})();
+</script></body></html>
