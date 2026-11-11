@@ -41,6 +41,12 @@ export function initShell() {
   menu?.addEventListener("click", () => menu.setAttribute("aria-expanded", String(side!.classList.toggle("open"))));
 }
 
+/** Folds the phone menu away, for a link that only changes the address of the page you are on. */
+export function closeMenu() {
+  document.getElementById("side")?.classList.remove("open");
+  document.getElementById("menu-btn")?.setAttribute("aria-expanded", "false");
+}
+
 export interface NavProject {
   id: string;
 }

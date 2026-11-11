@@ -1,5 +1,5 @@
 import { settingsEditor } from "./settings.js";
-import { fillProjects, initShell, markCurrent } from "./shell.js";
+import { closeMenu, fillProjects, initShell, markCurrent } from "./shell.js";
 // FeedbackKit admin, read-only (P2, step 3, ADR-014). Fills the Worker-rendered
 // shells from /api/admin/*. Two ways in: when Cloudflare Access sits in front of
 // the admin, GET /api/admin/me answers with the signed-in email and no token is
@@ -269,10 +269,6 @@ function ago(ts: number, now = Date.now()): string {
   if (d < 2 * DAY) return "Yesterday";
   if (d < 7 * DAY) return `${Math.floor(d / DAY)} days ago`;
   return new Date(ts).getUTCFullYear() === new Date(now).getUTCFullYear() ? dayMonth(new Date(ts)) : dateFmt.format(ts);
-}
-function timeEl(ts: number, cls = "muted sm"): HTMLTimeElement {
-  const iso = new Date(ts).toISOString();
-  return el("time", { class: cls, datetime: iso, title: iso.replace("T", " ").slice(0, 16) + " UTC" }, ago(ts));
 }
 function inDays(days: number): string {
   if (days < 0) return "expired";
@@ -694,11 +690,12 @@ function initHistory(id: string, typeLabels: Map<string, string>) {
     const item = target ? items.get(target) : undefined;
     shown = item ? target : null;
     for (const r of rows.querySelectorAll<HTMLElement>(".report")) r.setAttribute("aria-current", String(r.dataset["id"] === shown));
+    releaseShots();
     detail.replaceChildren(
       item
         ? reportDetail(item, ctx)
         : fromAddress
-          ? el("p", { class: "empty-msg" }, "That report isn't in the list yet. Pick one from the list, or load more.")
+          ? el("p", { class: "empty-msg" }, cursor ? "That report isn't in the list yet. Pick one from the list, or load more." : "That report isn't in this list. Pick one from the list, or change the filter.")
           : el("p", { class: "empty-msg" }, items.size ? "Select a report." : ""),
     );
   }
@@ -727,7 +724,6 @@ function initHistory(id: string, typeLabels: Map<string, string>) {
     const mine = ++gen;
     if (reset) {
       cursor = null;
-      releaseShots();
       rows.replaceChildren();
       items.clear();
     }
@@ -795,7 +791,10 @@ function initSections(onReport: (id: string | null) => void) {
     $("view-project").classList.toggle("has-detail", section === "history" && !!report);
     onReport(section === "history" && report ? decodeURIComponent(report) : null);
   };
-  addEventListener("hashchange", apply);
+  addEventListener("hashchange", () => {
+    apply();
+    closeMenu();
+  });
   return apply;
 }
 

@@ -306,9 +306,11 @@ dialog h2{margin-bottom:6px}
   .side .menubtn{display:inline-flex}
   .side nav{display:none;margin-top:12px}
   .side.open nav{display:flex}
-  .side nav a,.side .linkbtn{padding:12px 10px}
+  .side nav a,.side .linkbtn{padding:12px 10px;line-height:20px}
   .content{padding:20px 16px 80px}
   .b,.b.sm,.b.text{min-height:44px}
+  .funnel summary{display:flex;align-items:center;min-height:44px}
+  .pane-detail .back{display:inline-flex;align-items:center;min-height:44px}
   .in{height:44px}
   .settings-field input,.settings-field select{min-height:44px}
   .item{padding:14px 2px}
