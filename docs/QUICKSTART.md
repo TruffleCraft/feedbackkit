@@ -524,7 +524,8 @@ or Hermes can read projects, feedback, the funnel and project configs. It is
 read-only and optional. Clients connect with OAuth 2.1, and a person approves
 each connection on a consent page after signing in through Cloudflare Access.
 The admin token does not work here. Set up [Access](#sign-in-with-cloudflare-access)
-first.
+first. (A server install has no Access and no KV namespace: see
+[Connect an agent](SELF_HOSTING.md#connect-an-agent-through-mcp).)
 
 1. Create a KV namespace for OAuth clients, grants and tokens:
 

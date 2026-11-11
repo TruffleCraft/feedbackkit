@@ -38,6 +38,10 @@ Only reports delivered to the **FeedbackKit inbox** have a local Open/Done/Dismi
 
 Retention applies to log records, inbox reports and attachments whether handled or not. It is not an indefinite audit archive. Retention must be at least 7 days, the notice period for unhandled reports; the gateway refuses a shorter value when settings are written. When a review changes the retention, it states how many stored reports and attachments the next daily cleanup deletes, and you cannot publish before you have seen it. Deleting a FeedbackKit record or attachment does not close or delete its GitHub ticket.
 
+## Agents
+
+An agent can read projects, feedback and the funnel through the gateway's MCP server, without the admin token in its hands. Whoever approves a connection signs in first (Cloudflare Access on Cloudflare, the admin token on a server), and the agent gets read-only scopes. Setup: [Cloudflare](QUICKSTART.md#mcp-for-agents), [server](SELF_HOSTING.md#connect-an-agent-through-mcp). To cut a server's agent connections, see [End every agent connection](SELF_HOSTING.md#end-every-agent-connection).
+
 ## Credentials and hosting
 
 On Cloudflare, use Worker secrets. On a server or LXC, use the protected environment file used by the service; for a foreground run use `.env`. Restart the standalone service after changing credentials. Project settings can be edited and published without restarting.

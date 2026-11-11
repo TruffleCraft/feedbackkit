@@ -48,7 +48,7 @@ Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready)
 | Team board embedded in the host's own UI, opened with a signed link (S21) | yes | yes | planned |
 | Visitors follow their own local reports, identity signed by the host (S21) | yes | yes | planned |
 | Widget preview and theme tokens | yes | yes | planned |
-| MCP server with OAuth | yes | no | shipped (Cloudflare only) |
+| MCP server with OAuth | yes | yes | shipped. On Node, consent asks for the admin token until Gate 2 |
 
 ## What FeedbackKit does not do
 
@@ -61,7 +61,6 @@ Status is `shipped` (on `main`), `branch` (on the WIP branch, not release-ready)
 | A second ticket tracker (comments, assignees, custom lanes, SLAs) | The inbox is not the product's edge (CEO review 2026-10-24) | A paying use case without GitHub appears |
 | Public sign-up, mandatory mail provider, mandatory external identity | Autonomy is the point | Never as a requirement |
 | Several replicas on one database | SQLite on one disk, one process | A second storage backend is accepted by ADR |
-| MCP and OAuth on the standalone server | ADR-015 builds consent on Cloudflare Access | A separate ADR defines consent without Access |
 | User-owned GitHub Projects, GitLab, Jira, Trello | No fine-grained permission for user Projects, and demand is unproven | A demand checkpoint is reached |
 | TLS termination, reverse proxy, backups of the host | The operator's infrastructure | Never |
 | Hosted FeedbackKit offering | Operators host it themselves, on Cloudflare or on their own Linux host | A business decision, not a code change |
@@ -109,6 +108,7 @@ Settled decisions. [Claims and their proof](claims.md) lists every statement the
 | S19 | Node 24 is the floor. `engines` says `>=24`, CI runs Node 24 and, once a newer LTS line exists, that one too, and the docs name one version. Node 22 is unsupported | Owner delegated the choice, 2026-11-10 (D-06) |
 | S20 | Masking follows the concept in [privacy-masking.md](privacy-masking.md). A project has a `privacy.profile` of `strict` or `standard`. New projects start strict, and a public or unreadable destination forces strict. In strict a screenshot keeps layout and covers text and images, console capture keeps errors and warnings with objects dropped, and host context values are filtered | Owner, 2026-11-10 (D-07) |
 | S21 | Projects without GitHub get two embeds, both after Gate 2 and Step 5 and both for local-delivery reports only. First a team board in an iframe that opens with a short-lived signed link, minted by the host backend with a scoped token. Then an own-reports view whose identity is signed by the host backend. A public board of other people's reports stays out. Comments, assignees and SLAs stay out | Owner, 2026-11-10 (D-11) |
+| S22 | MCP and OAuth run on the standalone server. Until Gate 2 the consent step proves the operator with the `ADMIN_TOKEN`, typed into the consent form: POST body only, constant-time compare, the admin API's lockout, grants of read scopes at most. Accounts replace it, and grants made under the token are revoked then. Recorded as the amendment of ADR-015 | Decided in the task for this change, 2026-11-11 |
 
 No decision is open. The open points that belong to single pull requests are listed at the end of [privacy-masking.md](privacy-masking.md).
 

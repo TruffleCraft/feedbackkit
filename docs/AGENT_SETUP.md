@@ -60,4 +60,6 @@ Report the installed release, gateway/admin addresses, configured project and we
 
 Link [GETTING_STARTED.md](GETTING_STARTED.md), [ADMIN.md](ADMIN.md) and the relevant update instructions: a tarball install updates and rolls back with `feedbackkit-update` ([Updating](RELEASES.md#updating)). List the next required action only if the operator must still do it. Do not claim account/passkey login or screenshot masking until the installed release's flow has been verified.
 
+If the operator wants an agent to read feedback through MCP, point them to [Connect an agent](SELF_HOSTING.md#connect-an-agent-through-mcp). On a server install the consent page asks for the `ADMIN_TOKEN`, and the operator types it. Do not type it for them, read it from the environment file to fill the form, or accept it in chat. An agent that approves its own connection with the operator's token has skipped the approval. Report whether the install has an https `FK_PUBLIC_URL` (MCP is off without it) and that you did not run a real MCP client unless you did.
+
 Co-created by Michel with NORA (AI Agent)

@@ -28,6 +28,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 | J16 | Robin creates a scoped token for an agent or script | planned | autonomy |
 | J17 | Robin embeds the team board in the product's own admin UI | planned | autonomy |
 | J18 | Sam follows their own reports | planned | autonomy |
+| J19 | Robin connects an agent to the gateway through MCP | works on both runtimes with the MCP SDK client | autonomy (consent through accounts) |
 
 ## Diagrams
 
@@ -215,5 +216,15 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Evidence:** a test that a forged `FeedbackKitContext` shows nothing, a test that two visitors never see each other's reports, a deletion by identity (S21).
 - **Today:** not built. The widget passes `FeedbackKitContext` as plain, unsigned values, and no public route lists reports.
 - **Verified:** `code` `src/widget/lib/host-context.ts` copies the host's object as is, `src/worker/admin/queries.ts:366` documents the context as "never verified by the gateway", and the public routes in `src/worker/app.ts` (`/diag`, `/api/config`, `/api/upload`, `/api/feedback`, `/api/events`, `/api/test-preview`, `/t/:key`, `/`) return no report list.
+
+## J19 Robin connects an agent to the gateway through MCP
+
+- **Goal:** an agent such as Claude Code reads projects and feedback from the gateway without the admin token in its hands, and Robin can end the connection.
+- **Steps:** Robin serves the gateway over https at `FK_PUBLIC_URL`. The standalone server then turns MCP on by itself. Robin adds the server in the client. The client finds the authorization server through the 401, registers itself and opens the consent page of the gateway. Robin checks the address and the host the tokens go to, types the `ADMIN_TOKEN` and clicks Allow. The agent lists projects and reads feedback. To end every connection Robin stops the service, deletes the grants and tokens, and starts it again.
+- **Guarantees:** nothing is granted without the token and the click. The token goes in the POST body only, is never logged, stored or echoed, and wrong tries share the admin API's lockout. The handle works once and only in the browser that opened the page. A grant carries read scopes at most, and a call outside them is refused. Issuer and resource come from `FK_PUBLIC_URL`. Where MCP is off every path answers 404 and says how to turn it on. An unsafe combination stops the start.
+- **Failure paths:** a wrong token (403, retry on the same page), a lockout (429 for the hour), a replayed or foreign handle (400), a wrong redirect URI or resource (an error page or `invalid_target`), a look-alike page (not detectable by the gateway, see SECURITY.md), a grant that outlives a rotated token (the delete command ends it), a client that needs Client ID Metadata Documents (not offered).
+- **Evidence:** the MCP SDK client does the whole flow against the unpacked release tarball, and a restart keeps the grant. The same flow ran on a clean Debian 13 LXC behind Caddy with https, through a reboot, a rollback to the released 0.2.0 and forward again.
+- **Today:** works with the SDK client on both runtimes. Consent on the standalone server is the admin token, and every grant is `admin`, so there is no per-person revocation. Gate 2 replaces the field with the signed-in account.
+- **Verified:** `test` `test/server-oauth.test.mjs` (28 cases), `test/server-mcp-e2e.test.mjs`, `test/durable/mcp-oauth-flow.test.ts` (workerd and Node), `test/durable/kv-contract.test.ts`. `live` the LXC run ([evidence](evidence/2026-11-11-standalone-mcp.md)). Not run: Claude Code, claude.ai, ChatGPT or Hermes against a public address.
 
 Co-created by Michel with NORA (AI Agent)

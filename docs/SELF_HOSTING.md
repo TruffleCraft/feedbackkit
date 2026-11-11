@@ -6,7 +6,7 @@ The recommended install is a signed release tarball: no Git, pnpm or build on th
 
 What is verified and what is not: the server and its tests run on a developer machine and in CI on Node 24 and 26, and the steps below ran on a clean, unprivileged Debian 13 LXC without nesting, including systemd, a crash and a reboot. The release tarball path ran there too, first with fixture releases and throw-away keys (including a release whose server does not start, and a reboot), then with the real signed dev builds 0.1.19-dev.5 and 0.1.19-dev.6 from GitHub: install, `--check`, update, rollback, update again ([evidence](design/evidence/2026-11-10-real-release-lxc.md)). The signed stable release 0.2.0 then installed from GitHub on a clean LXC and survived a reboot ([evidence](design/evidence/2026-11-11-stable-release.md)). An update from one stable release to the next has not run, because no newer stable release exists yet. It has not been tested on a cloud VPS, and a real GitHub delivery has not been run from it. [Claims and their proof](design/claims.md) lists each statement with its test.
 
-The Cloudflare installation additionally supports OAuth/MCP through its Worker OAuth provider. Those endpoints are explicitly unavailable in the standalone server; admin and widget operation do not depend on them.
+The server also serves MCP at `/mcp`, so an agent can read projects, feedback and the funnel through OAuth 2.1, with the same tools and read-only scopes as the Cloudflare installation ([Connect an agent](#connect-an-agent-through-mcp)). It ran with the MCP SDK's own client against the release tarball on a clean Debian 13 LXC behind https ([evidence](design/evidence/2026-11-11-standalone-mcp.md)). It has not run against Claude Code, claude.ai or ChatGPT.
 
 ## Node.js on a server or Proxmox LXC
 
@@ -79,6 +79,52 @@ sudo systemctl daemon-reload && sudo systemctl enable --now feedbackkit
 
 Both checks must pass before you extract anything. The unit expects Node at `/usr/bin/node`; change `ExecStart` if yours is elsewhere. `/diag` shows the release and channel, and the System page tells you when a newer release exists (`FK_UPDATE_CHECK` turns that off). To update, run `/opt/feedbackkit/current/feedbackkit-update --check`, then without `--check`. [Updating](RELEASES.md#updating) lists the commands.
 
+## Connect an agent through MCP
+
+The gateway can serve an MCP server at `/mcp`, so Claude Code, claude.ai, ChatGPT or Hermes can read your projects, feedback items, the widget funnel and the project configs. It is read-only. Clients connect with OAuth 2.1, and you approve each connection on a consent page of your own gateway, where you type the `ADMIN_TOKEN`. Why the token and what that does and does not protect: [SECURITY.md](SECURITY.md#consent-on-the-standalone-server).
+
+**When it is on.** MCP is on when `FK_PUBLIC_URL` is an https origin, and off when it is not. `FK_MCP=off` turns it off anyway, and `FK_MCP=on` turns it on for a test on this machine (`FK_PUBLIC_URL=http://localhost:8787`, `HOST=127.0.0.1`). The start log says which: `MCP on (issuer https://…, resource https://…/mcp)`. Where it is off, every `/mcp`, `/oauth/*` and `/.well-known/oauth-*` path answers 404 and says how to turn it on. The server refuses to start MCP where the token would cross a network in clear text: an http address that is not localhost, or `HOST` open to other addresses with an http address. Your browser must reach the gateway at `FK_PUBLIC_URL` for the consent page. A client that runs on someone else's servers also needs an address that is reachable from the internet, while a client on your own machine, such as Claude Code, needs one that machine can reach.
+
+**Connect.**
+
+1. Serve the gateway over https at `FK_PUBLIC_URL` through your reverse proxy, with `FK_TRUSTED_PROXY_HOPS` set to the number of proxies. Without it every client shares the proxy's address and one failed-login limit.
+2. Add the server in the client. In Claude Code:
+
+   ```sh
+   claude mcp add --transport http feedbackkit https://<your-gateway>/mcp
+   ```
+
+   Other clients take the same address as a remote MCP server or custom connector. The client must support OAuth with dynamic client registration; the gateway does not offer Client ID Metadata Documents.
+3. The client opens a consent page of your gateway in your browser. Check that the address bar shows your gateway and that the page names the app and the host the tokens go to. Type the `ADMIN_TOKEN` and click **Allow**. **Cancel** sends the client away with nothing.
+4. In the client, call `whoami`, then `list_projects`.
+
+An agent gets `feedback:read` (projects, feedback items, search, the funnel), `config:read` (the project config export), or both. A client that asks for neither gets `feedback:read`. Access tokens last one hour and refresh for 30 days. One connection may make 1000 calls an hour. Feedback text comes from the visitors of your sites, and the tool descriptions tell the agent to treat it as data.
+
+**Where it lives.** Clients, grants and tokens are rows in the table `_fk_kv` of `feedbackkit.sqlite`, so backups, `feedbackkit-update` and a rollback carry them. The table is created the first time the server starts and nothing in it blocks an older release. A release that has no MCP ignores it, and the grants work again when you update. Expired rows are removed at start and every hour.
+
+**Differences from the Cloudflare installation.**
+
+| | Cloudflare | Standalone |
+|---|---|---|
+| Who may approve a connection | Whoever your Access application lets in | Whoever types the `ADMIN_TOKEN` |
+| Identity in `whoami` | The Access email | `admin` |
+| Client registration | Dynamic, and Client ID Metadata Documents | Dynamic only |
+| Storage | A KV namespace (`FK_OAUTH_KV_ID`) | A table in the SQLite file |
+| Turned on by | Binding the KV namespace | An https `FK_PUBLIC_URL`, or `FK_MCP=on` |
+| Limits | 1000 calls per grant and hour | The same, plus 30 registrations and 60 consent pages per address and hour |
+
+### End every agent connection
+
+An agent keeps working until its refresh token expires, also after you change `ADMIN_TOKEN`. To end all connections at once, stop the service, remove the grants and tokens, and start it again. The agents have to connect again:
+
+```sh
+sudo systemctl stop feedbackkit
+sudo -u feedbackkit node -e 'const { DatabaseSync } = require("node:sqlite"); const db = new DatabaseSync("/var/lib/feedbackkit/feedbackkit.sqlite"); console.log(db.prepare("DELETE FROM _fk_kv WHERE key LIKE ? OR key LIKE ?").run("grant:%", "token:%").changes, "rows removed"); db.close()'
+sudo systemctl start feedbackkit
+```
+
+There is no list of connections and no way to end one of them from the admin page. That comes with accounts.
+
 ## Configuration
 
 | Variable | Purpose |
@@ -90,6 +136,7 @@ Both checks must pass before you extract anything. The unit expects Node at `/us
 | `LLM_API_KEY`, `GITHUB_PAT_<name>`, `TURNSTILE_SECRET_<name>` | Optional integration secrets; project settings reference the variable names |
 | `FK_UPDATE_CHECK` | Default `on`. On a release tarball install the System page tells you when a newer release exists. The server asks the GitHub Releases API at most once a day (once an hour after a failed check) and sends nothing about your installation. `off` turns the check and the notice off. Any other value stops the start. A checkout install never checks |
 | `FK_UPDATE_API` | The releases API the notice asks. Default: this project's GitHub API. Set it for a mirror or a test |
+| `FK_MCP` | Unset: MCP is on when `FK_PUBLIC_URL` is an https origin. `off` turns it off, `on` turns it on for a test on localhost. Any other value stops the start, and so does `on` with an address that would send the admin token in clear text ([Connect an agent](#connect-an-agent-through-mcp)) |
 | `FK_TRUSTED_PROXY_HOPS` | Default 0. The number of reverse proxies in front of this server, for example 1 for one nginx or Caddy. The visitor address for rate limits and the failed-login limit is then read from `X-Forwarded-For` through that many proxies, counted from the right. With 0 every client behind a proxy shares the proxy's address, and the server logs a warning once |
 
 Never expose a plain HTTP admin endpoint to the internet. Use HTTPS through your own reverse proxy and preserve the external Host/Origin. Incoming Cloudflare Access assertion headers are discarded by the standalone server; login uses the admin token. `FK_TRUSTED_PROXY_HOPS` is a network trust decision, not an automatic detector: set it to the real number of proxies, or a client can pick its own address. The earlier `FK_TRUST_PROXY=true` is refused at start. Request paths that start with two slashes are answered with 400, and the server builds every request URL from `FK_PUBLIC_URL`, never from the `Host` header.
