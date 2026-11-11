@@ -18,7 +18,7 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 | J6 | Sam sends a report with a screenshot | works, unmasked | privacy |
 | J7 | Sam attaches an own image | gap | privacy |
 | J8 | Robin triages the local inbox | partly | none |
-| J9 | Robin follows a GitHub delivery | works on Cloudflare, unverified standalone | none |
+| J9 | Robin follows a GitHub delivery | works on Cloudflare, issue delivery run for real on the standalone server | none |
 | J10 | Taylor signs in | works with a passkey, no OIDC | autonomy |
 | J11 | Robin is locked out and recovers | works, screens clicked in Chrome | autonomy |
 | J12 | Upgrade and roll back | partly | autonomy |
@@ -125,8 +125,8 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Guarantees:** the log never claims the current GitHub status. An uncertain result is shown as uncertain. A retry does not create a duplicate.
 - **Failure paths:** token without Projects permission, a field that does not exist, a delivery that may have succeeded.
 - **Evidence:** exists on the Worker with mocked GitHub. New: one real, authorized test delivery per runtime, with the destination checked by hand.
-- **Today:** the delivery model is on `main`. The standalone server has not delivered to a real GitHub destination.
-- **Verified:** `doc` commits `ec76887`, `403de94`, `f8f6730` on `main`. `test` `test/delivery.test.ts` (11 tests) and `test/admin-delivery.test.ts` (12 tests) pass with mocked GitHub in my run. No real delivery was run on either runtime in this review.
+- **Today:** the delivery model is on `main`. The standalone server delivered real reports to GitHub issues on 2026-11-11: a test report and a neutral report, read back from GitHub, then an invalid token gave `issue_failed` with `tracker error 401`, a retry that failed honestly and, with the right token, a retry that created the issue once. GitHub Project delivery and an uncertain outcome were not run for real.
+- **Verified:** `doc` commits `ec76887`, `403de94`, `f8f6730` on `main`. `test` `test/delivery.test.ts` (11 tests) and `test/admin-delivery.test.ts` (12 tests) pass with mocked GitHub in my run. `live` 2026-11-11: the run in the [evidence](evidence/2026-11-11-github-delivery.md), on the signed release 0.2.0 in a clean LXC against a throw-away private repository. No real delivery was run on the Cloudflare runtime in this review.
 
 ## J10 Taylor signs in
 
@@ -236,6 +236,6 @@ Scope and non-goals are in [scope.md](scope.md). The steps that close the gaps a
 - **Failure paths:** no sign-in (a page that says so, nothing stored), a replayed or foreign handle (400), a wrong redirect URI or resource (an error page or `invalid_target`), a client that needs Client ID Metadata Documents (not offered on a standalone server).
 - **Evidence:** on Cloudflare the existing tests. On a standalone server the MCP SDK client does the whole flow against the bundled app with a stub identity, and a clean Debian 13 LXC ran an earlier version of the change behind https, through a restart, a reboot and a rollback to 0.2.0 ([evidence](evidence/2026-11-11-standalone-mcp.md)).
 - **Today:** works on Cloudflare. On a standalone server the plumbing exists and is off by default, and with `FK_MCP=on` it refuses every consent request, because there is no identity: accounts are not built. No operator can connect an agent to a standalone server yet.
-- **Verified:** `test` `test/server-oauth.test.mjs`, `test/server-mcp-e2e.test.mjs`, `test/consent-identity.test.ts`, `test/durable/mcp-oauth-flow.test.ts` (workerd and Node), `test/durable/kv-contract.test.ts`, and the Worker's `test/mcp-oauth.test.ts`. Not run: Claude Code, claude.ai, ChatGPT or Hermes against a public address.
+- **Verified:** `test` `test/server-oauth.test.mjs`, `test/server-mcp-e2e.test.mjs`, `test/consent-identity.test.ts`, `test/durable/mcp-oauth-flow.test.ts` and `test/durable/mcp-spec-2026-07-28.test.ts` (both on workerd and Node), `test/durable/kv-contract.test.ts`, and the Worker's `test/mcp-oauth.test.ts`. Not run: Claude Code, claude.ai, ChatGPT or Hermes against a public address.
 
 Co-created by Michel with NORA (AI Agent)

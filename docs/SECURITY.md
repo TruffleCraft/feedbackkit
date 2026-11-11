@@ -379,6 +379,46 @@ so none can appear. The host context is included under `hostContext` with
 Search uses `LIKE` with `%`, `_` and `\` escaped and a 200-character limit.
 `get_config` returns secrets by name, never by value.
 
+### Protocol revisions
+
+`/mcp` speaks MCP revision 2026-07-28 and still answers clients of 2025-11-25
+and earlier. The handler is the Agents SDK's `createMcpHandler` over MCP SDK
+2.0.0, which implements the revision; the gateway adds the grant, the scope
+filter and the rate limit. A conformance suite runs the same requests on workerd
+and on Node (`test/durable/mcp-spec-2026-07-28.test.ts`).
+
+- **Per-request metadata.** Every 2026-07-28 request carries
+  `MCP-Protocol-Version` and `Mcp-Method` (and `Mcp-Name` on `tools/call`) as
+  headers, and the version and `clientCapabilities` in `_meta`. The server checks
+  the headers against the body: a mismatch or a missing header is `400` with
+  `-32020`, a missing `_meta` key `400` with `-32602`, an unknown version `400`
+  with `-32022` and the versions it supports, an unknown method `404` with
+  `-32601`. A Base64 `Mcp-Name` is decoded before the comparison.
+- **Results.** Every result has `resultType: "complete"` and the server's name in
+  `_meta`. `server/discover` answers with versions, capabilities and
+  instructions. `tools/list` and `server/discover` carry `ttlMs` (0 today) and
+  `cacheScope: "private"`: the list depends on the grant's scopes, so a shared
+  cache must never serve one grant's list to another. The tool order is fixed
+  (the order written in the test), the same for every call and every grant.
+- **No sessions.** No `Mcp-Session-Id` is minted or echoed, `Last-Event-ID` is
+  ignored, GET, DELETE and OPTIONS answer `405`, a JSON-RPC batch of new-style
+  requests is refused, and a notification gets `202`. An `Origin` that is not
+  localhost is refused with `403`.
+- **Older clients.** `initialize` with 2025-11-25, 2025-06-18 or 2025-03-26,
+  `tools/list` without `_meta`, and `tools/call` work, with the same tools in the
+  same order and the same scope filter.
+
+Known limits, each pinned by a test so that a newer SDK shows up as a failing test:
+`server/discover` and the unsupported-version error list only `2026-07-28`, although
+older clients are served (the Agents SDK serves them beside the SDK handler); the
+tools capability says `listChanged: true` and a `subscriptions/listen` stream is
+acknowledged and held open, but the tool set of a request never changes, so nothing
+follows; the `Origin` refusal uses the legacy-range code `-32000`; and an invalid
+`tools/list` cursor is ignored (the list has one page). The 2026-07-28 revision
+deprecates Dynamic Client Registration in favor of Client ID Metadata Documents. The
+Worker offers both, and a standalone server offers registration only (see above), so
+a client that insists on Client ID Metadata Documents cannot connect there.
+
 ### Untrusted content
 
 Feedback is written by anyone who can open the widget. Every tool that returns
