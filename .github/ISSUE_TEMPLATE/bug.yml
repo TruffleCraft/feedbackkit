@@ -3,6 +3,9 @@ description: "Something is broken or behaves incorrectly"
 title: "[Bug] "
 labels: ["bug"]
 body:
+  - type: markdown
+    attributes:
+      value: "Issues are public. Please do not paste tokens, personal data or screenshots with real content; blur or replace them first."
   - type: textarea
     id: what
     attributes:

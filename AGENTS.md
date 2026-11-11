@@ -25,4 +25,4 @@ Use pnpm from `package.json` and the existing lockfile. Work on an isolated bran
 | Widget build | `pnpm build:widget && pnpm check:bundle`; commit the generated `site/src/widget-ver.ts` |
 | Installation docs | Follow the relevant path on a clean instance; separate tested commands from untested target deployment |
 
-Keep secrets out of source, logs, screenshots, exports and PR text. Use fictional examples. Do not merge UI changes or deploy to someone else's installation without the operator's approval.
+Keep secrets and private data out of source, fixtures, logs, screenshots, exports, commit messages and PR text. Use fictional examples: made-up names, `example.org`, coordinates with at most four decimals, no agent session links. The `secrets` CI job scans every pull request ([Keep private data out](CONTRIBUTING.md#keep-private-data-out)). Do not merge UI changes or deploy to someone else's installation without the operator's approval.

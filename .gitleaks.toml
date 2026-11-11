@@ -1,0 +1,41 @@
+# Secret and private-data scan for this public repository. The `secrets` job in
+# .github/workflows/ci.yml runs it over the full history and the working tree on every pull
+# request, forks included. It uses gitleaks' default rules and adds two rules for data that
+# must not appear in a public repository (see "Keep private data out" in CONTRIBUTING.md).
+#
+# To allow a finding: make the value obviously fake, or show that it is public by design, add its
+# exact value below, and write a comment that says where it is and why it is safe. Never allow a
+# path or a broad pattern: in `gitleaks dir` an allowed path skips the whole file. A test that
+# needs the shape of a real key builds it at run time instead of committing a literal.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "coordinate-pair-precise"
+description = "A latitude and longitude with five or more decimals each, which locates a place to about one metre. Use invented coordinates with at most four decimals."
+regex = '''-?\b(?:[0-8]?\d|90)\.\d{5,8}\b\s*,\s*-?(?:1[0-7]\d|\d{1,2}|180)\.\d{5,8}\b'''
+keywords = ["."]
+
+[[rules]]
+id = "agent-session-link"
+description = "A link to a private agent session. It gives access to a conversation that may hold private data."
+regex = '''claude\.ai/(?:code/session_|chat/)[A-Za-z0-9-]{8,}'''
+keywords = ["claude.ai"]
+
+[[allowlists]]
+description = "Public or made-up values that look like keys"
+regexTarget = "secret"
+regexes = [
+  # .github/workflows/ci.yml: a placeholder KV namespace ID for `wrangler deploy --dry-run`
+  '''^0123456789abcdef0123456789abcdef$''',
+  # docs/design/evidence/2026-11-10-real-release-lxc.md: the fingerprint of the public dev release
+  # key in release-keys/dev.pub. A fingerprint identifies a public key and grants nothing.
+  '''^ogXw2Hs1dsFjNhFXSWNYTm7maKOFI5XAh7Lxq1oCSkU$''',
+  # site/src/index.ts: the public project key of the demo gateway. A public key is meant to sit
+  # in a page's HTML (docs/SECURITY.md).
+  '''^fk_pub_64a564982de5$''',
+  # test/widget.test.ts: the textbook JWT with the payload {"sub":"1234567890"} that the PII
+  # redaction test has to hide
+  '''^eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxMjM0NTY3ODkwIn0\.dozjgNryP4J3jVmNHl0$''',
+]
