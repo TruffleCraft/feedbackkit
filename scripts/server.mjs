@@ -38,7 +38,7 @@ const supported = bundle ? bundle.deliveryCapability : codeDeliveryCapability();
 const recorded = Number(storage.sqlite.prepare("SELECT value FROM meta WHERE key='delivery_capability'").get()?.value ?? 0);
 if (recorded > supported) throw new Error(`This database needs delivery capability ${recorded} and this release provides ${supported}. Start the newer release again, or restore the backup taken before the update.`);
 storage.sqlite.prepare("INSERT INTO meta (key,value) VALUES ('delivery_capability',?) ON CONFLICT(key) DO UPDATE SET value=MAX(CAST(meta.value AS INTEGER),CAST(excluded.value AS INTEGER))").run(String(supported));
-const ownerExists = Boolean(storage.sqlite.prepare("SELECT 1 FROM owner_claim LIMIT 1").get());
+const ownerExists = (() => { try { return Boolean(storage.sqlite.prepare("SELECT 1 FROM owner_claim LIMIT 1").get()); } catch { return false; } })();
 if (!ownerExists) console.warn(process.env.ADMIN_TOKEN ? "No owner exists yet, so ADMIN_TOKEN still opens the admin. Create the first owner with: feedbackkit-admin setup-link. From then on ADMIN_TOKEN grants nothing." : "No owner exists yet. Create the first owner with: feedbackkit-admin setup-link");
 else if (process.env.ADMIN_TOKEN) console.warn("ADMIN_TOKEN is set but ignored: this instance has an owner. Remove it from the environment file.");
 const files = new Map([
