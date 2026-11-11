@@ -97,7 +97,7 @@ export async function createInvitedAccount(env: Env, input: { name: string; role
       .bind(id, input.name, nameKey(input.name), input.role, now, input.createdBy)
       .run();
   } catch (e) {
-    if (/UNIQUE/i.test(String((e as Error)?.message))) throw new AuthError(409, "FK_ACCOUNT_EXISTS", "An account with this name exists. Choose another name.");
+    if (/UNIQUE/i.test(String((e as Error)?.message))) throw new AuthError(409, "FK_ACCOUNT_EXISTS", "A user with this name exists. Choose another name.");
     throw e;
   }
   return { id, name: input.name, role: input.role, state: "invited", createdAt: now, lastSeenAt: null };
@@ -114,7 +114,7 @@ export async function changeRole(env: Env, id: string, role: Role): Promise<Acco
       ? await env.DB.prepare(`UPDATE accounts SET role = 'member' WHERE id = ?1 AND role = 'owner' AND state != 'removed' AND (state != 'active' OR ${OTHER_ACTIVE_OWNER})`).bind(id).run()
       : await env.DB.prepare("UPDATE accounts SET role = 'owner' WHERE id = ?1 AND role = 'member' AND state != 'removed'").bind(id).run();
   const account = await getAccount(env, id);
-  if (!account || account.state === "removed") throw new AuthError(404, "FK_ACCOUNT_NOT_FOUND", "No such account.");
+  if (!account || account.state === "removed") throw new AuthError(404, "FK_ACCOUNT_NOT_FOUND", "No such user.");
   if (!res.meta?.changes) {
     if (account.role === role) return account;
     throw new AuthError(409, "FK_LAST_OWNER", "This is the last owner. Make someone else an owner first.");
@@ -135,6 +135,6 @@ export async function removeAccount(env: Env, id: string, now = Date.now()): Pro
   ]);
   if (results[0]?.meta?.changes) return;
   const account = await getAccount(env, id);
-  if (!account || account.state === "removed") throw new AuthError(404, "FK_ACCOUNT_NOT_FOUND", "No such account.");
+  if (!account || account.state === "removed") throw new AuthError(404, "FK_ACCOUNT_NOT_FOUND", "No such user.");
   throw new AuthError(409, "FK_LAST_OWNER", "This is the last owner. Make someone else an owner first.");
 }

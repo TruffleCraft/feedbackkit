@@ -137,7 +137,8 @@ test("two browsers race for the first owner: one wins, the other gets 409 or 410
     const loser = ra.status === 201 ? b : a;
     expect((await api(winner.page, "GET", "/api/admin/me")).status).toBe(200);
     expect((await api(loser.page, "GET", "/api/admin/me")).status).toBe(401);
-    expect(server.host("accounts").split("\n")).toHaveLength(1);
+    expect(server.host("users").split("\n")).toHaveLength(1);
+    expect(server.host("accounts")).toBe(server.host("users")); // the old name of the command
     await a.context.close();
     await b.context.close();
   } finally {

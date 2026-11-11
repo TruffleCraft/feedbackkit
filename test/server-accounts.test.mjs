@@ -140,21 +140,26 @@ test('feedbackkit-admin: recovery-link needs an owner, picks the only one, asks 
     seedOwner(dir, 'Sam');
     const several = admin(dir, ['recovery-link']);
     assert.equal(several.code, 1);
-    assert.match(several.err, /Name the account with --account\. Owners: Robin, Sam/);
-    assert.equal(admin(dir, ['recovery-link', '--account', 'sam']).code, 0);
-    assert.match(admin(dir, ['recovery-link', '--account', 'Nobody']).err, /No active account named "Nobody"/);
-    const list = admin(dir, ['accounts']);
+    assert.match(several.err, /Name the user with --user\. Owners: Robin, Sam/);
+    assert.equal(admin(dir, ['recovery-link', '--user', 'sam']).code, 0);
+    assert.equal(admin(dir, ['recovery-link', '--account', 'sam']).code, 0, '--account is the old name of --user');
+    assert.match(admin(dir, ['recovery-link', '--user', 'Nobody']).err, /No active user named "Nobody"/);
+    assert.match(admin(dir, ['recovery-link', '--account', 'Nobody']).err, /No active user named "Nobody"/);
+    const list = admin(dir, ['users']);
+    const oldName = admin(dir, ['accounts']);
+    assert.equal(oldName.code, 0, oldName.err);
+    assert.equal(oldName.out, list.out, '`accounts` is the old name of `users` and prints the same');
     assert.match(list.out, /Robin\towner\tactive\t0 passkeys\topen link until /);
     assert.match(list.out, /Sam\towner\tactive/);
     assert.ok(!/fk_link_/.test(list.out), 'the list shows no secret');
     assert.equal(admin(dir, ['bogus']).code, 1);
     // Recovery revokes the account's API tokens unless --keep-tokens says otherwise, and says which it does.
     const flag = () => { const s = openStorage(join(dir, 'feedbackkit.sqlite'), 'migrations'); try { return s.sqlite.prepare("SELECT keep_tokens FROM setup_links WHERE purpose = 'recovery' ORDER BY created_at DESC LIMIT 1").get().keep_tokens; } finally { s.close(); } };
-    const revoking = admin(dir, ['recovery-link', '--account', 'Robin']);
-    assert.match(revoking.err, /revokes the API tokens of that account/);
+    const revoking = admin(dir, ['recovery-link', '--user', 'Robin']);
+    assert.match(revoking.err, /revokes the API tokens of that user/);
     assert.equal(flag(), 0);
-    const keeping = admin(dir, ['recovery-link', '--account', 'Robin', '--keep-tokens']);
-    assert.match(keeping.err, /keeps the API tokens of that account/);
+    const keeping = admin(dir, ['recovery-link', '--user', 'Robin', '--keep-tokens']);
+    assert.match(keeping.err, /keeps the API tokens of that user/);
     assert.equal(flag(), 1);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -197,7 +202,7 @@ test('the release carries feedbackkit-admin, and it works from the unpacked tarb
       assert.match(link.stdout.trim(), new RegExp(`^http://127\\.0\\.0\\.1:${port}/admin/setup#fk_link_`));
       // Through a symlink, as an operator installs it into /usr/local/bin.
       execFileSync('ln', ['-s', join(dir, 'feedbackkit-admin'), join(dest, 'fk-admin')]);
-      assert.equal(spawnSync(join(dest, 'fk-admin'), ['accounts'], { env, encoding: 'utf8' }).status, 0);
+      assert.equal(spawnSync(join(dest, 'fk-admin'), ['users'], { env, encoding: 'utf8' }).status, 0);
     } finally { server.kill('SIGTERM'); await once(server, 'exit'); }
   } finally { for (const d of [out, dest, data]) rmSync(d, { recursive: true, force: true }); }
 });

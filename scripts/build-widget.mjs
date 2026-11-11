@@ -76,7 +76,7 @@ if (existsSync(entry)) {
 }
 
 // Account screens (Gate 2): their own module, loaded only by /admin/sign-in, /admin/setup,
-// /admin/account, /admin/accounts and /admin/tokens, so the admin module keeps its budget.
+// /admin/account, /admin/users and /admin/tokens, so the admin module keeps its budget.
 {
   const { build } = await import("esbuild");
   const result = await build({

@@ -4,8 +4,10 @@
 // them, so they prove control of the installation without a static secret.
 //
 //   feedbackkit-admin setup-link [--minutes N]                  link for the first owner
-//   feedbackkit-admin recovery-link [--account NAME] [--minutes N]
-//   feedbackkit-admin accounts                                  who exists (no secrets)
+//   feedbackkit-admin recovery-link [--user NAME] [--minutes N]
+//   feedbackkit-admin users                                     who can sign in (no secrets)
+//
+// `accounts` is the old name of `users` and `--account` the old name of `--user`; both keep working until November 2027.
 //
 // The link goes to stdout and nothing else does, so a script can capture it.
 // Everything else goes to stderr. The link is never written to a log or a file.
@@ -17,10 +19,10 @@ import { hostAccounts, hostRecoveryLink, hostSetupLink } from "../dist-server/au
 const USAGE = `Usage: feedbackkit-admin <command>
 
   setup-link [--minutes N]                    print a one-time link for the first owner
-  recovery-link [--account NAME] [--minutes N] [--keep-tokens]
-                                              print a one-time link that replaces the passkeys of an account
+  recovery-link [--user NAME] [--minutes N] [--keep-tokens]
+                                              print a one-time link that replaces the passkeys of a user
                                               and revokes the API tokens it created (--keep-tokens keeps them)
-  accounts                                    list the accounts
+  users                                       list the users (accounts still works, until November 2027)
 
 Run it with sudo (for example: sudo feedbackkit-admin setup-link). It reads /etc/feedbackkit.env as root and then
 continues as the user that owns the data directory, so the files it touches stay readable for the service.
@@ -44,7 +46,7 @@ function options(args) {
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--minutes") out.minutes = Number(args[++i]);
-    else if (a === "--account") out.account = args[++i];
+    else if (a === "--user" || a === "--account") out.account = args[++i];
     else if (a === "--keep-tokens") out.keepTokens = true;
     else if (a === "-h" || a === "--help") out.help = true;
     else if (a.startsWith("-")) throw new Error(`Unknown option ${a}.`);
@@ -56,9 +58,9 @@ function options(args) {
 export async function runAdmin(args, { root, processEnv = process.env, stdout = (s) => console.log(s), stderr = (s) => console.error(s) }) {
   let opts;
   try { opts = options(args); } catch (e) { stderr(e.message); stderr(USAGE); return 1; }
-  const command = opts._[0];
+  const command = opts._[0] === "accounts" ? "users" : opts._[0]; // `accounts` is the old name of `users`
   if (opts.help || !command) { stderr(USAGE); return command || opts.help ? 0 : 1; }
-  if (!["setup-link", "recovery-link", "accounts"].includes(command)) { stderr(`Unknown command ${command}.`); stderr(USAGE); return 1; }
+  if (!["setup-link", "recovery-link", "users"].includes(command)) { stderr(`Unknown command ${command}.`); stderr(USAGE); return 1; }
 
   // The service reads its environment from a file under systemd; this command reads the same file.
   const envFile = processEnv.FK_ENV_FILE || "/etc/feedbackkit.env";
@@ -93,9 +95,9 @@ export async function runAdmin(args, { root, processEnv = process.env, stdout = 
   const store = openStorage(database, join(root, "migrations"));
   const env = { DB: store.DB };
   try {
-    if (command === "accounts") {
+    if (command === "users") {
       const rows = await hostAccounts(env);
-      if (!rows.length) stderr("No accounts yet. Run setup-link to create the first owner.");
+      if (!rows.length) stderr("No users yet. Run setup-link to create the first owner.");
       for (const a of rows) stdout(`${a.name}\t${a.role}\t${a.state}\t${a.passkeys} passkey${a.passkeys === 1 ? "" : "s"}${a.linkExpiresAt ? `\topen link until ${new Date(a.linkExpiresAt).toISOString()}` : ""}`);
       return 0;
     }
@@ -105,7 +107,7 @@ export async function runAdmin(args, { root, processEnv = process.env, stdout = 
       : await hostRecoveryLink(env, { origin: origin.origin, account: opts.account, minutes, keepTokens: opts.keepTokens });
     stderr(command === "setup-link"
       ? "Open this link in the browser you will sign in with. It creates the first owner, works once and expires at " + new Date(result.expiresAt).toISOString() + "."
-      : `Open this link to set up a new passkey for ${result.account}. It replaces the passkeys, signs out every session and ${opts.keepTokens ? "keeps" : "revokes"} the API tokens of that account, works once and expires at ${new Date(result.expiresAt).toISOString()}.`);
+      : `Open this link to set up a new passkey for ${result.account}. It replaces the passkeys, signs out every session and ${opts.keepTokens ? "keeps" : "revokes"} the API tokens of that user, works once and expires at ${new Date(result.expiresAt).toISOString()}.`);
     stdout(result.url);
     return 0;
   } catch (e) {

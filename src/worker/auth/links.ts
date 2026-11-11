@@ -47,7 +47,7 @@ export async function issueLink(env: Env, input: { purpose: LinkPurpose; account
     env.DB.prepare("DELETE FROM setup_links WHERE account_id = ?1 AND used_at IS NULL AND EXISTS (SELECT 1 FROM accounts WHERE id = ?1 AND state = ?2)").bind(input.accountId, state),
     env.DB.prepare("INSERT INTO setup_links (id, purpose, account_id, created_at, expires_at, created_by, keep_tokens) SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?8 WHERE EXISTS (SELECT 1 FROM accounts WHERE id = ?3 AND state = ?7)").bind(id, input.purpose, input.accountId, now, expiresAt, input.createdBy, state, input.keepTokens && input.purpose === "recovery" ? 1 : 0),
   ]);
-  if (!results[1]?.meta?.changes) throw new AuthError(409, "FK_ACCOUNT_STATE", input.purpose === "invite" ? "This account has already been set up." : "This account has not been set up yet. Send it an invitation instead.");
+  if (!results[1]?.meta?.changes) throw new AuthError(409, "FK_ACCOUNT_STATE", input.purpose === "invite" ? "This user has already been set up." : "This user has not been set up yet. Send an invitation instead.");
   return { token, expiresAt, purpose: input.purpose };
 }
 

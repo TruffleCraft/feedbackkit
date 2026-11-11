@@ -1,4 +1,4 @@
-// The account screens (Gate 2): sign-in, setup, your account, accounts and API
+// The account screens (Gate 2): sign-in, setup, your account, users and API
 // tokens. One module for the five static shells in src/worker/admin/auth-pages.ts,
 // loaded by them only, so the admin module keeps its budget (ADR-014). It calls
 // the account API (src/worker/auth/routes.ts) and the browser's own WebAuthn
@@ -350,7 +350,7 @@ async function areaPage(view: string) {
     if (x.status === 401) location.replace("/admin/sign-in#ended");
     return x;
   };
-  const loaders: Record<string, (g: typeof guard) => Promise<void>> = { account: accountPage, accounts: accountsPage, tokens: tokensPage };
+  const loaders: Record<string, (g: typeof guard) => Promise<void>> = { account: accountPage, users: usersPage, tokens: tokensPage };
   reload = () => loaders[view]!(guard);
   await reload();
 }
@@ -462,20 +462,20 @@ function wireAccountDialogs() {
   });
 }
 
-// Accounts
+// Users (the people who can sign in; the API still calls them accounts)
 let showRemoved = false;
-async function accountsPage(guard: (r: Reply) => Reply) {
+async function usersPage(guard: (r: Reply) => Reply) {
   const r = guard(await call("GET", `/api/admin/accounts${showRemoved ? "?removed=1" : ""}`));
   if (r.status === 403) {
     show("accts-body", false);
     show("inv-open", false);
     return show("accts-denied");
   }
-  if (r.status !== 200) return notice(`Couldn't load accounts. ${errText(r)} Reload the page to try again.`);
+  if (r.status !== 200) return notice(`Couldn't load users. ${errText(r)} Reload the page to try again.`);
   const all = r.json["accounts"] as J[];
   const live = all.filter((a) => a["state"] !== "removed");
   const owners = live.filter((a) => a["role"] === "owner" && a["state"] === "active");
-  setText("accts-sub", `${plural(live.length, "account")} · ${plural(live.filter((a) => a["role"] === "owner").length, "owner")}`);
+  setText("accts-sub", `${plural(live.length, "user")} · ${plural(live.filter((a) => a["role"] === "owner").length, "owner")}`);
   $("acct-list").replaceChildren(
     ...all.map((a) => {
       const you = a["id"] === me.id;
@@ -505,7 +505,7 @@ async function accountsPage(guard: (r: Reply) => Reply) {
           { class: "am" },
           el("div", { class: "top-line" }, el("b", { class: "name" }, a["name"]), you ? el("span", { class: "muted sm" }, "(you)") : null, tag(a["role"] === "owner" ? "Owner" : "Member"), badge(removed ? "stored" : invited ? "incomplete" : "ok", stateLabel)),
           el("div", { class: "meta" }, meta),
-          lastOwner ? el("p", { class: "help mt4", id: helpId }, `${a["name"]} is the only owner, so this account cannot be demoted or removed. Make another account an owner first.`) : null,
+          lastOwner ? el("p", { class: "help mt4", id: helpId }, `${a["name"]} is the only owner, so this user cannot be demoted or removed. Make another user an owner first.`) : null,
         ),
         el("div", { class: "acts" }, ...acts),
       );
@@ -525,7 +525,7 @@ function roleDialog(a: J) {
   const toMember = a["role"] === "owner";
   names("mo-who", a["name"]);
   setText("mo-role", toMember ? "a member" : "an owner");
-  setText("mo-text", toMember ? `${a["name"]} can no longer manage accounts or API tokens. ${a["name"]} stays signed in.` : `${a["name"]} can manage accounts and API tokens, and remove other owners.`);
+  setText("mo-text", toMember ? `${a["name"]} can no longer manage users or API tokens. ${a["name"]} stays signed in.` : `${a["name"]} can manage users and API tokens, and remove other owners.`);
   setText("mo-go", toMember ? "Make member" : "Make owner");
   $("mo-go").onclick = () => void commit("mk-role", "mo-msg", () => call("PATCH", `/api/admin/accounts/${a["id"]}`, { role: toMember ? "member" : "owner" }));
   open("mk-role");
@@ -535,7 +535,7 @@ function removeDialog(a: J) {
   $("ra-go").onclick = () => void commit("rm-acct", "ra-msg", () => call("DELETE", `/api/admin/accounts/${a["id"]}`));
   open("rm-acct");
 }
-function wireAccountsDialogs() {
+function wireUsersDialogs() {
   $("show-removed").addEventListener("click", async (e) => {
     showRemoved = !showRemoved;
     (e.currentTarget as HTMLElement).setAttribute("aria-pressed", String(showRemoved));
@@ -574,7 +574,7 @@ async function tokensPage(guard: (r: Reply) => Reply) {
   $("tok-list").replaceChildren(
     ...tokens.map((t) => {
       const active = t["state"] === "active";
-      const meta = active ? `Created by ${t["createdBy"] ?? "a removed account"} ${day(t["createdAt"])} · Expires ${day(t["expiresAt"])} · Last used ${ago(t["lastUsedAt"])}` : t["state"] === "revoked" ? `Revoked ${t["revokedAt"] ? day(t["revokedAt"]) : ""}`.trim() : `Expired ${day(t["expiresAt"])}`;
+      const meta = active ? `Created by ${t["createdBy"] ?? "a removed user"} ${day(t["createdAt"])} · Expires ${day(t["expiresAt"])} · Last used ${ago(t["lastUsedAt"])}` : t["state"] === "revoked" ? `Revoked ${t["revokedAt"] ? day(t["revokedAt"]) : ""}`.trim() : `Expired ${day(t["expiresAt"])}`;
       return el(
         "li",
         { class: `arow${active ? "" : " gone"}` },
@@ -637,7 +637,7 @@ function boot() {
   else if (view === "setup") void setupPage();
   else {
     if (view === "account") wireAccountDialogs();
-    if (view === "accounts") wireAccountsDialogs();
+    if (view === "users") wireUsersDialogs();
     if (view === "tokens") wireTokenDialogs();
     void areaPage(view);
   }

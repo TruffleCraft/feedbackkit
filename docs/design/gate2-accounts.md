@@ -105,19 +105,20 @@ Michel approved the mock ([mockups/accounts.md](mockups/accounts.md)) with varia
 
 | Piece | Where |
 |---|---|
-| Five static shells: `/admin/sign-in`, `/admin/setup`, `/admin/account`, `/admin/accounts`, `/admin/tokens` | `src/worker/admin/auth-pages.ts`, registered in `src/worker/app.ts` |
+| Five static shells: `/admin/sign-in`, `/admin/setup`, `/admin/account`, `/admin/users`, `/admin/tokens` (`/admin/accounts` redirects to `/admin/users`) | `src/worker/admin/auth-pages.ts`, registered in `src/worker/app.ts` |
 | The module that runs them | `src/auth/main.ts`, built to `dist/auth.js` (6.4 kB gzipped, budget 9 kB) |
 | Session support in the existing admin | `src/admin/main.ts`: the name in the header links to `/admin/account`, writes carry `X-CSRF-Token`, **Sign out** posts to `/api/auth/signout`, and a missing session goes to `/admin/sign-in` |
 
 The shells follow ADR-014: public, no data, the nonce CSP of the other admin pages. The account module is a separate file so that `dist/admin.js` keeps its budget; the admin still grew by 0.3 kB gzipped for the session support, so its budget moved from 15.25 to 15.5 kB (ADR-014 amendment, 2026-11-11). The API it calls is the one the backend pull request built; the screens added only `GET /api/admin/accounts?removed=1` (for "Show removed"), `revokedAt` in the token list, and `ownerExists` in the anonymous `GET /api/admin/me` answer (so the sign-in page can tell "no owner yet" from "sign in").
 
-Michel's three answers to the open questions (2026-11-11) are in the screens and the tests: a member may use the whole admin except accounts and tokens until Step 4; a token limited to some projects can neither create projects nor open System; recovery revokes the API tokens by default. The last is built as "the tokens that account created", with `--keep-tokens` to opt out, so that recovering one person does not break the automation of the others.
+Michel's three answers to the open questions (2026-11-11) are in the screens and the tests: a member may use the whole admin except users and tokens until Step 4; a token limited to some projects can neither create projects nor open System; recovery revokes the API tokens by default. The last is built as "the tokens that user created", with `--keep-tokens` to opt out, so that recovering one person does not break the automation of the others.
 
 Where the screens differ from the approved mock, and why:
 
+- **The list of people is called Users, not Accounts** (review of 2026-11-11, decided by the owner): the screen, the page `/admin/users`, the button **Invite user**, the command `feedbackkit-admin users` and the flag `--user`. The old address `/admin/accounts` redirects, and `accounts` and `--account` keep working until November 2027. The API (`/api/admin/accounts`), the tables, the error codes and the code names keep "account": v0.3.0 is released, and renaming them breaks clients for no gain. **Your account** stays, because it is the one identity of the person who is signed in.
 - **The legacy token form stays on the sign-in page while no owner exists.** Without it an operator who opens `/admin` before running the host command would find no way in at all. It keeps the token in `sessionStorage` of the tab, as before, and disappears when the first owner exists.
 - **The access choice of a new token starts on Read.** The mock showed Write selected to demonstrate the dialog. Starting on the weaker access costs a click and is the safer default.
-- **"Make owner" and "Make member" confirm in a dialog that says what changes** (an owner can manage accounts and tokens and remove other owners; a member who was an owner stays signed in). The mock only showed the buttons.
+- **"Make owner" and "Make member" confirm in a dialog that says what changes** (an owner can manage users and tokens and remove other owners; a member who was an owner stays signed in). The mock only showed the buttons.
 - **No passkey found and a cancelled prompt are told apart by time.** A browser with nothing to offer answers within a few milliseconds, one that showed a prompt that was closed takes longer. The page treats a refusal within 800 ms as "no passkey for this site on this device". WebAuthn does not expose the difference, so this is a heuristic, and the wording of both messages stays true if it guesses wrong.
 - **Pasting a new setup link into the tab that already shows the setup page starts over** with the new link (the browser only changes the fragment otherwise).
 - **The empty state of the projects page shows `$FEEDBACKKIT_TOKEN`**, not `$ADMIN_TOKEN`: after the first owner `ADMIN_TOKEN` grants nothing.

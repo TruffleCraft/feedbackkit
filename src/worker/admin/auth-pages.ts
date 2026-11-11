@@ -3,7 +3,7 @@ import type { Env } from "../env.js";
 import { CSS, FAVICON, SPRITE, adminHeaders, icon } from "./pages.js";
 
 // The account screens (Gate 2): /admin/sign-in, /admin/setup, /admin/account,
-// /admin/accounts and /admin/tokens. Static shells like the other admin pages
+// /admin/users and /admin/tokens. Static shells like the other admin pages
 // (ADR-014): no data, nothing from the URL in the markup, the same nonce CSP.
 // dist/auth.js reads /api/auth/state and /api/admin/me, shows the right state
 // of the page and fills the lists with textContent. The wording is the approved
@@ -11,7 +11,7 @@ import { CSS, FAVICON, SPRITE, adminHeaders, icon } from "./pages.js";
 // the Settings layout. No inline style attributes: the CSP allows styles only
 // with the nonce.
 
-export type AuthView = "sign-in" | "setup" | "account" | "accounts" | "tokens";
+export type AuthView = "sign-in" | "setup" | "account" | "users" | "tokens";
 
 // The rules the account pages add to the admin stylesheet (mock: shared, C and the
 // folded recovery of sign-in A). They live in these shells only; the other admin
@@ -88,7 +88,7 @@ const SIGN_IN = `<section class="login" id="v-signin" hidden>
   <div class="login-card" id="preowner" hidden>
     ${logo}
     <h1>Set up the first owner</h1>
-    <p>This gateway has no accounts yet. Run this on the server, then open the link it prints:</p>${CMD_SETUP}
+    <p>This gateway has no users yet. Run this on the server, then open the link it prints:</p>${CMD_SETUP}
     ${CLOUDFLARE_SETUP}
   </div>
   <form class="login-card" id="legacy-form" novalidate hidden>
@@ -113,7 +113,7 @@ const SETUP = `<section class="login" id="v-setup">
     <div class="field" id="st-name-field" hidden>
       <label for="st-name">Your name</label>
       <input class="in" id="st-name" name="name" autocomplete="name" maxlength="64">
-      <p class="help">Other accounts see this name. No email address is needed.</p>
+      <p class="help">Other users see this name. No email address is needed.</p>
     </div>
     <button class="b violet full" type="submit" id="st-btn">Create passkey</button>
     <p class="help err" id="st-msg" role="alert" hidden></p>
@@ -149,7 +149,7 @@ const SETUP = `<section class="login" id="v-setup">
   </div>
 </section>`;
 
-const AREA_NAV = `<nav class="settings-nav" id="area-nav" aria-label="Account area"><a class="b" href="/admin/account" data-nav="account">Your account</a><a class="b" href="/admin/accounts" data-nav="accounts">Accounts</a><a class="b" href="/admin/tokens" data-nav="tokens">API tokens</a></nav>`;
+const AREA_NAV = `<nav class="settings-nav" id="area-nav" aria-label="Account area"><a class="b" href="/admin/account" data-nav="account">Your account</a><a class="b" href="/admin/users" data-nav="users">Users</a><a class="b" href="/admin/tokens" data-nav="tokens">API tokens</a></nav>`;
 
 const dlg = (id: string, labelled: string, inner: string) => `<dialog id="${id}" aria-labelledby="${labelled}">${inner}</dialog>`;
 const closeBtn = (text: string, primary = false, autofocus = false) => `<button class="b ${primary ? "violet" : "ghost"}" type="button" data-close${autofocus ? " autofocus" : ""}>${text}</button>`;
@@ -170,19 +170,19 @@ const ACCOUNT = `<div class="pagehead"><div><h1>Your account</h1><p id="acct-sub
 ${dlg("add-pk", "add-pk-h", `<form class="stack" id="add-pk-form" novalidate><h2 id="add-pk-h">Add a passkey</h2><div class="field"><label for="pk-name">Name</label><input class="in" id="pk-name" autocomplete="off" maxlength="64"><p class="help">Helps you tell passkeys apart, for example Laptop or Security key.</p></div><p class="help err" id="add-pk-msg" role="alert" hidden></p><p class="help" id="add-pk-wait" role="status" hidden>Your device asks you to confirm.</p><div class="dlg-actions"><button class="b violet" type="submit" id="add-pk-btn">Create passkey</button>${closeBtn("Cancel")}</div></form>`)}
 ${dlg("rm-pk", "rm-pk-h", `<div class="stack"><h2 id="rm-pk-h">Remove <span id="rm-pk-name"></span>?</h2><p>You can no longer sign in with this passkey. Delete it from your password manager or device as well.</p><p class="help err" id="rm-pk-msg" role="alert" hidden></p><div class="dlg-actions"><button class="b violet" type="button" id="rm-pk-go">Remove passkey</button>${closeBtn("Cancel", false, true)}</div></div>`)}`;
 
-const ACCOUNTS = `<div class="pagehead"><div><h1>Accounts</h1><p id="accts-sub"></p></div><button class="b violet" type="button" data-dialog="inv" id="inv-open">Invite someone</button></div>
+const USERS = `<div class="pagehead"><div><h1>Users</h1><p id="accts-sub"></p></div><button class="b violet" type="button" data-dialog="inv" id="inv-open">Invite user</button></div>
 <div class="stack" id="accts-body">
   <div class="chips" role="group" aria-label="Filter"><button class="chip" type="button" id="show-removed" aria-pressed="false">Show removed</button></div>
   <ul class="rows" id="acct-list"></ul>
 </div>
-<div class="c" id="accts-denied" hidden><h3>Only owners can manage Accounts</h3><p class="help mt4">You do not have access to this page. Ask an owner if you need something changed.</p></div>
+<div class="c" id="accts-denied" hidden><h3>Only owners can manage Users</h3><p class="help mt4">You do not have access to this page. Ask an owner if you need something changed.</p></div>
 ${dlg(
   "inv",
   "inv-h",
-  `<div data-pane="form"><form class="stack" id="inv-form" novalidate><h2 id="inv-h">Invite someone</h2><p class="help">You send the invitation link yourself. The server sends nothing.</p>
-<div class="field"><label for="inv-name">Name</label><input class="in" id="inv-name" autocomplete="off" maxlength="64"><p class="help">Other accounts see this name. No email address is needed.</p></div>
-<fieldset><legend>Role</legend><div class="opts"><label class="opt"><input type="radio" name="role" value="member" checked><b>Member</b><span class="help">Can use the whole admin except accounts and API tokens. Project access arrives in a later release.</span></label>
-<label class="opt"><input type="radio" name="role" value="owner"><b>Owner</b><span class="help">Can also manage accounts and API tokens, and remove other owners.</span></label></div></fieldset>
+  `<div data-pane="form"><form class="stack" id="inv-form" novalidate><h2 id="inv-h">Invite user</h2><p class="help">You send the invitation link yourself. The server sends nothing.</p>
+<div class="field"><label for="inv-name">Name</label><input class="in" id="inv-name" autocomplete="off" maxlength="64"><p class="help">Other users see this name. No email address is needed.</p></div>
+<fieldset><legend>Role</legend><div class="opts"><label class="opt"><input type="radio" name="role" value="member" checked><b>Member</b><span class="help">Can use the whole admin except users and API tokens. Project access arrives in a later release.</span></label>
+<label class="opt"><input type="radio" name="role" value="owner"><b>Owner</b><span class="help">Can also manage users and API tokens, and remove other owners.</span></label></div></fieldset>
 <p class="help err" id="inv-msg" role="alert" hidden></p>
 <div class="dlg-actions"><button class="b violet" type="submit" id="inv-go">Create invitation</button>${closeBtn("Cancel")}</div></form></div>
 <div data-pane="done" hidden><div class="stack"><h2 id="inv-h2">Invitation for <span class="inv-who"></span></h2><p>Send this link to <span class="inv-who"></span>. It works once and expires on <span class="inv-exp"></span>.</p>
@@ -196,13 +196,13 @@ ${dlg("mk-role", "mo-h", `<div class="stack"><h2 id="mo-h">Make <span class="mo-
 
 const TOKEN_FIELDS = `<div class="field"><label for="tk-name">Name</label><input class="in" id="tk-name" autocomplete="off" maxlength="64"><p class="help">What will use it, for example Setup agent.</p></div>
 <fieldset><legend>Access</legend><div class="opts"><label class="opt"><input type="radio" name="tk-acc" value="read" checked><b>Read</b><span class="help">Read reports, projects and settings.</span></label>
-<label class="opt"><input type="radio" name="tk-acc" value="write"><b>Write</b><span class="help">Everything Read can do, plus change settings and triage, retry or delete reports. Never accounts or tokens.</span></label></div></fieldset>
+<label class="opt"><input type="radio" name="tk-acc" value="write"><b>Write</b><span class="help">Everything Read can do, plus change settings and triage, retry or delete reports. Never users or tokens.</span></label></div></fieldset>
 <fieldset><legend>Projects</legend><div class="opts"><label class="opt"><input type="radio" name="tk-pr" value="all" checked><b>All projects</b></label>
 <label class="opt"><input type="radio" name="tk-pr" value="some"><b>Only these projects</b><span class="help">A token limited to some projects cannot create projects or open System.</span></label></div>
 <div class="checks" id="tk-projects" hidden></div></fieldset>
 <div class="field"><label for="tk-exp">Expires</label><select class="in" id="tk-exp"><option value="30">In 30 days</option><option value="90" selected>In 90 days</option><option value="365">In 365 days</option></select><p class="help">Create a new token before this one expires. An expired token is refused.</p></div>`;
 
-const TOKENS = `<div class="pagehead"><div><h1>API tokens</h1><p>For scripts and agents. A token cannot manage accounts or tokens.</p></div><button class="b violet" type="button" data-dialog="tok" id="tok-open">Create token</button></div>
+const TOKENS = `<div class="pagehead"><div><h1>API tokens</h1><p>For scripts and agents. A token cannot manage users or tokens.</p></div><button class="b violet" type="button" data-dialog="tok" id="tok-open">Create token</button></div>
 <div class="stack" id="tok-body">
   <div class="empty-msg" id="tok-empty" hidden><b>No API tokens yet</b><p class="help mt4">Create one when a script or an agent needs access. They use a token instead of the old admin token.</p></div>
   <ul class="rows" id="tok-list"></ul>
@@ -220,10 +220,10 @@ ${dlg("rev", "rev-h", `<div class="stack"><h2 id="rev-h">Revoke <span id="rev-na
 
 const area = (inner: string) => `<div class="settings-layout" id="area" hidden>${AREA_NAV}<div class="settings-content">${inner}</div></div>`;
 
-const TITLES: Record<AuthView, string> = { "sign-in": "Sign in", setup: "Set up", account: "Your account", accounts: "Accounts", tokens: "API tokens" };
+const TITLES: Record<AuthView, string> = { "sign-in": "Sign in", setup: "Set up", account: "Your account", users: "Users", tokens: "API tokens" };
 
 export function renderAuthPage(view: AuthView, nonce: string): string {
-  const body = view === "sign-in" ? SIGN_IN : view === "setup" ? SETUP : area(view === "account" ? ACCOUNT : view === "accounts" ? ACCOUNTS : TOKENS);
+  const body = view === "sign-in" ? SIGN_IN : view === "setup" ? SETUP : area(view === "account" ? ACCOUNT : view === "users" ? USERS : TOKENS);
   return `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -245,12 +245,14 @@ ${body}
 
 type AppT = Hono<{ Bindings: Env }>;
 
-/** GET /admin/sign-in, /admin/setup, /admin/account, /admin/accounts and /admin/tokens: static shells, no D1 access. */
+/** GET /admin/sign-in, /admin/setup, /admin/account, /admin/users and /admin/tokens: static shells, no D1 access. /admin/accounts redirects to /admin/users. */
 export function registerAuthPages(app: AppT): void {
   const serve = (view: AuthView) => (c: import("hono").Context<{ Bindings: Env }>) => {
     const nonce = crypto.randomUUID().replace(/-/g, "");
     for (const [k, v] of Object.entries(adminHeaders(nonce))) c.header(k, v);
     return c.html(renderAuthPage(view, nonce));
   };
-  for (const [path, view] of [["/admin/sign-in", "sign-in"], ["/admin/setup", "setup"], ["/admin/account", "account"], ["/admin/accounts", "accounts"], ["/admin/tokens", "tokens"]] as const) app.get(path, serve(view));
+  for (const [path, view] of [["/admin/sign-in", "sign-in"], ["/admin/setup", "setup"], ["/admin/account", "account"], ["/admin/users", "users"], ["/admin/tokens", "tokens"]] as const) app.get(path, serve(view));
+  // The page was called Accounts until 2026-11-11. Links in docs, bookmarks and an Access application still point at it.
+  app.get("/admin/accounts", (c) => c.redirect("/admin/users", 301));
 }
