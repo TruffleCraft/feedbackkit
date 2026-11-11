@@ -44,7 +44,7 @@ describe("account screen shells", () => {
     expect(res.headers.get("Cache-Control")).toBe("no-store");
 
     const html = await res.text();
-    expect(html).toContain(`<body data-view="${view}">`);
+    expect(html).toMatch(new RegExp(`<body data-view="${view}"( class="bare")?>`));
     expect(html).toContain('<meta name="robots" content="noindex,nofollow">');
     expect(html).toContain(`<script src="/auth.js" nonce="${nonce}" defer></script>`);
     expect(html).not.toContain("/admin.js"); // the account screens load their own module only
@@ -78,7 +78,7 @@ describe("account screen shells", () => {
     expect(users).toContain("<title>Users · FeedbackKit admin</title>");
     expect(users).toContain("<h1>Users</h1>");
     expect(users).toContain(">Invite user</button>");
-    expect(users).toContain('<a class="b" href="/admin/users" data-nav="users">Users</a>');
+    expect(users).toContain('<a href="/admin/users" data-nav="users">Users</a>');
     expect(users).not.toContain("Accounts");
     expect(users).not.toContain("Invite someone");
     const own = await (await app.request("/admin/account", {}, env())).text();

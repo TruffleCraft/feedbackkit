@@ -111,7 +111,7 @@ export function settingsEditor(root: HTMLElement, changed: (draft: ObjectValue) 
         select.onchange=()=>{if(!select.value)return;const start=initial(shape[select.value]!);if(start===undefined)pending.add(slot(path,select.value));else object[select.value]=start;assign(object);render()};details.append(select);
       }
       if(t.k === "record"){
-        const add=node("button","Add entry");add.type="button";add.className="b ghost sm";add.onclick=()=>{
+        const add=node("button","Add entry");add.type="button";add.className="b sm";add.onclick=()=>{
           const k=window.prompt("Entry name (for example a language code)")?.trim();if(!k||["__proto__","constructor","prototype"].includes(k)||Object.hasOwn(object,k))return;
           object[k]=initial(t.val!);assign(object);render();
         };details.append(add);
@@ -123,23 +123,24 @@ export function settingsEditor(root: HTMLElement, changed: (draft: ObjectValue) 
       values.forEach((v,i)=>{
         const item=node("div");item.className="settings-item";
         item.append(field(t.el!,v,`${title} ${i+1}`,[...path,String(i)],(next)=>{values[i]=next;assign(values)}));
-        for(const [label,delta] of [["Move up",-1],["Move down",1]] as const){const b=node("button",label);b.type="button";b.className="b ghost sm";b.disabled=i+delta<0||i+delta>=values.length;b.onclick=()=>{[values[i],values[i+delta]]=[values[i+delta],values[i]];assign(values);render()};item.append(b)}
+        for(const [label,delta] of [["Move up",-1],["Move down",1]] as const){const b=node("button",label);b.type="button";b.className="b sm";b.disabled=i+delta<0||i+delta>=values.length;b.onclick=()=>{[values[i],values[i+delta]]=[values[i+delta],values[i]];assign(values);render()};item.append(b)}
         // A published type is archived, never deleted: reports carry its ID.
         const published=path.length===1&&path[0]==="templates"&&publishedType(v);
         const archived=published&&(v as ObjectValue)["archived"]===true;
-        const remove=node("button",published?(archived?"Unarchive":"Archive"):"Remove");remove.type="button";remove.className="b ghost sm";
+        const remove=node("button",published?(archived?"Unarchive":"Archive"):"Remove");remove.type="button";remove.className="b sm";
         remove.onclick=()=>{
           if(published){if(!archived&&!window.confirm("Archive this type? Visitors no longer see it and the AI no longer picks it. Existing reports keep it."))return;if(archived)delete (v as ObjectValue)["archived"];else (v as ObjectValue)["archived"]=true;assign(values);render();return}
           if(!window.confirm(`Remove this ${title} entry from the draft?`))return;values.splice(i,1);assign(values);render()};
         item.append(remove);box.append(item);
       });
-      const add=node("button",`Add ${title === "Feedback types" ? "feedback type" : "entry"}`);add.type="button";add.className="b ghost sm";add.onclick=()=>{values.push(initial(t.el!));assign(values);render()};box.append(add);
+      const add=node("button",`Add ${title === "Feedback types" ? "feedback type" : "entry"}`);add.type="button";add.className="b sm";add.onclick=()=>{values.push(initial(t.el!));assign(values);render()};box.append(add);
     } else {
       const label=node("label",title);label.htmlFor=id;box.append(label);
       let input: HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement;
       // A setting that is not set yet shows an empty choice instead of pretending to hold the first value.
       const blank=value===undefined||value==="";
       if(t.k === "enum"){const select=node("select");if(blank)select.append(new Option("Choose…",""));select.append(...(t.options as string[]).map((o)=>new Option(o,o)));select.value=blank?"":String(value);input=select;select.onchange=()=>assign(select.value===""?undefined:select.value)}
+      else if(t.k === "boolean"&&typeof value==="boolean"){const sw=node("input");sw.type="checkbox";sw.className="switch";sw.setAttribute("role","switch");sw.checked=value;sw.onchange=()=>assign(sw.checked);input=sw}
       else if(t.k === "boolean"){const select=node("select");if(value===undefined)select.append(new Option("Choose…",""));select.append(new Option("Yes","true"),new Option("No","false"));select.value=value===undefined?"":String(value);select.onchange=()=>assign(select.value===""?undefined:select.value==="true");input=select}
       // Emptying an optional setting removes it. The field stays on screen until the next render, so typing again works.
       else {const text=["guidance","extractionHint","template"].includes(key)?node("textarea"):node("input");text.value=String(value??"");if(text instanceof HTMLInputElement)text.type=t.k === "number"?"number":"text";input=text;text.oninput=()=>assign(text.value===""&&(t.opt||t.k === "number")?undefined:t.k === "number"?Number(text.value):text.value)}
@@ -164,11 +165,27 @@ export function settingsEditor(root: HTMLElement, changed: (draft: ObjectValue) 
   }
   function render(){
     nav.replaceChildren();content.replaceChildren();
-    GROUPS.forEach(([label],i)=>{const b=node("button",label);b.type="button";b.className=`b ghost sm${i===selected?" active":""}`;b.setAttribute("aria-pressed",String(i===selected));b.onclick=()=>{selected=i;render()};nav.append(b)});
+    GROUPS.forEach(([label],i)=>{const b=node("button",label);b.type="button";b.setAttribute("aria-pressed",String(i===selected));b.onclick=()=>{selected=i;render()};nav.append(b)});
     const [label,keys]=GROUPS[selected]!;content.append(node("h3",label));
+    const unset:string[]=[];
     for(const key of keys){const s=schema.shape![key]!;
-      if(draft[key]===undefined&&!pending.has(slot([],key))){const add=node("button",`Configure ${LABELS[key]??key}`);add.type="button";add.className="b ghost sm";add.onclick=()=>{const start=initial(s);if(start===undefined)pending.add(slot([],key));else draft[key]=start;notify();render()};content.append(add);continue}
+      if(draft[key]===undefined&&!pending.has(slot([],key))){unset.push(key);continue}
       content.append(field(s,draft[key],key,[key],(value)=>{if(value===undefined){delete draft[key];pending.delete(slot([],key))}else draft[key]=value;notify()}));
+    }
+    if(unset.length){
+      const box=node("div");box.className="settings-defaults";
+      const head=node("div","Not set, using defaults");head.className="grp-label";
+      const group=node("div");group.className="grp";
+      for(const key of unset){
+        const s=schema.shape![key]!;
+        const row=node("div");row.className="item";
+        const name=node("span",LABELS[key]??key);name.className="ttl";
+        const end=node("span");end.className="end";end.append("Default");
+        const set=node("button","Set");set.type="button";set.className="b text";set.setAttribute("aria-label",`Configure ${LABELS[key]??key}`);
+        set.onclick=()=>{const start=initial(s);if(start===undefined)pending.add(slot([],key));else draft[key]=start;notify();render()};
+        end.append(set);row.append(name,end);group.append(row);
+      }
+      box.append(head,group);content.append(box);
     }
   }
   return {load(value:ObjectValue,markSaved=true){draft=structuredClone(value);pending.clear();if(markSaved)saved=structuredClone(value);render()}};

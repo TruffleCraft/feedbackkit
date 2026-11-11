@@ -22,6 +22,9 @@ const PROJECT = (id: string) => ({ projectId: id, templates: [{ type: "bug", lab
 const csrfOf = async (page: Page): Promise<string> => (await api(page, "GET", "/api/admin/me")).body.csrf;
 const dialog = (page: Page) => page.locator("dialog[open]");
 const row = (list: Locator, text: string) => list.locator(":scope > *").filter({ hasText: text });
+/** The sidebar: Users and API tokens are in it for owners only, the name link at its foot leads to Your account. */
+const side = (page: Page) => page.locator("#nav");
+const sideLink = (page: Page, name: string) => side(page).getByRole("link", { name, exact: true });
 
 /** Opens the setup link and clicks through the first-owner screen. */
 async function createOwner(server: Server, device: Device, name: string) {
@@ -74,7 +77,9 @@ test("an owner works through every screen: setup, account, sessions, users, invi
       await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
     });
 
-    await test.step("the name in the header leads to the account page", async () => {
+    await test.step("the name at the foot of the sidebar leads to the account page", async () => {
+      await expect(sideLink(page, "Users")).toBeVisible(); // the first owner sees the owner links
+      await expect(sideLink(page, "API tokens")).toBeVisible();
       await page.locator("#who").getByRole("link", { name: "Robin" }).click();
       await expect(page).toHaveURL(`${server.origin}/admin/account`);
       await expect(page.getByRole("heading", { name: "Your account" })).toBeVisible();
@@ -142,8 +147,9 @@ test("an owner works through every screen: setup, account, sessions, users, invi
     });
 
     await test.step("users: the only owner cannot be demoted or removed, and the page says why", async () => {
-      await page.getByRole("link", { name: "Users", exact: true }).click();
+      await sideLink(page, "Users").click();
       await expect(page).toHaveURL(`${server.origin}/admin/users`);
+      await expect(sideLink(page, "Users")).toHaveAttribute("aria-current", "page");
       const robin = row(page.locator("#acct-list"), "Robin");
       await expect(robin).toContainText("(you)");
       await expect(robin.getByRole("button", { name: "Make member" })).toBeDisabled();
@@ -201,7 +207,10 @@ test("an owner works through every screen: setup, account, sessions, users, invi
       await shot(c.page, "tokens-member-denied");
       await c.page.goto(`${server.origin}/admin/account`);
       await expect(c.page.locator("#acct-sub")).toHaveText("Taylor · member");
-      await expect(c.page.locator("#area-nav")).toBeHidden();
+      await expect(c.page.locator("#side-owner")).toBeHidden(); // a member's sidebar has no Users and no API tokens
+      await expect(sideLink(c.page, "Users")).toBeHidden();
+      await expect(sideLink(c.page, "API tokens")).toBeHidden();
+      await expect(c.page.locator("#who").getByRole("link", { name: "Taylor" })).toBeVisible();
       expect((await api(page, "GET", "/api/admin/accounts")).body.accounts).toHaveLength(2);
       expect((await api(c.page,"POST", "/api/auth/setup/begin", undefined, { token: tokenOf(invitation), name: "Taylor" })).status).toBe(410);
     });
@@ -232,14 +241,15 @@ test("an owner works through every screen: setup, account, sessions, users, invi
       await dialog(page).getByRole("button", { name: "Remove Taylor" }).click();
       await expect(row(page.locator("#acct-list"), "Taylor")).toHaveCount(0);
       await expect(page.locator("#accts-sub")).toHaveText("1 user · 1 owner");
-      const chip = page.getByRole("button", { name: "Show removed" });
-      await chip.click();
-      await expect(chip).toHaveAttribute("aria-pressed", "true");
+      const showRemoved = page.getByRole("button", { name: "Show removed" });
+      await showRemoved.click();
+      await expect(showRemoved).toHaveAttribute("aria-pressed", "true");
       const gone = row(page.locator("#acct-list"), "Taylor");
       await expect(gone).toContainText("Removed");
       await expect(gone.getByRole("button")).toHaveCount(0);
       await shot(page, "users-show-removed");
-      await chip.click();
+      await showRemoved.click();
+      await expect(showRemoved).toHaveAttribute("aria-pressed", "false");
       await expect(row(page.locator("#acct-list"), "Taylor")).toHaveCount(0);
       await c.page.goto(`${server.origin}/admin/account`);
       await expect(c.page).toHaveURL(`${server.origin}/admin/sign-in`); // Taylor's session ended with the removal
@@ -247,7 +257,8 @@ test("an owner works through every screen: setup, account, sessions, users, invi
 
     let readToken = "";
     await test.step("tokens: the empty page, the form checks, a read token for all projects", async () => {
-      await page.getByRole("link", { name: "API tokens" }).click();
+      await sideLink(page, "API tokens").click();
+      await expect(page).toHaveURL(`${server.origin}/admin/tokens`);
       await expect(page.getByText("No API tokens yet")).toBeVisible();
       await shot(page, "tokens-empty");
       await page.locator("#tok-open").click();
@@ -322,8 +333,8 @@ test("an owner works through every screen: setup, account, sessions, users, invi
       expect([after.status, ((await after.json()) as { code: string }).code]).toEqual([401, "FK_TOKEN_REVOKED"]);
     });
 
-    await test.step("sign out from the header and sign in again with the passkey", async () => {
-      await page.getByRole("button", { name: "Sign out" }).click();
+    await test.step("sign out from the sidebar and sign in again with the passkey", async () => {
+      await side(page).getByRole("button", { name: "Sign out" }).click();
       await expect(page).toHaveURL(`${server.origin}/admin/sign-in`);
       await expect(page.getByRole("button", { name: "Sign in with a passkey" })).toBeVisible();
       await shot(page, "sign-in");
@@ -438,7 +449,7 @@ test("states: no link, a spent link, an owner that exists, rate limit, no passke
       await page.unroute("**/api/auth/setup/begin");
     });
 
-    await test.step("with an owner: the sign-in page, an ended session, a cancelled and a failing sign-in, the theme", async () => {
+    await test.step("with an owner: the sign-in page, an ended session and a failing sign-in", async () => {
       await createOwner(server, d, "Robin");
       await api(page, "POST", "/api/auth/signout", await csrfOf(page));
       await page.goto(`${server.origin}/admin/sign-in#ended`);
@@ -450,13 +461,39 @@ test("states: no link, a spent link, an owner that exists, rate limit, no passke
       await page.getByRole("button", { name: "Sign in with a passkey" }).click();
       await expect(page.locator("#signin-msg")).toContainText("Too many failed attempts from your network. Try again in 2 minutes");
       await page.unroute("**/api/auth/signin/begin");
+    });
+
+    await test.step("the theme button in the sidebar cycles Auto, Light and Dark and is kept; the sign-in page follows the saved choice", async () => {
       const html = page.locator("html");
+      const theme = page.locator("#theme");
+      const saved = () => page.evaluate(() => localStorage.getItem("fk-admin-theme"));
       await page.emulateMedia({ colorScheme: "light" });
-      await page.locator("#theme").click();
-      await expect(html).toHaveAttribute("data-theme", "dark");
-      await shot(page, "sign-in-dark");
-      await page.locator("#theme").click();
+      await page.getByRole("button", { name: "Sign in with a passkey" }).click();
+      await expect(page).toHaveURL(`${server.origin}/admin`);
+      await page.goto(`${server.origin}/admin/account`);
+      await expect(theme).toHaveText("Theme: Auto");
+      await expect(html).not.toHaveAttribute("data-theme", /.*/);
+      expect(await saved()).toBeNull(); // Auto stores nothing
+      await theme.click();
+      await expect(theme).toHaveText("Theme: Light");
       await expect(html).toHaveAttribute("data-theme", "light");
+      await theme.click();
+      await expect(theme).toHaveText("Theme: Dark");
+      await expect(html).toHaveAttribute("data-theme", "dark");
+      expect(await saved()).toBe("dark");
+      await page.reload();
+      await expect(html).toHaveAttribute("data-theme", "dark"); // kept across loads
+      await expect(theme).toHaveText("Theme: Dark");
+      await side(page).getByRole("button", { name: "Sign out" }).click();
+      await expect(page).toHaveURL(`${server.origin}/admin/sign-in`);
+      await expect(html).toHaveAttribute("data-theme", "dark"); // the bare page follows the saved choice
+      await shot(page, "sign-in-dark");
+      await page.getByRole("button", { name: "Sign in with a passkey" }).click();
+      await expect(page).toHaveURL(`${server.origin}/admin`);
+      await theme.click();
+      await expect(theme).toHaveText("Theme: Auto");
+      await expect(html).not.toHaveAttribute("data-theme", /.*/);
+      expect(await saved()).toBeNull();
     });
 
     await test.step("the pages are not indexed, carry a nonce-based policy and load no inline code or style", async () => {
@@ -497,6 +534,16 @@ test("phone and dark: every screen fits 375 px without horizontal scroll", async
     await page.goto(`${server.origin}/admin/account`);
     await expect(page.getByRole("heading", { name: "Your account" })).toBeVisible();
     await fits("account");
+    await expect(side(page)).toBeHidden(); // below 860 px the sidebar folds behind the Menu button
+    await page.getByRole("button", { name: "Menu" }).click();
+    await expect(page.getByRole("button", { name: "Menu" })).toHaveAttribute("aria-expanded", "true");
+    await expect(sideLink(page, "Users")).toBeVisible();
+    await expect(sideLink(page, "API tokens")).toBeVisible();
+    await expect(page.locator("#who").getByRole("link", { name: "Robin" })).toBeVisible();
+    await expect(page.locator("#theme")).toBeVisible();
+    await fits("account-menu");
+    await page.getByRole("button", { name: "Menu" }).click();
+    await expect(side(page)).toBeHidden();
     await page.getByRole("button", { name: "Add a passkey" }).click();
     await fits("account-add-passkey");
     await page.getByRole("button", { name: "Cancel" }).click();

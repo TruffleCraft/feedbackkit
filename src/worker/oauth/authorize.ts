@@ -38,16 +38,16 @@ export function grantedScopes(requested: readonly string[]): Scope[] {
 
 const PAGE_CSS = `
 .consent{max-width:460px;margin:0 auto;padding:56px 20px 48px}
-.consent .c{padding:28px;display:flex;flex-direction:column;gap:18px}
-.consent .mark{display:flex;align-items:center;gap:8px;font-weight:800;font-size:15px;color:var(--ink-2)}
-.consent .lead{color:var(--ink-2);margin-top:-8px}
-.consent .lbl{font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+.consent .c{display:flex;flex-direction:column;gap:18px}
+.consent .mark{display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px;color:var(--muted)}
+.consent .lead{color:var(--muted);margin-top:-8px}
+.consent .lbl{font-size:13px;font-weight:500;color:var(--muted);margin-bottom:8px}
 .consent ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-.consent li{padding:12px 14px;border:1px solid var(--line);border-radius:14px;font-weight:600}
-.consent .warn{padding:12px 14px;border-radius:14px;background:var(--danger-soft);color:var(--danger);font-weight:600;font-size:14px}
+.consent li{padding:12px 14px;border:1px solid var(--line);border-radius:8px;font-weight:500}
+.consent .warn{padding:12px 14px;border-radius:8px;background:var(--raised);color:var(--danger);font-size:14px}
 .consent .actions{display:flex;gap:10px;flex-wrap:wrap}
 .consent .actions .b{flex:1}
-@media (max-width:640px){.consent{padding-top:24px}.consent .c{padding:20px}}
+@media (max-width:640px){.consent{padding-top:24px}}
 `;
 
 function page(title: string, inner: string, nonce: string): string {
