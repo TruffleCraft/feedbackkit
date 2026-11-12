@@ -3,7 +3,8 @@
 // nothing from the URL is reflected into the markup.
 import { describe, it, expect } from "vitest";
 import { app } from "../src/worker/app.js";
-import { adminViewFor, ADMIN_CSP } from "../src/worker/admin/pages.js";
+import { adminViewFor, ADMIN_CSP, renderAdminPage } from "../src/worker/admin/pages.js";
+import { releaseOf } from "../src/worker/status.js";
 import { fakeD1 } from "./helpers.js";
 import type { Env } from "../src/worker/env.js";
 
@@ -51,7 +52,7 @@ describe("admin shell pages", () => {
     const html = await res.text();
     // Every script and style element carries this response's nonce, and the
     // markup has no inline style attributes or event handlers the CSP would block.
-    expect(html).toContain(`<script src="/admin.js" nonce="${nonce}" defer></script>`);
+    expect(html).toContain(`<script src="/admin.js?v=${releaseOf(env()).version}" nonce="${nonce}" defer></script>`);
     for (const tag of html.match(/<(script|style)\b[^>]*>/g) ?? []) expect(tag).toContain(`nonce="${nonce}"`);
     expect(html).not.toMatch(/\sstyle="/);
     expect(html).not.toMatch(/\son[a-z]+="/);
@@ -100,5 +101,26 @@ describe("admin shell pages", () => {
     const res = await app.request("/api/admin/projects", {}, env());
     expect(res.status).toBe(401);
     expect(res.headers.get("Content-Security-Policy")).toBeNull();
+  });
+});
+
+describe("script URLs carry the release", () => {
+  it("a new release is a new script URL, so a cached script cannot run in a newer shell", () => {
+    const a = renderAdminPage("projects", "n0nce", "0.3.1");
+    const b = renderAdminPage("projects", "n0nce", "0.3.2-dev.1");
+    expect(a).toContain('<script src="/admin.js?v=0.3.1"');
+    expect(b).toContain('<script src="/admin.js?v=0.3.2-dev.1"');
+    expect(a).not.toContain("0.3.2-dev.1");
+  });
+
+  it("the served page uses the release the server reports", async () => {
+    const res = await app.request("/admin", {}, { ...env(), FK_RELEASE: "9.8.7" } as Env);
+    expect(await res.text()).toContain('<script src="/admin.js?v=9.8.7"');
+  });
+
+  it("the value is encoded, never reflected raw", () => {
+    const html = renderAdminPage("projects", "n0nce", '1.0.0"><script>x</script>');
+    expect(html).not.toContain("<script>x</script>");
+    expect(html).toContain("/admin.js?v=1.0.0%22%3E%3Cscript%3Ex%3C%2Fscript%3E");
   });
 });

@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 import type { Env } from "../env.js";
-import { CSS, FAVICON, SIDEBAR, SPRITE, adminHeaders } from "./pages.js";
+import { CSS, FAVICON, SIDEBAR, SPRITE, adminHeaders, assetQuery } from "./pages.js";
+import { releaseOf } from "../status.js";
 
 // The account screens (Gate 2): /admin/sign-in, /admin/setup, /admin/account,
 // /admin/users and /admin/tokens. Static shells like the other admin pages
@@ -183,7 +184,7 @@ const area = (inner: string) => `<div id="area" hidden>${inner}</div>`;
 
 const TITLES: Record<AuthView, string> = { "sign-in": "Sign in", setup: "Set up", account: "Your account", users: "Users", tokens: "API tokens" };
 
-export function renderAuthPage(view: AuthView, nonce: string): string {
+export function renderAuthPage(view: AuthView, nonce: string, version = ""): string {
   const bare = view === "sign-in" || view === "setup";
   const body = view === "sign-in" ? SIGN_IN : view === "setup" ? SETUP : area(view === "account" ? ACCOUNT : view === "users" ? USERS : TOKENS);
   const main = `<main id="main" class="content">
@@ -204,7 +205,7 @@ ${SPRITE}
 ${SIDEBAR}
 ${main}
 </div>
-<script src="/auth.js" nonce="${nonce}" defer></script>
+<script src="/auth.js${assetQuery(version)}" nonce="${nonce}" defer></script>
 </body></html>`;
 }
 
@@ -215,7 +216,7 @@ export function registerAuthPages(app: AppT): void {
   const serve = (view: AuthView) => (c: import("hono").Context<{ Bindings: Env }>) => {
     const nonce = crypto.randomUUID().replace(/-/g, "");
     for (const [k, v] of Object.entries(adminHeaders(nonce))) c.header(k, v);
-    return c.html(renderAuthPage(view, nonce));
+    return c.html(renderAuthPage(view, nonce, releaseOf(c.env).version));
   };
   for (const [path, view] of [["/admin/sign-in", "sign-in"], ["/admin/setup", "setup"], ["/admin/account", "account"], ["/admin/users", "users"], ["/admin/tokens", "tokens"]] as const) app.get(path, serve(view));
   // The page was called Accounts until 2026-11-11. Links in docs, bookmarks and an Access application still point at it.
