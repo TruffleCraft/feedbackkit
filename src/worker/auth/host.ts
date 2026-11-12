@@ -5,6 +5,9 @@ import { SESSION_IDLE_MS } from "./sessions.js";
 
 // openLink is exported for tests that check links written by another path (scripts/admin-link.mjs).
 export { openLink };
+// `feedbackkit-admin import` runs the function of POST /api/admin/config/import, not a copy of it.
+export { importProjectConfig as hostImportConfig, CONFIG_IMPORT_MAX_BYTES } from "../admin/config-import.js";
+export { embedSnippet } from "../admin/snippet.js";
 
 // What the host commands run (scripts/server-admin.mjs on the standalone server,
 // scripts/admin-link.mjs for Cloudflare share the same rules through the SQL in

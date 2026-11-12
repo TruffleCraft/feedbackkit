@@ -22,6 +22,8 @@ Use **Set** (in the list *Not set, using defaults*) or **Add a setting** to add 
 
 Choose **Review changes** before **Publish**. Validation checks the full draft on the gateway and shows destinations and a diff. A changed draft must be reviewed again. If another admin saved in the meantime, publication returns a conflict instead of silently overwriting their work. Your draft stays available for comparison.
 
+On a server installation, an operator with host access can import a whole project without signing in: `sudo feedbackkit-admin import <config.json>` runs the checks of the import route and prints the project's public key ([SELF_HOSTING.md](SELF_HOSTING.md#accounts-and-recovery)). Like the route, it writes at once, with no review step and no conflict check against a draft someone has open. Run it with `--dry-run` first.
+
 ## What do the version numbers mean?
 
 | Where you see it | Meaning | When it changes |
