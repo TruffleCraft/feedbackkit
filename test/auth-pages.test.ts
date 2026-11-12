@@ -7,6 +7,7 @@ import { describe, it, expect } from "vitest";
 import source from "../src/auth/main.ts?raw";
 import { app } from "../src/worker/app.js";
 import { ADMIN_CSP } from "../src/worker/admin/pages.js";
+import { releaseOf } from "../src/worker/status.js";
 import { fakeD1 } from "./helpers.js";
 import type { Env } from "../src/worker/env.js";
 
@@ -46,7 +47,7 @@ describe("account screen shells", () => {
     const html = await res.text();
     expect(html).toMatch(new RegExp(`<body data-view="${view}"( class="bare")?>`));
     expect(html).toContain('<meta name="robots" content="noindex,nofollow">');
-    expect(html).toContain(`<script src="/auth.js" nonce="${nonce}" defer></script>`);
+    expect(html).toContain(`<script src="/auth.js?v=${releaseOf(env()).version}" nonce="${nonce}" defer></script>`);
     expect(html).not.toContain("/admin.js"); // the account screens load their own module only
     for (const tag of html.match(/<(script|style)\b[^>]*>/gi) ?? []) expect(tag).toContain(`nonce="${nonce}"`);
     expect(html).not.toMatch(/\sstyle="/i);
