@@ -168,9 +168,17 @@ sudo ln -s /opt/feedbackkit/current/feedbackkit-admin /usr/local/bin/feedbackkit
 sudo feedbackkit-admin setup-link          # link for the first owner
 sudo feedbackkit-admin recovery-link       # link that replaces the owner's passkeys
 sudo feedbackkit-admin users               # who can sign in, no secrets
+sudo feedbackkit-admin import shop.json    # create or update a project from a config file
 ```
 
 The command reads `FK_DATA_DIR` and `FK_PUBLIC_URL` from `/etc/feedbackkit.env` (which only root can read), then continues as the owner of the data directory, so the files it touches stay readable for the service. It prints the link alone on stdout (everything else goes to stderr) and never writes it anywhere. A link works once and expires after 30 minutes (`--minutes 1` to `240`). A new `setup-link` replaces an older unused one, and `setup-link` refuses once an owner exists. `recovery-link` picks the owner when there is exactly one; with several, name the user with `--user`. `accounts` and `--account` are the old names of `users` and `--user` and keep working until November 2027. A checkout install runs `node scripts/server.mjs admin setup-link`.
+
+**Projects from the host.** `import` creates or updates a project from a config file: the JSON that `POST /api/admin/config/import` takes, checked the same way (validation, the delivery capability, a pinned `publicKey`). A re-import keeps the public key and raises `configVersion`. `-` reads the file from stdin. `--dry-run` checks the file and says whether it would create or update the project, how each type delivers and which delivery capability it needs, and writes nothing. The command reads the file before it drops root, so the file can stay where only root can read it. On stdout it prints `projectId=`, `publicKey=` and `configVersion=`; the embed snippet and the test page go to stderr. The running service picks up an update within a minute. It needs no sign-in and no API token: as with `recovery-link`, host access is the trust boundary of the installation.
+
+```sh
+sudo feedbackkit-admin import shop.json --dry-run
+sudo feedbackkit-admin import - < shop.json
+```
 
 **First owner.** Run `setup-link`, open the link in the browser you will sign in with, enter a name and create a passkey, then add a second one under Your account (a security key or another device): the last passkey cannot be removed, and with only one a lost device means a recovery link. From then on `ADMIN_TOKEN` grants nothing, the server logs that it is ignored, and you can remove it from the environment file. Two browsers that open the link at the same time produce one owner.
 

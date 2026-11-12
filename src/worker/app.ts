@@ -17,7 +17,7 @@ import { checkProject, type ProjectCheck } from "./project-check.js";
 import { VERSION, releaseOf, bindingsPresence, secretsPresence } from "./status.js";
 import { adminAuthed, adminGate } from "./admin/auth.js";
 import { registerAdminRoutes } from "./admin/routes.js";
-import { checkConfigForWrite, parseStoredConfig } from "./admin/config-write.js";
+import { CONFIG_IMPORT_MAX_BYTES, importProjectConfig } from "./admin/config-import.js";
 import { embedSnippet } from "./admin/snippet.js";
 import { registerAdminPages } from "./admin/pages.js";
 import { registerAuthPages } from "./admin/auth-pages.js";
@@ -362,61 +362,19 @@ app.post("/api/admin/config/import", async (c) => {
   const denied = await adminGate(c);
   if (denied) return denied;
 
-  const body = await readJsonBounded(c, MAX_FEEDBACK_BYTES);
+  const body = await readJsonBounded(c, CONFIG_IMPORT_MAX_BYTES);
   if (!body.ok) return c.json({ v: WIRE_VERSION, status: "error", error: body.tooLarge ? "payload too large" : "invalid json" }, body.tooLarge ? 413 : 400);
-  if (!body.value || typeof body.value !== "object" || Array.isArray(body.value)) {
-    return c.json({ v: WIRE_VERSION, status: "error", error: "config must be a JSON object" }, 400);
-  }
-
-  // configVersion comes along when an admin export (GET /api/admin/projects/:id/config)
-  // is re-imported; it is informational and never stored in the blob.
-  const { publicKey: pinnedRaw, configVersion: _exportedVersion, ...cfg } = body.value as Record<string, unknown>;
-  if (pinnedRaw !== undefined && (typeof pinnedRaw !== "string" || !/^[A-Za-z0-9_-]{8,64}$/.test(pinnedRaw))) {
-    return c.json({ v: WIRE_VERSION, status: "error", error: "publicKey must be 8-64 chars of [A-Za-z0-9_-]" }, 400);
-  }
-
-  // Importing over an existing project is a settings write too: its published types stay.
-  const existing = typeof cfg["projectId"] === "string" ? await c.env.DB.prepare("SELECT config FROM projects WHERE id = ?1").bind(cfg["projectId"]).first<{ config: string }>().catch(() => null) : null;
-  const check = await checkConfigForWrite(c.env, cfg, parseStoredConfig(existing?.config));
-  if (!check.ok) return c.json(check.body, check.status);
-
-  // Store the raw blob (minus publicKey), like `pnpm seed`: loadProject re-runs
-  // Zod on every read, so future schema defaults apply without a re-import.
-  const id = check.config.projectId;
-  const publicKey =
-    (pinnedRaw as string | undefined) ||
-    `fk_pub_${[...crypto.getRandomValues(new Uint8Array(6))].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
-  try {
-    await c.env.DB.prepare(
-      `INSERT INTO projects (id, public_key, config, config_version, updated_at)
-       VALUES (?1, ?2, ?3, 1, ?4)
-       ON CONFLICT(id) DO UPDATE SET config = excluded.config, config_version = projects.config_version + 1, updated_at = excluded.updated_at`,
-    )
-      .bind(id, publicKey, JSON.stringify(cfg), Date.now())
-      .run();
-  } catch (e) {
-    const msg = (e as Error).message ?? "";
-    if (msg.includes("UNIQUE")) {
-      return c.json({ v: WIRE_VERSION, status: "error", error: "publicKey already in use by another project" }, 409);
-    }
-    console.error(`[feedbackkit] config import failed: ${msg}`);
-    return c.json({ v: WIRE_VERSION, status: "error", error: "import failed — are migrations applied? see /diag" }, 503);
-  }
-
-  // Read the row back: on update the STORED key and bumped version win, not the
-  // request's — so the response always reflects what the snippet must use.
-  const row = await c.env.DB.prepare("SELECT public_key, config_version FROM projects WHERE id = ?1")
-    .bind(id)
-    .first<{ public_key: string; config_version: number }>();
-  const key = row?.public_key ?? publicKey;
+  // The same function runs `feedbackkit-admin import` on the standalone host (src/worker/admin/config-import.ts).
+  const result = await importProjectConfig(c.env, body.value);
+  if (!result.ok) return c.json(result.body, result.status);
   const origin = new URL(c.req.url).origin;
   return c.json({
     v: WIRE_VERSION,
     status: "imported",
-    projectId: id,
-    publicKey: key,
-    configVersion: Number(row?.config_version ?? 1),
-    ...embedSnippet(origin, c.env.WIDGET_VERSION, key),
+    projectId: result.projectId,
+    publicKey: result.publicKey,
+    configVersion: result.configVersion,
+    ...embedSnippet(origin, c.env.WIDGET_VERSION, result.publicKey!),
   });
 });
 

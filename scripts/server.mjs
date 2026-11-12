@@ -25,7 +25,7 @@ let warnedForwarded = false;
 const here = dirname(fileURLToPath(import.meta.url));
 const bundle = (() => { try { return JSON.parse(readFileSync(join(here, "bundle.json"), "utf8")); } catch { return null; } })();
 const root = bundle ? here : join(here, "..");
-// `feedbackkit-admin` runs this file with the argument `admin`: the host commands for accounts, no server.
+// `feedbackkit-admin` runs this file with the argument `admin`: the host commands for accounts and projects, no server.
 if (process.argv[2] === "admin") process.exit(await runAdmin(process.argv.slice(3), { root }));
 // ADMIN_TOKEN is optional since accounts exist: it works only until the first owner is created, and the server
 // starts without it. When it is set it must still be a real secret.
