@@ -97,8 +97,13 @@ case "$1" in
     ( cd "${h.base}/current" && exec "${process.execPath}" server.mjs >> "${h.log}" 2>&1 < /dev/null ) > /dev/null 2>&1 &
     echo $! > "${h.pid}" ;;
   stop) if [ -f "${h.pid}" ]; then p=$(cat "${h.pid}"); kill "$p" 2>/dev/null || true; i=0; while kill -0 "$p" 2>/dev/null && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done; rm -f "${h.pid}"; fi ;;
+  daemon-reload|enable|disable) echo "$*" >> "${join(dir, 'systemctl.calls')}" ;;
+  is-enabled) echo enabled ;;
 esac
 `);
+  h.calls = () => (existsSync(join(dir, 'systemctl.calls')) ? readFileSync(join(dir, 'systemctl.calls'), 'utf8').trim().split('\n') : []);
+  h.units = join(dir, 'units'); mkdirSync(h.units);
+  h.extraEnv = { FK_UNIT_DIR: h.units };
   chmodSync(h.systemctl, 0o755);
 
   h.install = async (version, options) => {
@@ -116,7 +121,7 @@ esac
   h.projects = async () => (await (await h.admin('/api/admin/projects')).json()).projects.map((p) => p.id).sort();
   // Asynchronous on purpose: the fake API and the service live in this process, so it must not block while the script runs.
   h.run = (...args) => new Promise((resolve) => {
-    const child = spawn('sh', [UPDATE, ...args], { env: { PATH: process.env.PATH, HOME: dir, FK_BASE: h.base, FK_DATA_DIR: h.data, FK_SERVICE: 'feedbackkit', FK_SYSTEMCTL: h.systemctl, FK_API: h.api, FK_ENV_FILE: h.envFile, FK_HEALTH_SECONDS: '8' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn('sh', [UPDATE, ...args], { env: { PATH: process.env.PATH, HOME: dir, FK_BASE: h.base, FK_DATA_DIR: h.data, FK_SERVICE: 'feedbackkit', FK_SYSTEMCTL: h.systemctl, FK_API: h.api, FK_ENV_FILE: h.envFile, FK_HEALTH_SECONDS: '8', ...h.extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '', stderr = '';
     child.stdout.on('data', (d) => (stdout += d)); child.stderr.on('data', (d) => (stderr += d));
     child.on('close', (status) => resolve({ status, stdout, stderr }));
@@ -356,5 +361,126 @@ test('a release from before accounts refuses to start on data that has them, so 
     for (let i = 0; i < 100 && !/delivery capability/.test(log); i++) { await new Promise((r) => setTimeout(r, 100)); log = readFileSync(h.log, 'utf8'); }
     assert.match(log, /This database needs delivery capability 4 and this release provides 3/);
     assert.equal(await h.diag(), null, 'nothing is listening');
+  } finally { await h.close(); }
+});
+
+test('--auto on subscribes with a systemd timer, --auto status shows it and --auto off removes it', async () => {
+  const h = await harness();
+  try {
+    await h.install('1.0.0');
+    let r = await h.run('--auto', 'status');
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /Subscription: off/);
+
+    r = await h.run('--auto', 'on', '--at', '04:15');
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /Subscribed to the stable channel: every night at 04:15/);
+    const service = readFileSync(join(h.units, 'feedbackkit-update.service'), 'utf8');
+    const timer = readFileSync(join(h.units, 'feedbackkit-update.timer'), 'utf8');
+    assert.match(service, /^Type=oneshot$/m);
+    assert.equal(service.split('\n').find((l) => l.startsWith('ExecStart=')), `ExecStart=${h.base}/current/feedbackkit-update --unattended --channel stable`, 'the timer runs the updater of the installed release, so an update brings the newer updater too');
+    assert.ok(statSync(join(h.base, 'current', 'feedbackkit-update')).mode & 0o111, 'and that file is executable');
+    assert.match(timer, /^OnCalendar=\*-\*-\* 04:15:00$/m);
+    assert.match(timer, /^RandomizedDelaySec=30min$/m);
+    assert.match(timer, /^Persistent=true$/m, 'a run missed while the host was off happens at the next start');
+    assert.deepEqual(h.calls(), ['daemon-reload', 'enable --now feedbackkit-update.timer']);
+    assert.equal(h.current(), '1.0.0', 'subscribing updates nothing by itself');
+
+    r = await h.run('--auto', 'status');
+    assert.match(r.stdout, /Subscription: on \(enabled\)/);
+    assert.match(r.stdout, /Channel: stable/);
+    assert.match(r.stdout, /Runs: every night at 04:15/);
+
+    r = await h.run('--auto', 'on', '--channel', 'dev');
+    assert.equal(r.status, 0, 'subscribing again changes the subscription');
+    assert.match(readFileSync(join(h.units, 'feedbackkit-update.service'), 'utf8'), /--unattended --channel dev$/m);
+    assert.match(readFileSync(join(h.units, 'feedbackkit-update.timer'), 'utf8'), /OnCalendar=\*-\*-\* 03:30:00/, 'the default time is 03:30');
+
+    r = await h.run('--auto', 'off');
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.ok(!existsSync(join(h.units, 'feedbackkit-update.timer')) && !existsSync(join(h.units, 'feedbackkit-update.service')));
+    assert.ok(h.calls().includes('disable --now feedbackkit-update.timer'));
+    assert.match((await h.run('--auto', 'status')).stdout, /Subscription: off/);
+    assert.match((await h.run('--auto', 'off')).stdout, /There is no subscription/);
+  } finally { await h.close(); }
+});
+
+test('--auto on takes the installed channel as its default and refuses bad input', async () => {
+  const h = await harness();
+  try {
+    await h.install('1.0.0-dev.1');
+    let r = await h.run('--auto', 'on');
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(readFileSync(join(h.units, 'feedbackkit-update.service'), 'utf8'), /--unattended --channel dev$/m, 'a dev install follows dev');
+    await h.run('--auto', 'off');
+
+    for (const [args, pattern] of [
+      [['--auto', 'on', '--at', '25:00'], /--at is a time of day as HH:MM/],
+      [['--auto', 'on', '--at', '3:30'], /--at is a time of day as HH:MM/],
+      [['--auto', 'maybe'], /--auto is on, off or status/],
+      [['--auto'], /--auto is on, off or status/],
+    ]) {
+      r = await h.run(...args);
+      assert.notEqual(r.status, 0, args.join(' '));
+      assert.match(r.stderr, pattern);
+    }
+    assert.ok(!existsSync(join(h.units, 'feedbackkit-update.timer')), 'a refused subscription writes nothing');
+    // A release without the updater cannot be subscribed: the timer would call a file that is not there.
+    rmSync(join(h.base, 'current', 'feedbackkit-update'));
+    r = await h.run('--auto', 'on');
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /feedbackkit-update is missing or not executable/);
+    assert.ok(!existsSync(join(h.units, 'feedbackkit-update.service')));
+  } finally { await h.close(); }
+});
+
+test('an unattended update installs a healthy release, skips one that failed to start until a newer one exists, and does not hide the failure', async () => {
+  const h = await harness();
+  try {
+    await h.install('1.0.0');
+    await h.createProject('keep');
+    await h.publish('1.1.0', { mutate: (dir) => writeFileSync(join(dir, 'server.mjs'), 'throw new Error("this release is broken");\n') });
+
+    // First night: the broken release is tried, restored and remembered. The run fails, so the timer's unit shows as failed.
+    let r = await h.run('--unattended');
+    assert.notEqual(r.status, 0);
+    assert.match(r.stdout + r.stderr, /did not become healthy\. Restoring 1\.0\.0/);
+    assert.equal(h.current(), '1.0.0');
+    assert.equal(readFileSync(join(h.base, 'auto-skip'), 'utf8').trim(), '1.1.0');
+    assert.deepEqual(await h.projects(), ['keep']);
+    assert.match((await h.run('--auto', 'status')).stdout, /Subscription: off/, 'the skip note is only shown with a subscription');
+
+    // Second night: the service does not stop for the same broken release again, and the run is quiet and successful.
+    r = await h.run('--unattended');
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /Skipping 1\.1\.0: it did not start on an earlier unattended run/);
+    assert.equal(h.current(), '1.0.0');
+    assert.equal((await h.diag()).version, '1.0.0', 'the service was not touched');
+
+    // A person can still try it by hand.
+    r = await h.run();
+    assert.notEqual(r.status, 0, 'a manual update does not use the skip note');
+    assert.match(r.stdout + r.stderr, /did not become healthy/);
+
+    // A newer release is picked up, and the note goes away.
+    await h.publish('1.2.0');
+    r = await h.run('--unattended');
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.equal(h.current(), '1.2.0');
+    assert.equal((await h.up('1.2.0')).version, '1.2.0');
+    assert.ok(!existsSync(join(h.base, 'auto-skip')));
+    assert.deepEqual(await h.projects(), ['keep']);
+    assert.equal((await h.run('--unattended')).status, 0, 'nothing newer: up to date');
+  } finally { await h.close(); }
+});
+
+test('--auto status names a skipped release when a subscription exists', async () => {
+  const h = await harness();
+  try {
+    await h.install('1.0.0');
+    await h.run('--auto', 'on');
+    writeFileSync(join(h.base, 'auto-skip'), '1.1.0\n');
+    const r = await h.run('--auto', 'status');
+    assert.match(r.stdout, /Skipped: 1\.1\.0 \(it failed to start on an unattended run/);
   } finally { await h.close(); }
 });

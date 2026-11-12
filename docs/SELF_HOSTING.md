@@ -79,7 +79,7 @@ sudo install -m 644 /opt/feedbackkit/current/deploy/feedbackkit.service /etc/sys
 sudo systemctl daemon-reload && sudo systemctl enable --now feedbackkit
 ```
 
-Both checks must pass before you extract anything. The unit expects Node at `/usr/bin/node`; change `ExecStart` if yours is elsewhere. `/diag` shows the release and channel, and the System page tells you when a newer release exists (`FK_UPDATE_CHECK` turns that off). To update, run `/opt/feedbackkit/current/feedbackkit-update --check`, then without `--check`. [Updating](RELEASES.md#updating) lists the commands.
+Both checks must pass before you extract anything. The unit expects Node at `/usr/bin/node`; change `ExecStart` if yours is elsewhere. `/diag` shows the release and channel, and the System page tells you when a newer release exists (`FK_UPDATE_CHECK` turns that off). To update, run `/opt/feedbackkit/current/feedbackkit-update --check`, then without `--check`. To let the host follow a channel by itself, run `sudo /opt/feedbackkit/current/feedbackkit-update --auto on`. [Updating](RELEASES.md#updating) lists the commands and what a subscription does.
 
 ## MCP for agents
 

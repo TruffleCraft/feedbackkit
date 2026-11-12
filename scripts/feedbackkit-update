@@ -2,18 +2,27 @@
 # feedbackkit-update: check for, install and roll back FeedbackKit releases of the
 # standalone server (docs/SELF_HOSTING.md). POSIX sh. It needs Node.js (already
 # there to run the server) and curl, tar, sha256sum and ssh-keygen. Nothing runs
-# unless you run it, and the only request it makes is a plain read of the GitHub
-# Releases API.
+# unless you run it or subscribe to a channel (--auto on), and the only request it
+# makes is a plain read of the GitHub Releases API.
 #
 #   feedbackkit-update --check                 what is installed, what is the newest release
 #   feedbackkit-update                         update to the newest release of the channel
 #   feedbackkit-update --channel dev           take dev builds as well (default: stable, or dev
 #                                              when a dev build is installed)
 #   feedbackkit-update --rollback              go back to the previous release and its data
+#   feedbackkit-update --auto on [--channel dev] [--at HH:MM]
+#                                              subscribe: a systemd timer runs the update every
+#                                              night (default 03:30, up to 30 minutes later)
+#   feedbackkit-update --auto off              unsubscribe
+#   feedbackkit-update --auto status           show the subscription
+#   feedbackkit-update --unattended            what the timer runs: an update that skips a release
+#                                              which failed to start before, until a newer one exists
 #
 # Layout: $FK_BASE/releases/<version>/ per release, $FK_BASE/current -> the running one,
 # $FK_BASE/previous -> the one before. Exit codes: 0 done or up to date, 1 failed (the
 # installation is as it was before), 10 with --check: an update is available.
+# --auto needs root. The timer runs $FK_BASE/current/feedbackkit-update, so every update
+# also brings the newer updater.
 set -eu
 
 FK_BASE="${FK_BASE:-/opt/feedbackkit}"
@@ -23,21 +32,31 @@ FK_SYSTEMCTL="${FK_SYSTEMCTL:-systemctl}"
 FK_API="${FK_API:-https://api.github.com/repos/TruffleCraft/feedbackkit}"
 FK_ENV_FILE="${FK_ENV_FILE:-/etc/feedbackkit.env}"
 FK_HEALTH_SECONDS="${FK_HEALTH_SECONDS:-30}"
+FK_UNIT_DIR="${FK_UNIT_DIR:-/etc/systemd/system}"
+UNIT="feedbackkit-update"
 NAMESPACE="feedbackkit-release"
 
 mode=update
 channel=""
+auto=""
+at=""
+unattended=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --check) mode=check ;;
     --rollback) mode=rollback ;;
     --channel) shift; channel="${1:-}" ;;
-    -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --auto) mode=auto; shift; auto="${1:-}" ;;
+    --at) shift; at="${1:-}" ;;
+    --unattended) unattended=1 ;;
+    -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "feedbackkit-update: unknown option $1 (see --help)" >&2; exit 1 ;;
   esac
-  shift
+  [ $# -eq 0 ] || shift  # an option that wants a value may have taken the last argument
 done
 case "$channel" in ""|stable|dev) ;; *) echo "feedbackkit-update: --channel is stable or dev" >&2; exit 1 ;; esac
+case "$auto" in ""|on|off|status) ;; *) echo "feedbackkit-update: --auto is on, off or status" >&2; exit 1 ;; esac
+if [ "$mode" = auto ] && [ -z "$auto" ]; then echo "feedbackkit-update: --auto is on, off or status" >&2; exit 1; fi
 
 say() { printf '%s\n' "$*"; }
 die() { printf 'feedbackkit-update: %s\n' "$*" >&2; exit 1; }
@@ -82,6 +101,71 @@ read -r current_release current_channel _ <<EOF
 $(js release "$current_dir/bundle.json")
 EOF
 [ -n "$channel" ] || { [ "$current_channel" = "dev" ] && channel=dev || channel=stable; }
+
+# ---- subscription -----------------------------------------------------------------------
+# A systemd timer runs `feedbackkit-update --unattended`. Everything else (signature, data copy,
+# health check, automatic restore) is the ordinary update. Off by default.
+unit() { "$FK_SYSTEMCTL" "$@"; }
+if [ "$mode" = auto ]; then
+  case "$auto" in
+    on)
+      case "$at" in
+        "") at="03:30" ;;
+        [01][0-9]:[0-5][0-9]|2[0-3]:[0-5][0-9]) ;;
+        *) die "--at is a time of day as HH:MM, for example 03:30" ;;
+      esac
+      [ -x "$FK_BASE/current/feedbackkit-update" ] || die "$FK_BASE/current/feedbackkit-update is missing or not executable. This release does not carry the updater the timer needs."
+      [ -w "$FK_UNIT_DIR" ] || die "cannot write to $FK_UNIT_DIR. Run this with sudo."
+      cat > "$FK_UNIT_DIR/$UNIT.service" <<EOF
+[Unit]
+Description=FeedbackKit update (channel $channel)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=$FK_BASE/current/feedbackkit-update --unattended --channel $channel
+EOF
+      cat > "$FK_UNIT_DIR/$UNIT.timer" <<EOF
+[Unit]
+Description=Update FeedbackKit every night (channel $channel)
+
+[Timer]
+OnCalendar=*-*-* $at:00
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+EOF
+      unit daemon-reload
+      unit enable --now "$UNIT.timer"
+      say "Subscribed to the $channel channel: every night at $at (up to 30 minutes later), unattended."
+      say "Look at it with: feedbackkit-update --auto status. A failed run shows in: journalctl -u $UNIT"
+      ;;
+    off)
+      if [ -e "$FK_UNIT_DIR/$UNIT.timer" ]; then
+        unit disable --now "$UNIT.timer" || true
+        rm -f "$FK_UNIT_DIR/$UNIT.timer" "$FK_UNIT_DIR/$UNIT.service"
+        unit daemon-reload
+        say "Unsubscribed. Nothing updates unless you run feedbackkit-update."
+      else
+        say "There is no subscription."
+      fi
+      ;;
+    status)
+      if [ ! -e "$FK_UNIT_DIR/$UNIT.timer" ]; then say "Subscription: off. Nothing updates unless you run feedbackkit-update."; exit 0; fi
+      sub_channel="$(sed -n 's/^ExecStart=.* --channel //p' "$FK_UNIT_DIR/$UNIT.service" | head -n 1)"
+      sub_time="$(sed -n 's/^OnCalendar=\*-\*-\* //p' "$FK_UNIT_DIR/$UNIT.timer" | head -n 1)"
+      say "Subscription: on ($(unit is-enabled "$UNIT.timer" 2>/dev/null || echo unknown))"
+      say "Channel: ${sub_channel:-unknown}"
+      say "Runs: every night at ${sub_time%:00} (up to 30 minutes later)"
+      say "Installed: $current_release ($current_channel)"
+      if [ -r "$FK_BASE/auto-skip" ]; then say "Skipped: $(cat "$FK_BASE/auto-skip") (it failed to start on an unattended run; the next newer release is tried)"; fi
+      ;;
+  esac
+  exit 0
+fi
 
 health_url() {
   if [ -n "${FK_HEALTH_URL:-}" ]; then printf '%s' "$FK_HEALTH_URL"; return; fi
@@ -138,6 +222,9 @@ case "$(js compare "$latest" "$current_release")" in
   *) die "cannot compare $latest with $current_release" ;;
 esac
 say "Installed: $current_release ($current_channel). Newest on $channel: $latest."
+if [ -n "$unattended" ] && [ "$(cat "$FK_BASE/auto-skip" 2>/dev/null || true)" = "$latest" ]; then
+  say "Skipping $latest: it did not start on an earlier unattended run. A newer release will be tried."; exit 0
+fi
 if [ "$mode" = check ]; then say "An update is available. Run feedbackkit-update to install it."; exit 10; fi
 [ -n "$url_tar" ] && [ -n "$url_sums" ] && [ -n "$url_sig" ] || die "release $latest lacks the tarball, SHA256SUMS or SHA256SUMS.sig"
 
@@ -203,10 +290,12 @@ if healthy "$latest"; then
     b="$(basename "$d")"; [ "$b" = "$latest" ] || [ "$b" = "$old" ] || rm -rf "$d"
   done
   for b in "$FK_DATA_DIR".backup-*; do [ "$b" = "$FK_DATA_DIR.backup-$old" ] || rm -rf "$b"; done
+  rm -f "$FK_BASE/auto-skip"
   say "Updated to $latest. Run feedbackkit-update --rollback to go back."
   exit 0
 fi
 say "Release $latest did not become healthy. Restoring $old and its data."
+[ -z "$unattended" ] || printf '%s\n' "$latest" > "$FK_BASE/auto-skip"
 service stop || true
 rm -rf "$FK_DATA_DIR"; cp -a "$FK_DATA_DIR.backup-$old" "$FK_DATA_DIR"
 link current "releases/$old"
