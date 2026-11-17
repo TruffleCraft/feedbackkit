@@ -361,6 +361,28 @@ server before the user asks to:
 </script>
 ```
 
+### Panel open and close events
+
+The widget dispatches `feedbackkit:open` on `window` when its panel opens and
+`feedbackkit:close` when it closes. This covers every way in and out: the
+floating button, `window.FeedbackKit.open()`, `data-autoopen`, the close
+button, Escape, a click outside, and Done after sending. Calling `open()` while
+the panel is already open fires nothing, so each `open` is followed by exactly
+one `close`.
+
+`feedbackkit:open` fires before the panel is drawn. A page can use it to hide
+sensitive content before a screenshot is taken from the panel:
+
+```html
+<script>
+  window.addEventListener("feedbackkit:open", () => document.body.classList.add("is-private"));
+  window.addEventListener("feedbackkit:close", () => document.body.classList.remove("is-private"));
+</script>
+```
+
+Add the listeners before the widget script loads. With `data-autoopen` the
+panel can open before a later listener exists.
+
 ### Floating button on small screens
 
 If your app has its own bottom bar on phones, keep the floating button out of

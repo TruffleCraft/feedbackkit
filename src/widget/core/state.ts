@@ -61,6 +61,15 @@ function fromResponse(res: FeedbackResponse, retry?: RetrySnapshot): WidgetState
   }
 }
 
+/** What a transition means for the host page: the panel appears ("open"), goes
+ * away ("close") or stays as it is (null). index.ts turns it into the
+ * `feedbackkit:open` / `feedbackkit:close` events on window. */
+export function visibilityChange(prev: WidgetState, next: WidgetState): "open" | "close" | null {
+  if (prev.name === "closed" && next.name !== "closed") return "open";
+  if (prev.name !== "closed" && next.name === "closed") return "close";
+  return null;
+}
+
 export function reduce(state: WidgetState, event: WidgetEvent): WidgetState {
   switch (event.t) {
     case "open":
