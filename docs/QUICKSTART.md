@@ -363,12 +363,16 @@ server before the user asks to:
 
 ### Panel open and close events
 
-The widget dispatches `feedbackkit:open` on `window` when its panel opens and
-`feedbackkit:close` when it closes. This covers every way in and out: the
-floating button, `window.FeedbackKit.open()`, `data-autoopen`, the close
-button, Escape, a click outside, and Done after sending. Calling `open()` while
-the panel is already open fires nothing, so each `open` is followed by exactly
-one `close`.
+The widget dispatches `feedbackkit:open` on `window` when a report starts and
+`feedbackkit:close` when it ends. A report starts when the panel opens: from
+the floating button, `window.FeedbackKit.open()` or `data-autoopen`. It ends
+when the panel closes: the close button, Escape, a click outside, or Done after
+sending. Calling `open()` while a report is in progress fires nothing, so each
+`open` is followed by exactly one `close`.
+
+Between the two events a report is in progress. If the panel gets a minimized
+state, minimizing will not fire `feedbackkit:close`; a page that hides content
+keeps it hidden until the report ends.
 
 `feedbackkit:open` fires before the panel is drawn. A page can use it to hide
 sensitive content before a screenshot is taken from the panel:
