@@ -3,7 +3,7 @@ import { parseUA } from "../src/widget/lib/ua-parse.js";
 import { redactPII } from "../src/widget/lib/pii-filter.js";
 import { createConsoleBuffer, installConsoleBuffer } from "../src/widget/core/console-buffer.js";
 import { collectDeviceInfo } from "../src/widget/lib/device-info.js";
-import { reduce, type WidgetState } from "../src/widget/core/state.js";
+import { reduce, visibilityChange, type WidgetEvent, type WidgetState } from "../src/widget/core/state.js";
 import { uuid } from "../src/widget/lib/uuid.js";
 import { Api } from "../src/widget/lib/api.js";
 import type { FeedbackResponse } from "../src/shared/contract.js";
@@ -133,6 +133,50 @@ describe("state machine", () => {
 
   it("retry without a snapshot (nothing was sent) returns to an empty form", () => {
     expect(reduce({ name: "failed", reason: "x" }, { t: "retry" })).toEqual({ name: "form", type: "", text: "" });
+  });
+});
+
+// The host learns when the panel opens and closes (feedbackkit:open / :close on window),
+// for example to hide personal content while a report with a screenshot is written.
+describe("host events", () => {
+  /** Runs events through the reducer the way index.ts dispatch() does and records what the host hears. */
+  function run(events: WidgetEvent[]): string[] {
+    const target = new EventTarget();
+    const heard: string[] = [];
+    for (const name of ["feedbackkit:open", "feedbackkit:close"]) target.addEventListener(name, (e) => heard.push(e.type));
+    let state: WidgetState = { name: "closed" };
+    for (const event of events) {
+      const next = reduce(state, event);
+      if (next === state) continue;
+      const change = visibilityChange(state, next);
+      state = next;
+      if (change) target.dispatchEvent(new CustomEvent(`feedbackkit:${change}`));
+    }
+    return heard;
+  }
+  const created: FeedbackResponse = { v: 1, status: "created", id: "1" };
+
+  it("fires open once, also when open is called again while the panel is open", () => {
+    expect(run([{ t: "open", type: "bug" }, { t: "open", type: "bug" }, { t: "setText", text: "x" }])).toEqual(["feedbackkit:open"]);
+  });
+  it("close follows open exactly once, also after sending", () => {
+    expect(run([{ t: "open", type: "bug" }, { t: "close" }])).toEqual(["feedbackkit:open", "feedbackkit:close"]);
+    expect(run([{ t: "open", type: "bug" }, { t: "submit" }, { t: "response", res: created }, { t: "close" }, { t: "close" }])).toEqual(["feedbackkit:open", "feedbackkit:close"]);
+  });
+  it("stays quiet on steps inside the open panel and on a close while closed", () => {
+    expect(run([{ t: "close" }])).toEqual([]);
+    expect(run([{ t: "open", type: "bug" }, { t: "submit" }, { t: "response", res: created }, { t: "restart" }])).toEqual(["feedbackkit:open"]);
+  });
+  it("pairs every reopen with its own close", () => {
+    expect(run([{ t: "open", type: "bug" }, { t: "close" }, { t: "open", type: "bug" }, { t: "close" }])).toEqual(["feedbackkit:open", "feedbackkit:close", "feedbackkit:open", "feedbackkit:close"]);
+  });
+  it("maps transitions directly", () => {
+    const closed: WidgetState = { name: "closed" };
+    const form: WidgetState = { name: "form", type: "", text: "" };
+    expect(visibilityChange(closed, form)).toBe("open");
+    expect(visibilityChange({ name: "submitting" }, closed)).toBe("close");
+    expect(visibilityChange(form, { name: "extracting", sendNow: false })).toBeNull();
+    expect(visibilityChange(closed, { name: "closed" })).toBeNull();
   });
 });
 

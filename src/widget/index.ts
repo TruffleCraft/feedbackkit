@@ -1,4 +1,4 @@
-import { reduce, type RetrySnapshot, type WidgetState } from "./core/state.js";
+import { reduce, visibilityChange, type RetrySnapshot, type WidgetState } from "./core/state.js";
 import { createConsoleBuffer, installConsoleBuffer } from "./core/console-buffer.js";
 import { collectDeviceInfo } from "./lib/device-info.js";
 import { captureScreenshot } from "./lib/screenshot.js";
@@ -15,7 +15,9 @@ declare global {
   interface Window {
     /** Host-supplied debug context (object, or a function read at submit time). */
     FeedbackKitContext?: unknown;
-    /** Set by the widget once booted: open the panel from the host's own UI. */
+    /** Set by the widget once booted: open the panel from the host's own UI.
+     * The widget also dispatches `feedbackkit:open` and `feedbackkit:close` on
+     * window when its panel opens and closes. */
     FeedbackKit?: { open(): void; version: string };
   }
 }
@@ -217,8 +219,13 @@ async function boot() {
   function dispatch(event: Parameters<typeof reduce>[1], after?: () => void) {
     const next = reduce(state, event);
     if (next === state) return;
+    const change = visibilityChange(state, next);
     state = next;
     debug("state →", state.name);
+    // Tell the host before the panel renders, so a page that hides its content
+    // while the panel is open does so before the first screenshot can be taken.
+    // Every way the panel opens or closes passes here, and only on a real change.
+    if (change) window.dispatchEvent(new CustomEvent(`feedbackkit:${change}`));
     ui.render(state);
     after?.();
   }

@@ -20,6 +20,31 @@ test("happy path: type → send → issue created", async ({ page }) => {
   await expect(page.getByPlaceholder(placeholder)).toHaveValue("");
 });
 
+test("host events: feedbackkit:open before the panel shows, feedbackkit:close once per close, also after sending", async ({ page }) => {
+  await installMocks(page, { post1: { v: 1, status: "created", id: "1" } });
+  await page.addInitScript(() => {
+    const log: string[] = [];
+    (window as unknown as { fkLog: string[] }).fkLog = log;
+    const panelHidden = () => (document.querySelector("[data-feedbackkit=host]")?.shadowRoot?.querySelector(".fk-backdrop") as HTMLElement | null)?.hidden;
+    window.addEventListener("feedbackkit:open", () => log.push(`open:${panelHidden() ? "before" : "after"}`));
+    window.addEventListener("feedbackkit:close", () => log.push("close"));
+  });
+  const log = () => page.evaluate(() => (window as unknown as { fkLog: string[] }).fkLog);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Feedback" }).click();
+  await expect(page.getByPlaceholder(placeholder)).toBeVisible();
+  await page.evaluate(() => (window as unknown as { FeedbackKit: { open(): void } }).FeedbackKit.open()); // already open: no second event
+  expect(await log()).toEqual(["open:before"]);
+  await page.getByRole("button", { name: "Close" }).click();
+  expect(await log()).toEqual(["open:before", "close"]);
+  await page.getByRole("button", { name: "Feedback" }).click();
+  await page.getByPlaceholder(placeholder).fill("the save button does nothing");
+  await page.getByRole("button", send).click();
+  await expect(page.getByText("Thanks, got it.")).toBeVisible();
+  await page.getByRole("button", { name: "Done" }).click();
+  expect(await log()).toEqual(["open:before", "close", "open:before", "close"]);
+});
+
 test("follow_up: shows ONE conversational question, freetext answer → created", async ({ page }) => {
   await installMocks(page, {
     post1: { v: 1, status: "follow_up", question: "What did you expect to happen?", extracted: { repro: "clicked save" }, summary: "Save action fails" },
