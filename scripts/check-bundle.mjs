@@ -13,7 +13,11 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 // UI (thread, "what gets sent" disclosure, done card), the full-screen
 // phone sheet (visual-viewport sizing, iOS scroll pin), screenshot thumbnails
 // and the host theming tokens. CI's gzip lands a few bytes above local builds.
-const BUDGET_GZ = 23 * 1024;
+// 25,792 bytes since the minimizable panel (#170): the pill with its camera, the
+// discard question, the draft kept in sessionStorage across page loads,
+// screenshots uploaded on capture with page labels and the list of reports sent
+// in the tab measured 2,240 bytes (23,436 → 25,676); the 116 left before stay left.
+const BUDGET_GZ = 25_792;
 
 let buf;
 try {

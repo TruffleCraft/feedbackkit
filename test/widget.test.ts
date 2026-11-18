@@ -99,9 +99,9 @@ describe("state machine", () => {
   it("maps responses to states", () => {
     const ex: WidgetState = { name: "extracting", sendNow: false };
     expect(reduce(ex, { t: "response", res: { v: 1, status: "follow_up", question: "Was hast du erwartet?", extracted: { b: "x" } } })).toEqual({ name: "asking", question: "Was hast du erwartet?", extracted: { b: "x" } });
-    expect(reduce(ex, { t: "response", res: { v: 1, status: "created", id: "1", issueUrl: "u" } })).toEqual({ name: "done", issueUrl: "u", soft: false });
-    expect(reduce(ex, { t: "response", res: { v: 1, status: "accepted_incomplete", id: "1", issueUrl: "u" } })).toEqual({ name: "done", issueUrl: "u", soft: true });
-    expect(reduce(ex, { t: "response", res: { v: 1, status: "issue_failed", id: "1", reason: "r" } })).toEqual({ name: "done", soft: true });
+    expect(reduce(ex, { t: "response", res: { v: 1, status: "created", id: "1", issueUrl: "u" } })).toEqual({ name: "done", issueUrl: "u", soft: false, id: "1" });
+    expect(reduce(ex, { t: "response", res: { v: 1, status: "accepted_incomplete", id: "1", issueUrl: "u" } })).toEqual({ name: "done", issueUrl: "u", soft: true, id: "1" });
+    expect(reduce(ex, { t: "response", res: { v: 1, status: "issue_failed", id: "1", reason: "r" } })).toEqual({ name: "done", soft: true, id: "1" });
     expect(reduce(ex, { t: "response", res: { v: 1, status: "error", error: "boom" } })).toEqual({ name: "failed", reason: "boom" });
     // A non-conforming response must not produce an undefined state (render crash).
     expect(reduce(ex, { t: "response", res: { v: 1, status: "weird" } as unknown as FeedbackResponse })).toEqual({ name: "failed", reason: "unexpected response" });
@@ -123,7 +123,7 @@ describe("state machine", () => {
     expect(reduce(busy, { t: "response", res: fail, retry: leg2 })).toEqual({ name: "failed", reason: fail.error, retry: leg2 });
     expect(reduce(busy, { t: "response", res: { v: 1, status: "weird" } as unknown as FeedbackResponse, retry: leg1 })).toEqual({ name: "failed", reason: "unexpected response", retry: leg1 });
     // A success ignores the snapshot.
-    expect(reduce(busy, { t: "response", res: { v: 1, status: "created", id: "1" }, retry: leg1 })).toEqual({ name: "done", soft: false });
+    expect(reduce(busy, { t: "response", res: { v: 1, status: "created", id: "1" }, retry: leg1 })).toEqual({ name: "done", soft: false, id: "1" });
   });
 
   it("retry resends the failed leg: POST-1 → extracting, POST-2 → submitting", () => {

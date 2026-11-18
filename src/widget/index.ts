@@ -6,7 +6,7 @@ import { uuid } from "./lib/uuid.js";
 import { Api } from "./lib/api.js";
 import { readHostContext } from "./lib/host-context.js";
 import { TurnstileGate } from "./lib/turnstile.js";
-import { WidgetUI, type UIConfig } from "./ui/panel.js";
+import { WidgetUI, type SentEntry, type UIConfig } from "./ui/panel.js";
 import type { Locale } from "./ui/i18n.js";
 import { redactPageUrl } from "../shared/page-url.js";
 import type { PublicConfig, FeedbackPayload, FeedbackResponse } from "../shared/contract.js";
@@ -15,9 +15,10 @@ declare global {
   interface Window {
     /** Host-supplied debug context (object, or a function read at submit time). */
     FeedbackKitContext?: unknown;
-    /** Set by the widget once booted: open the panel from the host's own UI.
-     * The widget also dispatches `feedbackkit:open` and `feedbackkit:close` on
-     * window when its panel opens and closes. */
+    /** Set by the widget once booted: open the panel from the host's own UI,
+     * or bring back a minimized report. The widget also dispatches
+     * `feedbackkit:open` and `feedbackkit:close` on window when a report starts
+     * and ends; minimizing and restoring fire nothing. */
     FeedbackKit?: { open(): void; version: string };
   }
 }
@@ -28,6 +29,29 @@ declare const __FK_RELEASE__: string;
 const RELEASE = typeof __FK_RELEASE__ === "string" ? __FK_RELEASE__ : "0.0.0-local";
 
 type Label = string | Record<string, string>;
+
+/** A screenshot in the draft (#170): uploaded on capture, labelled with its page
+ * (origin and path). After a page load only the key and the page come back. */
+interface Shot {
+  blob?: Blob;
+  url?: string;
+  key?: string | null;
+  page: string;
+  up?: Promise<unknown>;
+}
+
+/** The tab's sessionStorage (#170): read with one argument, write a value, drop
+ * with null. A blocked storage leaves the draft in memory only. */
+function stash(key: string, value?: unknown): unknown {
+  try {
+    if (value === undefined) return JSON.parse(sessionStorage.getItem(key) ?? "null");
+    if (value === null) sessionStorage.removeItem(key);
+    else sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage blocked or unreadable */
+  }
+  return null;
+}
 function label(l: Label, locale: string): string {
   return typeof l === "string" ? l : (l[locale] ?? Object.values(l)[0] ?? "");
 }
@@ -112,10 +136,14 @@ async function boot() {
   let sent = { text: "", type: "" }; // what the user sent with POST-1 (type "" = the gateway decides)
   let attachedKeys: string[] = []; // R2 keys of manually attached files (uploaded on pick)
   let pendingAttachments: Promise<{ status: "uploaded" | "failed" | "limit"; key?: string }>[] = [];
-  let shots: { blob: Blob; url: string }[] = []; // the draft's page captures (#91), marked up in place
+  let shots: Shot[] = []; // the draft's page captures (#91), marked up in place
   let editing = -1; // index of the screenshot open in the annotator
-  let draft = false; // closed from the form: the next open shows the same text and media
   let bailed = false;
+  // Kept in the tab (#170): the draft until the report ends, and the reports sent.
+  const DRAFT = `fk-draft:${project}`;
+  const SENT = `fk-sent:${project}`;
+  const stored = stash(SENT);
+  let sentList = (Array.isArray(stored) ? stored : []).filter((e): e is SentEntry => typeof e?.s === "string" && typeof e.t === "number");
   let slowTimer: ReturnType<typeof setTimeout> | undefined;
   let gen = 0; // attempt generation: a stale async result (from a closed/superseded attempt) is ignored
 
@@ -126,7 +154,7 @@ async function boot() {
     base1 = null;
     sent = { text: "", type: "" };
     bailed = false;
-    for (const s of shots) URL.revokeObjectURL(s.url);
+    for (const s of shots) if (s.url) URL.revokeObjectURL(s.url);
     shots = [];
     editing = -1;
     ui.resetDraft();
@@ -148,11 +176,8 @@ async function boot() {
     else triggerMedia = mql;
   }
 
-  const open = () => {
-    if (state.name !== "closed") return;
-    if (draft) showShots(); // resync the screenshot button (a capture may have been cut off by the close)
-    else resetAttempt();
-    draft = false;
+  // A report starts: fresh from open(), or a draft restored after a page load.
+  const begin = (after?: () => void) => {
     gate?.preload();
     const device = collectDeviceInfo(window);
     ui.setContext({
@@ -162,14 +187,21 @@ async function boot() {
       consoleErrors: buffer.snapshot().length,
       contextKeys: Object.keys(readHostContext(window.FeedbackKitContext) ?? {}),
     });
-    dispatch({ t: "open", type: cfg.autoType ? "" : (cfg.types[0]?.type ?? "") }, () => api.event("opened"));
+    dispatch({ t: "open", type: cfg.autoType ? "" : (cfg.types[0]?.type ?? "") }, after);
+  };
+  const open = () => {
+    if (state.name !== "closed") return ui.restore(); // a minimized report comes back as it was
+    resetAttempt();
+    begin(() => api.event("opened"));
   };
 
   const ui = new WidgetUI(shadow, toUIConfig(cfg, script.dataset.label, hideTrigger, triggerMedia), {
     onOpen: open,
     onClose: () => {
-      draft = state.name === "form"; // closing before sending keeps the draft (scroll, then add another screenshot)
+      // Closing ends the report (the panel asked first if work was unsent);
+      // minimizing is the way to keep it.
       gen++; // abandon any in-flight attempt
+      stash(DRAFT, null);
       dispatch({ t: "close" });
     },
     onSubmit: (type, text) => void submit(type, text),
@@ -202,15 +234,17 @@ async function boot() {
     },
     onRemoveShot: (i) => {
       const [removed] = shots.splice(i, 1);
-      if (removed) URL.revokeObjectURL(removed.url);
+      if (removed?.url) URL.revokeObjectURL(removed.url);
       showShots();
     },
     onAnnotated: (blob) => {
       const shot = shots[editing];
       editing = -1;
       if (!shot) return;
-      URL.revokeObjectURL(shot.url);
-      Object.assign(shot, { blob, url: URL.createObjectURL(blob) });
+      if (shot.url) URL.revokeObjectURL(shot.url);
+      // The marked-up image replaces the upload; the first file is left without a report.
+      Object.assign(shot, { blob, url: URL.createObjectURL(blob), key: undefined });
+      upload(shot);
       debug("screenshot annotated", { bytes: blob.size });
       showShots();
     },
@@ -220,6 +254,13 @@ async function boot() {
     const next = reduce(state, event);
     if (next === state) return;
     const change = visibilityChange(state, next);
+    if (next.name === "done" && state.name !== "done") {
+      // Sent: into the tab's list, and the draft is gone.
+      sentList = [...sentList, { s: next.summary || sent.text.slice(0, 200), k: next.type, t: Date.now(), id: next.id, u: next.issueUrl }].slice(-20);
+      stash(SENT, sentList);
+      stash(DRAFT, null);
+      ui.setSent(sentList);
+    }
     state = next;
     debug("state →", state.name);
     // Tell the host before the panel renders, so a page that hides its content
@@ -237,7 +278,18 @@ async function boot() {
 
   const MAX_SHOTS = 4; // with manual images, at most 5 attachments in total (contract cap)
   function showShots() {
-    ui.setShots(shots.map((s) => s.url), shots.length < MAX_SHOTS && shots.length + attachedKeys.length + pendingAttachments.length < 5);
+    ui.setShots(
+      shots.map((s) => ({ url: s.url, page: s.page.replace(/^[a-z]+:\/\/[^/]+/i, "") || "/" })),
+      shots.length < MAX_SHOTS && shots.length + attachedKeys.length + pendingAttachments.length < 5,
+    );
+  }
+
+  /** Upload a screenshot now (#170), so the draft survives a page load as a key. */
+  function upload(shot: Shot) {
+    if (!feedbackId) feedbackId = uuid();
+    const up: Promise<unknown> = (shot.up = api.uploadScreenshot(feedbackId, shot.blob!).then((key) => {
+      if (shot.up === up) shot.key = key; // a later markup replaced this upload
+    }));
   }
 
   // "Screenshot" (#91): capture the visible page now and add it to the draft; its
@@ -246,6 +298,7 @@ async function boot() {
   async function addShot() {
     if (!screenshotOn) return;
     const myGen = gen;
+    const page = redactPageUrl(location.href); // the page it shows, origin and path only
     const t0 = Date.now();
     ui.captureStarted();
     const shot = await Promise.race([captureScreenshot({ skip: host, maxWidth: 1600, viewport: true }), new Promise<null>((r) => setTimeout(() => r(null), 6000))]);
@@ -253,13 +306,15 @@ async function boot() {
     ui.captureDone();
     if (myGen !== gen || state.name !== "form") return showShots(); // closed while capturing
     if (!shot) return ui.captureFailed();
-    shots.push({ blob: shot, url: URL.createObjectURL(shot) });
+    const added: Shot = { blob: shot, url: URL.createObjectURL(shot), page };
+    shots.push(added);
+    upload(added);
     showShots();
   }
 
   async function editShot(i: number) {
     const shot = shots[i];
-    if (!shot) return;
+    if (!shot?.url) return; // restored after a page load: the image stayed on the other page
     const img = new Image();
     img.src = shot.url;
     try {
@@ -306,7 +361,8 @@ async function boot() {
       // The draft's screenshots go first, in order, so the worker's vision input
       // (attachment 0) is a page capture. Manual evidence follows in upload order.
       for (const shot of screenshotOn ? shots : []) {
-        const key = await api.uploadScreenshot(feedbackId, shot.blob);
+        await shot.up; // uploaded on capture; a failed upload gets one more try
+        const key = shot.key ?? (shot.blob ? await api.uploadScreenshot(feedbackId, shot.blob) : null);
         if (myGen !== gen) return; // superseded/closed while uploading
         if (key) attachmentKeys.push(key);
       }
@@ -412,6 +468,28 @@ async function boot() {
   }
 
   ui.render(state);
+  ui.setSent(sentList);
+
+  // A full page load keeps the draft in the tab: text, report id and upload keys.
+  addEventListener("pagehide", () => {
+    if (state.name === "form" && (ui.text.trim() || shots.length || attachedKeys.length)) {
+      if (!feedbackId) feedbackId = uuid();
+      stash(DRAFT, { id: feedbackId, text: ui.text, shots: shots.filter((s) => s.key).map((s) => ({ k: s.key, p: s.page })), files: attachedKeys });
+    } else stash(DRAFT, null);
+  });
+  const saved = stash(DRAFT) as { id?: string; text?: string; shots?: { k: string; p: string }[]; files?: string[] } | null;
+  if (saved?.id) {
+    // Back minimized. This page has not heard the report start, so
+    // feedbackkit:open fires once; the funnel already counted the open.
+    feedbackId = saved.id;
+    shots = (saved.shots ?? []).slice(0, MAX_SHOTS).map((s) => ({ key: s.k, page: s.p }));
+    attachedKeys = (saved.files ?? []).slice(0, 5 - shots.length);
+    ui.text = saved.text ?? "";
+    ui.addFileKeys(attachedKeys);
+    showShots();
+    ui.min = true;
+    begin();
+  }
 
   window.FeedbackKit = { open, version: RELEASE };
   if (script.dataset.autoopen != null) open();

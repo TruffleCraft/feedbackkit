@@ -27,11 +27,17 @@ export const STYLES = `
   --fk-shadow:0 40px 80px -30px rgba(26,26,26,.35); }
 * { box-sizing:border-box; }
 
-.fk-trigger { position:fixed; z-index:2147483646; bottom:var(--fk-trigger-bottom,max(20px,env(safe-area-inset-bottom,20px)));
+.fk-trigger,.fk-mini { position:fixed; z-index:2147483646; bottom:var(--fk-trigger-bottom,max(20px,env(safe-area-inset-bottom,20px)));
   inset-inline-end:max(20px,env(safe-area-inset-right,20px)); display:flex; align-items:center; gap:8px;
-  padding:10px 16px 10px 10px; cursor:pointer; font:700 14px var(--fk-font); color:var(--fk-ink);
-  background:var(--fk-bg); border:1px solid var(--fk-line-2); border-radius:999px; box-shadow:var(--fk-shadow);
-  transition:transform .18s ease,border-color .18s ease; }
+  padding:10px 16px 10px 10px; font:700 14px var(--fk-font); color:var(--fk-ink);
+  background:var(--fk-bg); border:1px solid var(--fk-line-2); border-radius:999px; box-shadow:var(--fk-shadow); }
+.fk-trigger { cursor:pointer; transition:transform .18s ease,border-color .18s ease; }
+.fk-mini { padding:5px 5px 5px 10px; }
+.fk-mini-t { display:flex; flex-direction:column; padding-right:4px; line-height:1.2; }
+.fk-mini small { color:var(--fk-muted); font-size:12px; font-weight:600; }
+.fk-ib { width:40px; height:40px; flex:none; display:grid; place-items:center; padding:0; border:1px solid var(--fk-line-2);
+  border-radius:999px; background:transparent; color:var(--fk-ink-2); cursor:pointer; }
+.fk-ib:disabled { opacity:.5; cursor:wait; }
 .fk-trigger:hover { transform:translateY(-2px); border-color:var(--fk-accent); }
 .fk-trigger-icon,.fk-avatar { width:26px; height:26px; display:grid; place-items:center; flex:none; border-radius:999px;
   background:var(--fk-accent); color:var(--fk-accent-ink); }
@@ -48,10 +54,11 @@ export const STYLES = `
 @keyframes fk-enter { from { opacity:0; transform:translateY(10px) scale(.985); } }
 @keyframes fk-fade { from { opacity:0; } }
 .fk-panel button,.fk-panel a { font-family:var(--fk-font); cursor:pointer; }
-.fk-panel :focus-visible,.fk-trigger:focus-visible { outline:2px solid var(--fk-accent); outline-offset:2px; }
+.fk-panel :focus-visible,.fk-trigger:focus-visible,.fk-mini :focus-visible { outline:2px solid var(--fk-accent); outline-offset:2px; }
 .fk-head { display:flex; align-items:center; gap:10px; }
 .fk-mark svg { display:block; width:24px; height:24px; }
 .fk-brand { font-size:15px; font-weight:700; color:var(--fk-ink-2); }
+.fk-hb { margin-left:auto; display:flex; gap:8px; }
 .fk-x { margin-left:auto; width:36px; height:36px; display:grid; place-items:center; padding:0; border:0;
   border-radius:999px; background:var(--fk-soft); color:var(--fk-ink-2); }
 .fk-x:hover { color:var(--fk-ink); }
@@ -91,6 +98,7 @@ export const STYLES = `
 .fk-thumb-img img { display:block; width:100%; height:100%; object-fit:cover; }
 .fk-thumb-pen { position:absolute; right:4px; bottom:4px; width:22px; height:22px; display:grid; place-items:center; border-radius:999px; background:var(--fk-accent); color:var(--fk-accent-ink); }
 .fk-thumb-pen svg { width:12px; height:12px; }
+.fk-thumb-p { display:block; width:76px; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--fk-muted); font:11px var(--fk-mono); }
 .fk-thumb-x { position:absolute; top:-9px; right:-9px; width:26px; height:26px; display:grid; place-items:center; padding:0; border:2px solid var(--fk-soft); border-radius:999px; background:var(--fk-ink); color:var(--fk-bg); }
 .fk-thumb-x svg { width:12px; height:12px; }
 .fk-chip { max-width:100%; padding:4px 10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border:1px solid var(--fk-line-2);
@@ -131,6 +139,18 @@ export const STYLES = `
   border:1px solid var(--fk-accent); border-radius:999px; background:var(--fk-accent); color:var(--fk-accent-ink);
   font:700 15px var(--fk-font); text-decoration:none; cursor:pointer; }
 .fk-btn .fk-ic svg { width:16px; height:16px; }
+.fk-confirm { display:flex; flex-direction:column; gap:12px; padding:16px; background:var(--fk-soft); border-radius:var(--fk-radius-box); }
+.fk-confirm p { margin:0; font-size:15px; font-weight:700; }
+.fk-histw { display:flex; flex-direction:column; gap:4px; }
+.fk-hist { margin:0; padding:0; list-style:none; }
+.fk-hist li { display:grid; grid-template-columns:1fr auto; align-items:center; gap:6px 10px; padding:10px 0; border-top:1px solid var(--fk-line); color:var(--fk-ink-2); font-size:13px; }
+.fk-hist li:first-child { border-top:0; }
+.fk-hist p { grid-column:1/-1; margin:0; color:var(--fk-ink); font-size:14px; line-height:1.35; font-weight:var(--fk-weight-strong,600); overflow-wrap:anywhere; }
+.fk-hist a { display:inline-flex; align-items:center; gap:4px; color:var(--fk-accent-text); font-weight:700; text-decoration:none; }
+.fk-hist .fk-ic svg { width:14px; height:14px; }
+.fk-meta { display:flex; align-items:center; gap:10px; color:var(--fk-ink-2); font-size:13px; font-variant-numeric:tabular-nums; }
+.fk-hist .fk-tag { padding:3px 10px; font-size:12px; }
+.fk-note { margin:0; text-align:center; color:var(--fk-muted); font-size:13px; }
 .fk-btn.fk-ghost { background:transparent; color:var(--fk-ink); border-color:var(--fk-line-2); }
 
 .fk-editor { position:fixed; z-index:2147483647; inset:0; display:flex; flex-direction:column; gap:14px;
@@ -158,7 +178,7 @@ export const STYLES = `
 @media (max-width:600px) { .fk-backdrop { align-items:flex-start; padding:0; }
   .fk-panel { width:100%; height:var(--fk-vvh,100dvh); max-height:none; margin-top:var(--fk-vvtop,0px); gap:0; padding:0; border:0; border-radius:0; animation:fk-fade .2s ease; }
   .fk-head { flex:none; padding:max(8px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 8px max(20px,env(safe-area-inset-left)); border-bottom:1px solid var(--fk-line); }
-  .fk-x { width:44px; height:44px; }
+  .fk-x,.fk-ib { width:44px; height:44px; }
   .fk-view { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; padding:18px max(20px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left)); }
   .fk-composer,.fk-answer { order:1; } .fk-composer,.fk-view > .fk-row { margin-top:auto; } .fk-thread { flex:1 0 auto; }
   .fk-row { flex-direction:column-reverse; }

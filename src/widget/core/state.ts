@@ -11,7 +11,7 @@ export type WidgetState =
   | { name: "extracting"; sendNow: boolean } // sendNow=true after the 4s slow-hint → "Send now" goes primary
   | { name: "asking"; question: string; extracted: Record<string, string>; type?: string; typeUnclear?: boolean } // type = how the gateway classified it
   | { name: "submitting" }
-  | { name: "done"; issueUrl?: string; soft: boolean; type?: string; summary?: string } // soft = accepted/received but no issue link yet
+  | { name: "done"; issueUrl?: string; soft: boolean; type?: string; summary?: string; id?: string } // soft = accepted/received but no issue link yet; id = the gateway's report id
   | { name: "failed"; reason: string; retry?: RetrySnapshot }; // retry: what to resend, so nothing typed is lost
 
 /** Everything a retry needs to resend the failed leg unchanged: the same
@@ -45,13 +45,13 @@ function fromResponse(res: FeedbackResponse, retry?: RetrySnapshot): WidgetState
     case "follow_up":
       return { name: "asking", question: res.question, extracted: { ...res.extracted }, type: res.type, typeUnclear: res.typeUnclear };
     case "created":
-      return { name: "done", issueUrl: res.issueUrl, soft: false, type: res.type, summary: res.summary };
+      return { name: "done", issueUrl: res.issueUrl, soft: false, type: res.type, summary: res.summary, id: res.id };
     case "accepted_incomplete":
-      return { name: "done", issueUrl: res.issueUrl, soft: true, type: res.type, summary: res.summary };
+      return { name: "done", issueUrl: res.issueUrl, soft: true, type: res.type, summary: res.summary, id: res.id };
     case "issue_failed":
       // Feedback IS saved server-side; the tracker call failed. Don't alarm the
       // user — their report landed and will be retried by the operator.
-      return { name: "done", soft: true };
+      return { name: "done", soft: true, id: res.id };
     case "error":
       return { name: "failed", reason: res.error, ...(retry ? { retry } : {}) };
     default:
@@ -63,8 +63,8 @@ function fromResponse(res: FeedbackResponse, retry?: RetrySnapshot): WidgetState
 
 /** What a transition means for the host page: a report starts ("open"), ends
  * ("close") or goes on (null). index.ts turns it into the `feedbackkit:open` /
- * `feedbackkit:close` events on window. A future minimized panel is still a
- * report in progress and must not count as "close". */
+ * `feedbackkit:close` events on window. A minimized panel is still a report in
+ * progress: the UI hides it without a state change, so it never counts as "close". */
 export function visibilityChange(prev: WidgetState, next: WidgetState): "open" | "close" | null {
   if (prev.name === "closed" && next.name !== "closed") return "open";
   if (prev.name !== "closed" && next.name === "closed") return "close";
