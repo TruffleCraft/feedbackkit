@@ -114,18 +114,17 @@ test("phones: the page is pinned while open and returns to its scroll position",
   await expect.poll(() => page.evaluate(() => [document.body.style.position, window.scrollY])).toEqual(["", 300]);
 });
 
-test("a stray click outside keeps unsent text; without text it closes", async ({ page }) => {
+test("a click outside minimizes the form and keeps its text (#170)", async ({ page }) => {
   await installMocks(page, { post1: {} });
   await page.goto("/");
   test.skip(page.viewportSize()!.width <= 600, "no outside area on phones");
   await page.getByRole("button", feedbackBtn).click();
   await page.getByPlaceholder(/in your own words/i).fill("half a thought");
   await page.mouse.click(10, 10);
-  await expect(page.locator(".fk-panel")).toBeVisible();
-  await expect(page.getByPlaceholder(/in your own words/i)).toHaveValue("half a thought");
-  await page.getByPlaceholder(/in your own words/i).fill("");
-  await page.mouse.click(10, 10);
   await expect(page.locator(".fk-panel")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Open report" })).toBeFocused();
+  await page.getByRole("button", { name: "Open report" }).click();
+  await expect(page.getByPlaceholder(/in your own words/i)).toHaveValue("half a thought");
 });
 
 test("host theme follows document data-theme and falls back to color scheme", async ({ page }) => {

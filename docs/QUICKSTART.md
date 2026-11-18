@@ -361,18 +361,46 @@ server before the user asks to:
 </script>
 ```
 
+### Minimize, page loads and the sent list
+
+The panel has a minimize button left of the close button. Escape and a click
+outside minimize too. Minimized, the panel shrinks to a pill where the floating
+button sits, also with `data-trigger="none"`, and it follows
+`--fk-trigger-bottom`. The page underneath scrolls and works as usual. The pill
+shows how many screenshots the report holds. Its camera button captures the
+page the user is on without opening the panel, and its open button brings the
+panel back. `window.FeedbackKit.open()` does the same.
+
+The draft lasts until the tab closes. The widget keeps its text, the report id
+and the upload keys in `sessionStorage`. After a full page load the draft comes
+back minimized. Screenshots upload when they are taken, and each one is
+labelled with the path of the page it shows. A screenshot that no sent report
+lists is deleted 24 hours after upload, by the daily cron on Cloudflare and the
+hourly sweep on the standalone server. Up to 4 screenshots and 5 attachments in
+total fit in one report.
+
+The close button ends the report. With unsent text or images the panel first
+asks "Discard this report?".
+
+Each report sent in a tab goes into a list shown above the form: the gateway's
+summary, the type it picked, the time, and the ticket link if the project sets
+`issueLink: true`. Without a link the entry shows a short reference taken from
+the report id. The list asks the gateway nothing, so it shows no live status.
+It is kept in `sessionStorage` too and disappears with the tab.
+
 ### Panel open and close events
 
 The widget dispatches `feedbackkit:open` on `window` when a report starts and
 `feedbackkit:close` when it ends. A report starts when the panel opens: from
 the floating button, `window.FeedbackKit.open()` or `data-autoopen`. It ends
-when the panel closes: the close button, Escape, a click outside, or Done after
-sending. Calling `open()` while a report is in progress fires nothing, so each
-`open` is followed by exactly one `close`.
+with the close button or Done after sending. Calling `open()` while a report is
+in progress fires nothing, so each `open` is followed by at most one `close`.
 
-Between the two events a report is in progress. If the panel gets a minimized
-state, minimizing will not fire `feedbackkit:close`; a page that hides content
-keeps it hidden until the report ends.
+Minimizing and restoring fire nothing: a page that hides content on `open`
+keeps it hidden while the report is minimized, because the pill can take a
+screenshot at any time. After a full page load a restored draft fires
+`feedbackkit:open` once, since the new page has not heard it yet. A page that
+is left while a report is in progress hears no `close`.
 
 `feedbackkit:open` fires before the panel is drawn. A page can use it to hide
 sensitive content before a screenshot is taken from the panel:

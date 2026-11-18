@@ -42,21 +42,18 @@ test("annotate: capture → draw → use → flattened shot uploads and key ride
   await page.mouse.move(box.x + 140, box.y + 100, { steps: 4 });
   await page.mouse.up();
 
-  // Use it → overlay closes and the thumbnail shows the marked-up image.
-  await page.getByRole("button", { name: "Use screenshot" }).click();
+  // Use it → overlay closes, the thumbnail shows the marked-up image, and the
+  // edited blob replaces the upload made at capture (#170).
+  const [upload] = await Promise.all([page.waitForResponse("**/api/upload**"), page.getByRole("button", { name: "Use screenshot" }).click()]);
   await expect(page.locator(".fk-editor")).toBeHidden();
   await expect(page.locator(".fk-thumb")).toHaveCount(1);
   await expect(thumb).not.toHaveAttribute("src", before!);
-
-  // Send → the edited blob uploads (screenshot kind) and its key is on the payload.
-  await page.getByPlaceholder(placeholder).fill("the header overlaps the menu");
-  const [upload, feedback] = await Promise.all([
-    page.waitForResponse("**/api/upload**"),
-    page.waitForRequest("**/api/feedback**"),
-    page.getByRole("button", { name: "Send", exact: true }).click(),
-  ]);
   expect(upload.url()).toContain("kind=screenshot");
   expect((await upload.request().sizes()).requestBodySize).toBeGreaterThan(0);
+
+  // Send → the key of the edited upload is on the payload.
+  await page.getByPlaceholder(placeholder).fill("the header overlaps the menu");
+  const [feedback] = await Promise.all([page.waitForRequest("**/api/feedback**"), page.getByRole("button", { name: "Send", exact: true }).click()]);
   expect(feedback.postDataJSON().attachmentKeys).toContain("fk_test/shot.webp");
   await expect(page.getByText("Thanks, got it.")).toBeVisible();
 });
@@ -74,11 +71,9 @@ test("annotate: crop drag shrinks the exported image to the selected region", as
   await page.mouse.down();
   await page.mouse.move(box.x + 120, box.y + 80, { steps: 4 });
   await page.mouse.up();
-  await page.getByRole("button", { name: "Use screenshot" }).click();
+  // The crop uploads as soon as it is used (#170).
+  const [upload] = await Promise.all([page.waitForResponse("**/api/upload**"), page.getByRole("button", { name: "Use screenshot" }).click()]);
   await expect(page.locator(".fk-editor")).toBeHidden(); // export is async; the panel is inert until it closes
-
-  await page.getByPlaceholder(placeholder).fill("cropped report");
-  const [upload] = await Promise.all([page.waitForResponse("**/api/upload**"), page.getByRole("button", { name: "Send", exact: true }).click()]);
   // A ~100×60 CSS-px crop of the capture must be far smaller than the full-page shot.
   const cropped = (await upload.request().sizes()).requestBodySize;
   expect(cropped).toBeGreaterThan(0);
@@ -136,7 +131,7 @@ test("annotate: text size controls are accessible and input stays inside the can
   await expect(page.getByRole("button", { name: "Undo" })).toBeEnabled();
 });
 
-test("screenshots: several captures upload in order, × removes one, four is the limit", async ({ page }) => {
+test("screenshots: each capture uploads at once, × removes one, four is the limit", async ({ page }) => {
   await installMocks(page, { post1: { v: 1, status: "created", id: "1" } });
   const uploads: string[] = [];
   page.on("request", (r) => {
@@ -157,7 +152,7 @@ test("screenshots: several captures upload in order, × removes one, four is the
   await expect(page.locator("#fk-sent")).toContainText("Screenshots: 3");
   await page.getByPlaceholder(placeholder).fill("three views of the bug");
   const [feedback] = await Promise.all([page.waitForRequest("**/api/feedback**"), page.getByRole("button", { name: "Send", exact: true }).click()]);
-  expect(uploads).toHaveLength(3);
+  expect(uploads).toHaveLength(4); // uploaded on capture (#170); the removed one never gets a report
   expect(uploads.every((u) => u.includes("kind=screenshot"))).toBe(true);
   expect(feedback.postDataJSON().attachmentKeys).toHaveLength(3);
 });
@@ -187,21 +182,37 @@ test("screenshot of a page that scrolls inside its own container keeps the user'
   expect(seen).toContain("translate(0px, -1200px)"); // the capture saw the scrolled view
 });
 
-test("draft: closing from the form keeps text and screenshots for the next open", async ({ page }) => {
+test("draft: minimizing keeps text and screenshots; closing asks before it discards them (#170)", async ({ page }) => {
   await installMocks(page, { post1: { v: 1, status: "created", id: "1" } });
   await page.goto("/");
   await page.getByRole("button", { name: "Feedback" }).click();
   await page.getByPlaceholder(placeholder).fill("first half of a thought");
   await page.getByRole("button", { name: "Screenshot", exact: true }).click();
   await expect(page.locator(".fk-thumb")).toHaveCount(1, { timeout: 10_000 });
-  await page.getByRole("button", { name: "Close" }).click();
-  await page.getByRole("button", { name: "Feedback" }).click();
+  await page.getByRole("button", { name: "Minimize" }).click();
+  await page.getByRole("button", { name: "Open report" }).click();
   await expect(page.getByPlaceholder(placeholder)).toHaveValue("first half of a thought");
   await expect(page.locator(".fk-thumb")).toHaveCount(1);
+  await expect(page.locator(".fk-thumb-p")).toHaveText("/");
+
+  // × with unsent work asks first; Keep goes back to the text.
+  await page.getByRole("button", { name: "Close" }).click();
+  await expect(page.locator(".fk-confirm")).toBeVisible();
+  await page.getByRole("button", { name: "Keep", exact: true }).click();
+  await expect(page.locator(".fk-confirm")).toBeHidden();
+  await expect(page.getByPlaceholder(placeholder)).toBeFocused();
   const [feedback] = await Promise.all([page.waitForRequest("**/api/feedback**"), page.getByRole("button", { name: "Send", exact: true }).click()]);
   expect(feedback.postDataJSON().attachmentKeys).toHaveLength(1);
   // After sending, the next report starts empty.
   await page.getByRole("button", { name: "Report something else" }).click();
   await expect(page.getByPlaceholder(placeholder)).toHaveValue("");
   await expect(page.locator(".fk-thumb")).toHaveCount(0);
+
+  // Discard ends the report: the next open is empty.
+  await page.getByPlaceholder(placeholder).fill("never mind");
+  await page.getByRole("button", { name: "Close" }).click();
+  await page.getByRole("button", { name: "Discard", exact: true }).click();
+  await expect(page.locator(".fk-panel")).toBeHidden();
+  await page.getByRole("button", { name: "Feedback" }).click();
+  await expect(page.getByPlaceholder(placeholder)).toHaveValue("");
 });
