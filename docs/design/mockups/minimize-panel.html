@@ -84,7 +84,7 @@ table.cmp tr:last-child td{border-bottom:0}
 .w-x svg{width:12px;height:12px}
 .w-x.new{outline:2px solid var(--w-acc);outline-offset:1px;color:var(--w-acc-text)}
 .w-body{display:flex;flex-direction:column;gap:8px}
-.phone .w-body{padding:12px;flex:1}
+.phone .w-body{padding:12px;flex:1;min-height:0}
 .w-h{font-size:14px;font-weight:800;margin:0}
 .w-types{display:flex;gap:4px}
 .w-type{font-size:10px;font-weight:600;border:1px solid var(--w-line2);border-radius:999px;padding:2px 8px;color:var(--w-ink2)}
@@ -103,28 +103,34 @@ table.cmp tr:last-child td{border-bottom:0}
 .w-send svg{width:12px;height:12px}
 /* done card and session history */
 .desk.tall{height:400px}
-.w-done{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:800;margin:0}
-.w-done svg{width:16px;height:16px;color:#16a34a}
-.w-card{background:var(--w-soft);border-radius:14px;padding:9px;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
-.w-eye{font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--w-muted)}
-.w-card p{margin:0;font-size:11px;line-height:1.4}
-.w-k{font-size:9.5px;font-weight:700;color:var(--w-acc-text);background:var(--w-acc-soft);border-radius:999px;padding:1px 7px}
-.w-btnrow{display:flex;gap:5px;flex-wrap:wrap}
-.w-btn{height:26px;border:1px solid var(--w-line2);border-radius:999px;padding:0 10px;font-size:10.5px;font-weight:600;display:inline-flex;align-items:center;gap:4px;color:var(--w-ink)}
-.w-btn.pri{background:var(--w-acc);border-color:var(--w-acc);color:#fff}
+.w-done{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:800;margin:0}
+.w-check{width:28px;height:28px;flex:none;border-radius:999px;background:var(--w-acc);color:#fff;display:grid;place-items:center}
+.w-check svg{width:14px;height:14px}
+.w-card{background:var(--w-soft);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:7px}
+.w-eye{font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--w-ink2)}
+.w-card p{margin:0;font-size:11.5px;line-height:1.4;font-weight:600}
+.w-card .m{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--w-ink2);font-variant-numeric:tabular-nums}
+.w-k{font-size:9.5px;font-weight:700;color:var(--w-acc-text);background:var(--w-acc-soft);border-radius:999px;padding:2px 8px}
+.w-btnrow{display:flex;gap:6px}
+.w-btn{flex:1;height:30px;border:1px solid var(--w-acc);border-radius:999px;padding:0 10px;font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;gap:4px;background:var(--w-acc);color:#fff;white-space:nowrap}
+.w-btn.gh{background:transparent;border-color:var(--w-line2);color:var(--w-ink)}
 .w-btn svg{width:10px;height:10px}
-.w-note{font-size:10px;color:var(--w-muted);display:flex;align-items:center;gap:4px}
-.w-note svg{width:10px;height:10px}
-.w-hist{display:flex;flex-direction:column;gap:4px}
-.w-hist h5{margin:0;font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--w-muted)}
-.w-entry{border:1px solid var(--w-line);border-radius:10px;padding:5px 8px;display:flex;flex-direction:column;gap:3px}
-.w-entry p{margin:0;font-size:10.5px;font-weight:600;line-height:1.3}
-.w-entry .m{display:flex;gap:6px;align-items:center;font-size:9.5px;color:var(--w-muted)}
-.w-entry .lk{flex:none;margin-left:auto;font-weight:700;color:var(--w-acc-text);display:inline-flex;align-items:center;gap:2px}
+.desk.tall .w-panel{width:300px}
+.phone .w-btnrow{flex-direction:column-reverse;margin-top:auto}
+.phone .w-btn{flex:none;height:36px}
+.w-note{font-size:10px;color:var(--w-muted);text-align:center}
+.w-hist{display:flex;flex-direction:column}
+.w-hist h5{margin:0 0 2px;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--w-ink2)}
+.w-entry{display:grid;grid-template-columns:1fr auto;gap:3px 8px;padding:7px 0;border-top:1px solid var(--w-line)}
+.w-entry:first-of-type{border-top:0}
+.w-entry p{margin:0;font-size:11px;font-weight:600;line-height:1.3;grid-column:1/-1}
+.w-entry .m{display:flex;gap:6px;align-items:center;font-size:10px;color:var(--w-ink2);font-variant-numeric:tabular-nums}
+.w-entry .lk{align-self:center;font-size:10px;font-weight:700;color:var(--w-acc-text);display:inline-flex;align-items:center;gap:3px}
 .w-entry .lk svg{width:9px;height:9px}
-.w-entry .ref{flex:none;white-space:nowrap;margin-left:auto;font:600 9.5px ui-monospace,Menlo,monospace;color:var(--w-ink2)}
+.w-entry .ref{align-self:center;font-size:10px;color:var(--w-ink2);font-variant-numeric:tabular-nums}
+.w-new{display:flex;flex-direction:column;gap:8px}
+.phone .w-new{margin-top:auto}
 .w-ph{color:var(--w-muted)}
-.w-entry .tp{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* A: pill */
 .w-mini{position:absolute;right:12px;bottom:12px;display:flex;align-items:center;gap:6px;padding:5px 5px 5px 6px;background:var(--w-bg);border:1px solid var(--w-line2);border-radius:999px;box-shadow:var(--w-shadow)}
@@ -245,7 +251,7 @@ table.cmp tr:last-child td{border-bottom:0}
     <div class="row" id="hist-desk"></div>
     <div class="row" id="hist-phone"></div>
     <div class="cols" style="margin-top:4px">
-      <div class="panel"><h3>Kept per entry</h3><ul><li>The gateway's summary and the type it picked</li><li>Time and page path</li><li>The report id</li><li>The ticket link only with <code>issueLink: true</code>. Otherwise a short reference taken from the report id.</li></ul></div>
+      <div class="panel"><h3>Kept per entry</h3><ul><li>The gateway's summary and the type it picked</li><li>The time it was sent</li><li>The report id</li><li>The ticket link only with <code>issueLink: true</code>. Otherwise a short reference taken from the report id.</li></ul></div>
       <div class="panel"><h3>Not shown</h3><ul><li>No live status: GitHub owns it, and the widget asks nothing after Send.</li><li>A report still being delivered keeps the state it had at Send.</li><li>The full issue text, its fields and the console log stay out.</li></ul></div>
       <div class="panel"><h3>Where it lives</h3><ul><li><code>sessionStorage</code>, next to the draft. It is gone when the tab closes, and a new tab starts empty.</li><li>Not <code>localStorage</code>: on a shared computer the next person would read the summaries.</li><li>The trigger shows no count, so the list never looks like unread messages.</li></ul></div>
     </div>
@@ -280,6 +286,7 @@ const I = {
   chat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M5 5h14v10H10l-4 4v-4H5z"/></svg>',
   trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>',
   check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>',
+  ok:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 12 4 4 8-9"/></svg>',
   ext:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 5h5v5M19 5l-8 8M18 14v5H5V6h5"/></svg>',
 };
 const TEXT = 'The total shows $0.00 after I change the number of tickets.';
@@ -319,23 +326,22 @@ const SENT = [
   { s:'Total shows $0.00 after changing the ticket count', k:'Bug', t:'14:02', p:'/orders/1042', n:'#214', r:'7F3A' },
   { s:'Filter past orders by date', k:'Idea', t:'14:09', p:'/orders', n:'#215', r:'2C91' },
 ];
-const entry = (e, link) => `<div class="w-entry"><p>${e.s}</p><span class="m"><span class="w-k">${e.k}</span><span class="tp">${e.t} · ${e.p}</span>${link?`<span class="lk">${e.n}${I.ext}</span>`:`<span class="ref">Ref. ${e.r}</span>`}</span></div>`;
+const entry = (e, link) => `<div class="w-entry"><p>${e.s}</p><span class="m"><span class="w-k">${e.k}</span>${e.t}</span>${link?`<span class="lk">${e.n}${I.ext}</span>`:`<span class="ref">Ref. ${e.r}</span>`}</div>`;
 const head = () => `<div class="w-head"><span class="w-mark"></span>Feedback<span class="w-hb"><span class="w-x" title="Minimize">${I.min}</span><span class="w-x" title="Close">${I.x}</span></span></div>`;
 function histPanel(link){
   return `<div class="w w-panel">${head()}<div class="w-body"><div class="w-hist"><h5>Sent in this session · 2</h5>${SENT.map(e=>entry(e,link)).join('')}</div>
-  <p class="w-h">What happened?</p><div class="w-comp"><div class="w-text w-ph">Describe it in your own words…</div><div class="w-tools"><span class="w-pillb">${I.img}</span><span class="w-pillb">${I.cam}Screenshot</span><span class="w-send">${I.send}</span></div></div></div></div>`;
+  <div class="w-new"><p class="w-h">What happened?</p><div class="w-comp"><div class="w-text w-ph">Describe it in your own words…</div><div class="w-tools"><span class="w-pillb">${I.img}</span><span class="w-pillb">${I.cam}Screenshot</span><span class="w-send">${I.send}</span></div></div></div></div></div>`;
 }
 function donePanel(link){
   const e = SENT[0];
   const btns = link
-    ? `<span class="w-btn">Report something else</span><span class="w-btn pri">View ticket ${I.ext}</span>`
-    : `<span class="w-btn">Report something else</span><span class="w-btn pri">Done</span>`;
-  return `<div class="w w-panel">${head()}<div class="w-body"><p class="w-done">${I.check}Thanks, got it.</p>
-  <div class="w-card"><span class="w-eye">How we understood it</span><p>${e.s} on order #1042.</p><span class="w-k">${e.k}</span></div>
-  <div class="w-btnrow">${btns}</div><span class="w-note">${I.check}${link?'Added to this session\'s list':`Added to this session's list · Ref. ${e.r}`}</span></div></div>`;
+    ? `<span class="w-btn gh">Report something else</span><span class="w-btn">View ticket ${I.ext}</span>`
+    : `<span class="w-btn gh">Report something else</span><span class="w-btn">Done</span>`;
+  return `<div class="w w-panel">${head()}<div class="w-body"><p class="w-done"><span class="w-check">${I.ok}</span>Thanks, got it.</p>
+  <div class="w-card"><span class="w-eye">How we understood it</span><p>${e.s} on order #1042.</p><span class="m"><span class="w-k">${e.k}</span>${link?'':`Ref. ${e.r}`}</span></div>
+  <span class="w-note">Kept in this tab's list</span><div class="w-btnrow">${btns}</div></div></div>`;
 }
 
-// Shared: the panel with its new minimize button.
 document.getElementById('shared-row').innerHTML =
   '<h3>Desktop and phone, panel open</h3>' +
   frame('desk','/orders','<div class="dim"></div>'+panel(1,true),'Desktop: the minimize button sits left of close. The first screenshot shows <code>/orders</code>.') +
@@ -406,12 +412,12 @@ document.getElementById('variants').innerHTML = V.map(v => `
 
 document.getElementById('hist-desk').innerHTML =
   '<h3>Desktop, project with <code>issueLink: true</code></h3>' +
-  frame('tall','/orders/1042',donePanel(true),'After Send, as today: how the gateway understood it, the type it picked, the ticket link. New: the note that it went into the list.') +
+  frame('tall','/orders/1042',donePanel(true),'After Send, as today: how the gateway understood it, the type it picked and the ticket link. New: one quiet line that it went into the list.') +
   frame('tall','/orders',histPanel(true),'The next time Sam opens the panel, both reports from this tab sit above the form, each with its ticket.');
 document.getElementById('hist-phone').innerHTML =
   '<h3>Phone, project with <code>issueLink: false</code></h3>' +
-  frame('phone','/orders/1042',donePanel(false),'No ticket link: the project keeps its tracker private. Sam gets a short reference instead.') +
-  frame('phone','/orders',histPanel(false),'The list shows the same references, taken from the report id.');
+  frame('phone','/orders/1042',donePanel(false),'No ticket link: the project keeps its tracker private. The card shows a short reference instead, and the buttons sit at the bottom, in thumb reach.') +
+  frame('phone','/orders',histPanel(false),'The list sits at the top, the new report at the bottom next to the keyboard. Each entry shows the reference instead of a link.');
 
 // Frame theme switch (the page itself follows the system).
 document.querySelectorAll('[data-frame-theme]').forEach(b => b.addEventListener('click', () => {

@@ -56,11 +56,12 @@ If the budget cannot grow much, C covers single-page apps and phones but loses t
 
 After Send the widget already shows how the gateway understood the report: its summary and the type it picked. New: each sent report also goes into a list in the tab, shown above the form the next time the panel opens.
 
-- An entry holds the gateway's summary, the type, time, page path and report id. The ticket link is kept only when the project sets `issueLink: true` (the default). Otherwise the entry and the done card show a short reference taken from the report id.
+- An entry holds the gateway's summary, the type, the time and the report id. The ticket link is kept only when the project sets `issueLink: true` (the default). Otherwise the entry and the done card show a short reference taken from the report id.
 - No live status. GitHub owns the state of an issue, and the widget asks nothing after Send. A report still being delivered keeps the state it had at Send.
 - The full issue text, its fields and the console log are not shown.
 - The list lives in `sessionStorage` next to the draft and is gone when the tab closes. `localStorage` would keep it past the session, and on a shared computer the next person would read the summaries.
 - The trigger shows no count, so the list never looks like unread messages.
+- Layout follows the widget's done view (`src/widget/ui/styles.ts`): the check in an accent circle, the summary in the card's strong weight, buttons of equal width in one row on desktop and stacked at the bottom on a phone. Entries are a divided list, not cards inside the sheet. On a phone the new report sits at the bottom, the list at the top.
 
 ## Decided (2026-11-18)
 
