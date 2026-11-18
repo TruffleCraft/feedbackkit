@@ -58,6 +58,26 @@ export interface UIHandlers {
   onAnnotated(blob: Blob): void;
 }
 
+/** One report sent in this tab (#170): what the gateway made of it, never live status. */
+export interface SentEntry {
+  /** The gateway's summary, or the user's own text when there was none. */
+  s: string;
+  /** Type the gateway picked. */
+  k?: string;
+  /** Sent at (ms). */
+  t: number;
+  /** The gateway's report id; a short reference is shown when there is no link. */
+  id?: string;
+  /** Ticket URL, only when the response carried one (issueLink). */
+  u?: string;
+}
+
+/** A screenshot in the draft: its image while this page has it, and the page it shows. */
+export interface UIShot {
+  url?: string;
+  page: string;
+}
+
 export interface UIContext {
   browser?: string;
   url?: string;
@@ -80,6 +100,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEl
 const LOGO = '<g fill="currentColor" stroke="none"><rect x="1.5" y="4" width="15" height="7" rx="3.5"/><rect x="7.5" y="13" width="15" height="7" rx="3.5" opacity=".6"/></g>';
 const IC = {
   close: '<path d="M18 6 6 18M6 6l12 12"/>',
+  min: '<path d="M6 12h12"/>',
+  open: '<path d="m6 15 6-6 6 6"/>',
   image: '<rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
   shot: '<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>',
   up: '<path d="M12 19V5M5 12l7-7 7 7"/>',
@@ -132,6 +154,22 @@ export class WidgetUI {
   private doneTag!: HTMLSpanElement;
   private issueLink!: HTMLAnchorElement;
   private finishBtn!: HTMLButtonElement;
+  private refEl!: HTMLSpanElement;
+  private noteEl!: HTMLParagraphElement;
+  // minimized (#170): the pill, the discard question and the list of sent reports
+  private mini!: HTMLDivElement;
+  private miniCount!: HTMLElement;
+  private miniShot!: HTMLButtonElement;
+  private miniOpen!: HTMLButtonElement;
+  private minBtn!: HTMLButtonElement;
+  private confirmEl!: HTMLDivElement;
+  private keepBtn!: HTMLButtonElement;
+  private hist!: HTMLElement;
+  private histHead!: HTMLSpanElement;
+  private histList!: HTMLUListElement;
+  /** The form is minimized to the pill: no backdrop, no scroll lock, the report goes on. */
+  min = false;
+  private st: WidgetState = { name: "closed" };
   private annotator!: AnnotatorUI;
   private shotCount = 0; // screenshots in the draft (opt-in: the page is only captured when the user asks)
   private annotatorReturnFocus: HTMLElement | null = null;
@@ -189,9 +227,18 @@ export class WidgetUI {
     const mark = el("span", { className: "fk-mark" });
     mark.setAttribute("aria-hidden", "true");
     mark.innerHTML = MARK;
-    const closeBtn = el("button", { className: "fk-x", type: "button", ariaLabel: this.tr("close") }, [icon("close")]);
-    closeBtn.addEventListener("click", () => this.h.onClose());
-    const head = el("div", { className: "fk-head" }, [mark, el("span", { className: "fk-brand", id: "fk-title", textContent: this.tr("title") }), closeBtn]);
+    this.minBtn = el("button", { className: "fk-x", type: "button", ariaLabel: this.tr("minimize"), title: this.tr("minimize") }, [icon("min")]);
+    this.minBtn.addEventListener("click", () => this.minimize());
+    const closeBtn = el("button", { className: "fk-x", type: "button", ariaLabel: this.tr("close"), title: this.tr("close") }, [icon("close")]);
+    closeBtn.addEventListener("click", () => {
+      // Closing ends the report: unsent work asks first, inside the panel.
+      if (!this.views["form"]!.hidden && (this.textarea.value.trim() || this.shotCount || this.fileChips.childElementCount)) {
+        this.confirmEl.hidden = false;
+        this.live.textContent = this.tr("discardQ");
+        this.keepBtn.focus();
+      } else this.h.onClose();
+    });
+    const head = el("div", { className: "fk-head" }, [mark, el("span", { className: "fk-brand", id: "fk-title", textContent: this.tr("title") }), el("span", { className: "fk-hb" }, [this.minBtn, closeBtn])]);
 
     this.panel = el("div", { className: "fk-panel", role: "dialog" }, [head, this.buildForm(), this.buildThread(), this.buildDone(), this.buildFailed()]);
     this.panel.setAttribute("aria-modal", "true");
@@ -200,23 +247,41 @@ export class WidgetUI {
 
     this.backdrop = el("div", { className: "fk-backdrop", hidden: true }, [this.panel]);
     this.backdrop.addEventListener("click", () => {
-      // Click outside = close, but a stray tap must not throw away unsent text.
-      const unsent = (!this.views["form"]!.hidden && this.textarea.value.trim()) || (!this.answerWrap.hidden && this.answerBox.value.trim());
-      if (!unsent) this.h.onClose();
+      // Click outside: the form minimizes; elsewhere it closes, but a stray tap
+      // must not throw away an unsent answer.
+      if (this.st.name === "form") this.minimize();
+      else if (this.answerWrap.hidden || !this.answerBox.value.trim()) this.h.onClose();
     });
     // iOS does not restore the visual viewport reliably when the keyboard closes; re-measure.
     this.panel.addEventListener("focusout", () => setTimeout(this.syncViewport, 300));
     this.backdrop.addEventListener("keydown", (e) => {
-      if ((e as KeyboardEvent).key === "Escape") this.h.onClose();
+      if ((e as KeyboardEvent).key === "Escape") {
+        if (this.st.name === "form") this.minimize();
+        else this.h.onClose();
+      }
     });
+
+    // Minimized (#170): where the trigger sits, also with data-trigger="none",
+    // because otherwise there is no way back to the report.
+    this.miniCount = el("small");
+    this.miniShot = el("button", { className: "fk-ib", type: "button", ariaLabel: this.tr("shotHere"), title: this.tr("shotHere"), hidden: !this.shotAllowed }, [icon("shot")]);
+    this.miniShot.addEventListener("click", () => this.h.onAddScreenshot());
+    this.miniOpen = el("button", { className: "fk-ib", type: "button", ariaLabel: this.tr("openDraft"), title: this.tr("openDraft") }, [icon("open")]);
+    this.miniOpen.addEventListener("click", () => this.restore());
+    this.mini = el("div", { className: "fk-mini", role: "group", ariaLabel: this.tr("draft"), hidden: true }, [
+      icon("logo", "fk-trigger-icon"),
+      el("span", { className: "fk-mini-t" }, [el("b", { textContent: this.tr("draft") }), this.miniCount]),
+      this.miniShot,
+      this.miniOpen,
+    ]);
 
     this.buildAnnotate();
     this.trigger.hidden = this.triggerOff;
     // Follow the host's breakpoint live: a window that shrinks below it drops the button.
     this.config.triggerMedia?.addEventListener("change", () => {
-      if (this.backdrop.hidden) this.trigger.hidden = this.triggerOff;
+      if (this.backdrop.hidden && this.mini.hidden) this.trigger.hidden = this.triggerOff;
     });
-    this.shadow.append(this.trigger, this.backdrop, this.annotator.root, this.live);
+    this.shadow.append(this.trigger, this.mini, this.backdrop, this.annotator.root, this.live);
   }
 
   private submit() {
@@ -287,7 +352,22 @@ export class WidgetUI {
     const foot = el("div", { className: "fk-foot" }, [this.discloseBtn]);
     if (this.config.privacyUrl) foot.append(el("a", { className: "fk-privacy", href: this.config.privacyUrl, target: "_blank", rel: "noopener noreferrer", textContent: this.tr("privacyLink") }));
 
-    const view = el("div", { className: "fk-view" }, [el("h2", { className: "fk-h", textContent: this.tr("heading") }), types, this.guidanceEl, composer, foot, this.sentList]);
+    // "Discard this report?" before × throws away unsent work.
+    this.keepBtn = el("button", { className: "fk-btn fk-ghost", type: "button", textContent: this.tr("keep") });
+    this.keepBtn.addEventListener("click", () => {
+      this.confirmEl.hidden = true;
+      this.textarea.focus();
+    });
+    const discard = el("button", { className: "fk-btn", type: "button", textContent: this.tr("discard") });
+    discard.addEventListener("click", () => this.h.onClose());
+    this.confirmEl = el("div", { className: "fk-confirm", hidden: true }, [el("p", { textContent: this.tr("discardQ") }), el("div", { className: "fk-row" }, [this.keepBtn, discard])]);
+
+    // Reports sent in this tab, above the new one.
+    this.histHead = el("span", { className: "fk-eyebrow" });
+    this.histList = el("ul", { className: "fk-hist" });
+    this.hist = el("section", { className: "fk-histw", hidden: true }, [this.histHead, this.histList]);
+
+    const view = el("div", { className: "fk-view" }, [this.confirmEl, this.hist, el("h2", { className: "fk-h", textContent: this.tr("heading") }), types, this.guidanceEl, composer, foot, this.sentList]);
     this.views["form"] = view;
     this.selectType(this.config.types[0]?.type ?? "");
     return view;
@@ -302,25 +382,86 @@ export class WidgetUI {
     return `${this.tr("sentShot")}: ${this.shotCount || this.tr("no")}`;
   }
 
-  /** The draft's screenshots as thumbnails: click one to mark it up, × to remove it. */
-  setShots(urls: string[], canAdd: boolean) {
-    this.shotCount = urls.length;
+  /** The draft's screenshots as thumbnails labelled with their page: click one to
+   * mark it up, × to remove it. One restored after a page load has no image here. */
+  setShots(shots: UIShot[], canAdd: boolean) {
+    const n = shots.length;
+    if (this.min && n > this.shotCount) this.live.textContent = this.tr("shotAdded").replace("{n}", String(n));
+    this.shotCount = n;
+    this.miniCount.textContent = n === 1 ? this.tr("shotOne") : this.tr("shotMany").replace("{n}", String(n));
     this.thumbs.replaceChildren(
-      ...urls.map((url, i) => {
+      ...shots.map(({ url, page }, i) => {
         const n = String(i + 1);
-        const edit = el("button", { className: "fk-thumb-img", type: "button", ariaLabel: this.tr("editShot").replace("{n}", n) }, [el("img", { src: url, alt: "" }), icon("pen", "fk-thumb-pen")]);
+        const edit = el("button", { className: "fk-thumb-img", type: "button", disabled: !url, ariaLabel: this.tr("editShot").replace("{n}", n) }, url ? [el("img", { src: url, alt: "" }), icon("pen", "fk-thumb-pen")] : []);
         edit.addEventListener("click", () => {
           this.annotatorReturnFocus = edit;
           this.h.onEditShot(i);
         });
         const remove = el("button", { className: "fk-thumb-x", type: "button", ariaLabel: this.tr("removeShot").replace("{n}", n) }, [icon("close")]);
         remove.addEventListener("click", () => this.h.onRemoveShot(i));
-        return el("span", { className: "fk-thumb" }, [edit, remove]);
+        return el("span", { className: "fk-thumb" }, [edit, remove, el("span", { className: "fk-thumb-p", textContent: page, title: page })]);
       }),
     );
-    this.shotBtn.disabled = !canAdd;
+    this.shotBtn.disabled = this.miniShot.disabled = !canAdd;
     this.shotLabelEl.textContent = this.tr("screenshotChip");
     if (this.sentShotLi) this.sentShotLi.textContent = this.sentShotText();
+  }
+
+  /** Images attached before a page load: their keys are kept, their pictures are not. */
+  addFileKeys(keys: string[]) {
+    for (const key of keys) {
+      const remove = el("button", { className: "fk-thumb-x", type: "button", ariaLabel: this.tr("removeFile").replace("{name}", key.split("/").pop() ?? "") }, [icon("close")]);
+      const thumb = el("span", { className: "fk-thumb file" }, [el("span", { className: "fk-thumb-img" }), remove]);
+      remove.addEventListener("click", () => {
+        thumb.remove();
+        this.h.onRemoveFile(key);
+      });
+      this.fileChips.appendChild(thumb);
+    }
+  }
+
+  /** The draft's text, read when the page is left and put back after it loads again. */
+  get text() {
+    return this.textarea.value;
+  }
+  set text(v: string) {
+    this.textarea.value = v;
+  }
+
+  /** Short reference from the report id, shown where there is no ticket link. */
+  private ref(id?: string) {
+    return id ? `${this.tr("ref")} ${id.replace(/-/g, "").slice(0, 4).toUpperCase()}` : "";
+  }
+
+  /** The reports sent in this tab: summary, type, time, then the ticket or a reference. */
+  setSent(list: SentEntry[]) {
+    this.hist.hidden = !list.length;
+    this.histHead.textContent = `${this.tr("sentHead")} · ${list.length}`;
+    this.histList.replaceChildren(
+      ...list.map((e) => {
+        const label = this.typeLabel(e.k);
+        const url = e.u && /^https:\/\//i.test(e.u) ? e.u : ""; // never trust a stored value into href
+        const meta = el("span", { className: "fk-meta" }, [new Date(e.t).toLocaleTimeString(this.config.locale, { hour: "2-digit", minute: "2-digit" })]);
+        if (label) meta.prepend(el("span", { className: "fk-tag", textContent: label }));
+        const num = url.match(/\/(\d+)\/?$/)?.[1]; // a tracker's issue number reads better than "View ticket"
+        const end = url ? el("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, [num ? `#${num}` : this.tr("viewIssue"), icon("ext")]) : el("span", { textContent: this.ref(e.id) });
+        return el("li", {}, [el("p", { textContent: e.s }), meta, end]);
+      }),
+    );
+  }
+
+  /** Shrink the form to the pill; nothing is lost and no event fires. */
+  minimize() {
+    if (this.st.name !== "form") return;
+    this.min = true;
+    this.render(this.st);
+  }
+
+  /** Bring a minimized report back (the pill's open button, or FeedbackKit.open()). */
+  restore() {
+    if (!this.min) return;
+    this.min = false;
+    this.render(this.st);
   }
 
   private acceptFiles(files: FileList | undefined | null) {
@@ -408,7 +549,7 @@ export class WidgetUI {
   captureStarted() {
     this.mediaHint.textContent = this.tr("captureStarted");
     this.mediaHint.hidden = false;
-    this.shotBtn.disabled = true;
+    this.shotBtn.disabled = this.miniShot.disabled = true;
     this.shotLabelEl.textContent = this.tr("capturing");
   }
 
@@ -419,9 +560,9 @@ export class WidgetUI {
 
   /** Capture failed — tell the user, feedback itself is never blocked. */
   captureFailed() {
-    this.mediaHint.textContent = this.tr("captureFailed");
+    this.mediaHint.textContent = this.live.textContent = this.tr("captureFailed");
     this.mediaHint.hidden = false;
-    this.shotBtn.disabled = false;
+    this.shotBtn.disabled = this.miniShot.disabled = false;
     this.shotLabelEl.textContent = this.tr("screenshotChip");
   }
 
@@ -488,7 +629,9 @@ export class WidgetUI {
   private buildDone(): HTMLElement {
     this.summaryEl = el("p", { className: "fk-summary" });
     this.doneTag = el("span", { className: "fk-tag" });
-    this.card = el("div", { className: "fk-card" }, [el("span", { className: "fk-eyebrow", textContent: this.tr("understood") }), this.summaryEl, this.doneTag]);
+    this.refEl = el("span");
+    this.card = el("div", { className: "fk-card" }, [el("span", { className: "fk-eyebrow", textContent: this.tr("understood") }), this.summaryEl, el("span", { className: "fk-meta" }, [this.doneTag, this.refEl])]);
+    this.noteEl = el("p", { className: "fk-note" });
     const restart = el("button", { className: "fk-btn fk-ghost", type: "button", textContent: this.tr("sendAnother") });
     restart.addEventListener("click", () => this.h.onRestart());
     this.finishBtn = el("button", { className: "fk-btn", type: "button", textContent: this.tr("finish") });
@@ -497,6 +640,7 @@ export class WidgetUI {
     const view = el("div", { className: "fk-view" }, [
       el("div", { className: "fk-done-head" }, [icon("check", "fk-check"), el("h2", { className: "fk-h", textContent: this.tr("doneTitle") })]),
       this.card,
+      this.noteEl,
       el("div", { className: "fk-row", role: "group" }, [restart, this.finishBtn, this.issueLink]),
     ]);
     this.views["done"] = view;
@@ -564,23 +708,32 @@ export class WidgetUI {
   }
 
   render(state: WidgetState) {
-    if (state.name === "closed") {
+    this.st = state;
+    if (state.name !== "form") this.min = false; // only a draft minimizes
+    const mini = this.min;
+    this.mini.hidden = !mini;
+    this.confirmEl.hidden = true;
+    if (state.name === "closed" || mini) {
       this.backdrop.hidden = true;
-      this.trigger.hidden = this.triggerOff;
-      // Only on a genuine close (not the initial mount) do we unlock scroll and
-      // restore focus — otherwise we'd steal the host page's initial focus and
-      // wipe its inline overflow on every page load.
+      this.trigger.hidden = mini || this.triggerOff;
+      // Only after the panel was shown (not on mount, nor for a draft restored
+      // minimized after a page load) do we unlock scroll and move focus —
+      // otherwise we'd steal the host page's initial focus and wipe its inline
+      // overflow on every page load.
       if (this.hasOpened) {
         this.lockScroll(false);
-        if (this.trigger.hidden) this.hostReturnFocus?.focus(); // back to the host's own button
+        if (mini) this.miniOpen.focus();
+        else if (this.trigger.hidden) this.hostReturnFocus?.focus(); // back to the host's own button
         else this.trigger.focus();
       }
       return;
     }
-    if (this.backdrop.hidden) this.hostReturnFocus = document.activeElement as HTMLElement | null; // opening now
+    // Opening now; a restore from the pill keeps the focus to return to.
+    if (this.backdrop.hidden && document.activeElement !== this.shadow.host) this.hostReturnFocus = document.activeElement as HTMLElement | null;
     this.hasOpened = true;
     this.trigger.hidden = true;
     this.backdrop.hidden = false;
+    this.minBtn.hidden = state.name !== "form";
     this.lockScroll(true);
 
     switch (state.name) {
@@ -616,6 +769,11 @@ export class WidgetUI {
         // Only link an https URL — never trust a server value into href (a
         // javascript: URL would be click-XSS).
         const url = state.issueUrl && /^https:\/\//i.test(state.issueUrl) ? state.issueUrl : "";
+        // Without a ticket link, a short reference from the report id.
+        const ref = url ? "" : this.ref(state.id);
+        this.refEl.textContent = ref;
+        this.refEl.parentElement!.hidden = !label && !ref;
+        this.noteEl.textContent = (this.card.hidden && ref ? `${ref} · ` : "") + this.tr("kept");
         this.issueLink.hidden = !url;
         this.finishBtn.hidden = !!url; // one primary action: the ticket, or simply done
         if (url) this.issueLink.href = url;

@@ -6,17 +6,18 @@ import { app } from "./app.js";
 import { registerOAuthRoutes } from "./oauth/authorize.js";
 registerOAuthRoutes(app);
 import { workerFetch } from "./oauth/provider.js";
-import { sweepExpiredAssets } from "./storage/r2.js";
+import { sweepExpiredAssets, sweepOrphanScreenshots } from "./storage/r2.js";
 import { pruneExpiredRecords } from "./storage/retention.js";
 import { pruneExpiredAuth } from "./auth/host.js";
 import type { Env } from "./env.js";
 
 // Hono serves fetch, behind the OAuth provider when OAUTH_KV is bound (it then
 // answers /mcp and the OAuth endpoints itself, ADR-015); the daily cron sweeps
-// expired R2 attachments and prunes D1 rows past the project's retention.
+// expired R2 attachments and screenshots that never got a report (#170), and
+// prunes D1 rows past the project's retention.
 export default {
   fetch: (request: Request, env: Env, ctx: ExecutionContext) => workerFetch(app, request, env, ctx),
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(Promise.allSettled([sweepExpiredAssets(env), pruneExpiredRecords(env), pruneExpiredAuth(env)]));
+    ctx.waitUntil(Promise.allSettled([sweepExpiredAssets(env), sweepOrphanScreenshots(env), pruneExpiredRecords(env), pruneExpiredAuth(env)]));
   },
 };

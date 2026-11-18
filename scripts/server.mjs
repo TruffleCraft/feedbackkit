@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { openStorage } from "./server-storage.mjs";
 import { OAUTH_PATH_RE, app, createMcpFetch } from "../dist-server/app.mjs";
-import { sweepExpiredAssets } from "../dist-server/r2.mjs";
+import { sweepExpiredAssets, sweepOrphanScreenshots } from "../dist-server/r2.mjs";
 import { pruneExpiredRecords } from "../dist-server/retention.mjs";
 import { codeDeliveryCapability } from "./code-capability.mjs";
 import { canonicalUrl, clientAddress, readTrustedHops } from "./server-http.mjs";
@@ -76,7 +76,7 @@ if (mcpFetch) env.OAUTH_KV = kv;
 env.MCP_STATUS = mcp.note;
 const pending = new Set();
 const context = { waitUntil(p) { const task=Promise.resolve(p).catch((e)=>console.error("Background task failed:",e.message));pending.add(task);task.finally(()=>pending.delete(task)); }, passThroughOnException() {} };
-async function sweep() { await Promise.all([sweepExpiredAssets(env),pruneExpiredRecords(env),pruneExpiredAuth(env)]); kv.sweepExpired(); storage.compact(); }
+async function sweep() { await Promise.all([sweepExpiredAssets(env),sweepOrphanScreenshots(env),pruneExpiredRecords(env),pruneExpiredAuth(env)]); kv.sweepExpired(); storage.compact(); }
 // A failing sweep is logged and retried every hour; it never keeps the service from starting.
 await sweep().catch((e)=>console.error("Start sweep failed:",e.message));
 const timer = setInterval(()=>context.waitUntil(sweep()), 60 * 60 * 1000);

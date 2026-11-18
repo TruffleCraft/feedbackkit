@@ -5,6 +5,19 @@ type Key =
   | "trigger"
   | "title"
   | "close"
+  | "minimize"
+  | "draft"
+  | "shotOne"
+  | "shotMany"
+  | "shotHere"
+  | "shotAdded"
+  | "openDraft"
+  | "discardQ"
+  | "discard"
+  | "keep"
+  | "sentHead"
+  | "ref"
+  | "kept"
   | "heading"
   | "finish"
   | "textLabel"
@@ -64,6 +77,19 @@ const STR: Record<Locale, Record<Key, string>> = {
     trigger: "Feedback",
     title: "Feedback",
     close: "Close",
+    minimize: "Minimize",
+    draft: "Report draft",
+    shotOne: "1 screenshot",
+    shotMany: "{n} screenshots",
+    shotHere: "Add screenshot of this page",
+    shotAdded: "Screenshot added · {n} of 4",
+    openDraft: "Open report",
+    discardQ: "Discard this report?",
+    discard: "Discard",
+    keep: "Keep",
+    sentHead: "Sent in this session",
+    ref: "Ref.",
+    kept: "Kept in this tab's list",
     heading: "What's on your mind?",
     textLabel: "Your message",
     textPlaceholder: "Describe it in your own words. If something is missing, we'll ask.",
@@ -122,6 +148,19 @@ const STR: Record<Locale, Record<Key, string>> = {
     trigger: "Feedback",
     title: "Feedback",
     close: "Schließen",
+    minimize: "Minimieren",
+    draft: "Entwurf",
+    shotOne: "1 Screenshot",
+    shotMany: "{n} Screenshots",
+    shotHere: "Screenshot dieser Seite aufnehmen",
+    shotAdded: "Screenshot aufgenommen · {n} von 4",
+    openDraft: "Meldung öffnen",
+    discardQ: "Diese Meldung verwerfen?",
+    discard: "Verwerfen",
+    keep: "Behalten",
+    sentHead: "In dieser Sitzung gesendet",
+    ref: "Ref.",
+    kept: "Steht in der Liste dieses Tabs",
     heading: "Was möchtest du uns sagen?",
     textLabel: "Deine Nachricht",
     textPlaceholder: "Beschreib es in deinen Worten. Wenn etwas fehlt, fragen wir nach.",

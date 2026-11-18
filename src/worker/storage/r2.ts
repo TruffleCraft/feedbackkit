@@ -103,6 +103,35 @@ export async function sweepExpiredAssets(env: Env, now = Date.now(), batch = 500
   return n;
 }
 
+/** A screenshot without a report this long after upload is deleted (#170). */
+export const ORPHAN_SCREENSHOT_MS = 86_400_000;
+
+/** Screenshots upload on capture (#170), before the report exists. One that no
+ * stored report lists in its attachmentKeys 24 hours after upload never got a
+ * report: the draft was abandoned, the shot removed or replaced by its markup.
+ * Daily cron on Cloudflare, hourly on the standalone server. */
+export async function sweepOrphanScreenshots(env: Env, now = Date.now(), batch = 500): Promise<number> {
+  const rows = await env.DB.prepare(
+    `SELECT a.key FROM assets a WHERE a.deleted = 0 AND a.kind = 'screenshot' AND a.created_at < ?1
+       AND NOT EXISTS (SELECT 1 FROM feedback f, json_each(CASE WHEN json_valid(f.payload) THEN f.payload ELSE '{}' END, '$.attachmentKeys') j
+         WHERE f.project_id = a.project_id AND f.client_feedback_id = a.feedback_id AND j.value = a.key)
+     LIMIT ?2`,
+  )
+    .bind(now - ORPHAN_SCREENSHOT_MS, batch)
+    .all<{ key: string }>();
+  let n = 0;
+  for (const r of rows.results ?? []) {
+    try {
+      await env.UPLOADS.delete(r.key);
+      await env.DB.prepare(`UPDATE assets SET deleted = 1 WHERE key = ?1`).bind(r.key).run();
+      n++;
+    } catch (e) {
+      console.warn(`[feedbackkit] orphan sweep failed for ${r.key}: ${(e as Error).message}`);
+    }
+  }
+  return n;
+}
+
 /** GDPR Art. 17: delete every attachment tied to a feedback id (admin-authed).
  * Retention passes the project so it only touches that project's assets. */
 export async function deleteAssetsForFeedback(env: Env, feedbackId: string, projectId?: string): Promise<number> {
