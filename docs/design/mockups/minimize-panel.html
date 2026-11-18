@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Minimize the panel</title>
+<style>
+:root{--bg:#f6f6f7;--card:#fff;--ink:#1a1a1a;--ink2:#52525b;--muted:#71717a;--line:#e7e7ea;--line2:#d4d4d8;--accent:#7c3aed;--accent-text:#6d28d9;--soft:rgba(124,58,237,.1);--bad:#b42318;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#151516;--card:#202022;--ink:#f4f4f5;--ink2:#b4b4ba;--muted:#8b8b90;--line:#2e2e31;--line2:#48484d;--accent-text:#c4b5fd;--soft:rgba(124,58,237,.24);color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#151516;--card:#202022;--ink:#f4f4f5;--ink2:#b4b4ba;--muted:#8b8b90;--line:#2e2e31;--line2:#48484d;--accent-text:#c4b5fd;--soft:rgba(124,58,237,.24);color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+a{color:var(--accent-text)}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.88em;background:var(--soft);padding:1px 6px;border-radius:6px;overflow-wrap:anywhere}
+.wrap{max-width:1280px;margin:0 auto;padding-block:32px 72px;padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px))}
+h1{font-size:30px;line-height:1.15;margin:0 0 8px;letter-spacing:-.02em}
+h2{font-size:22px;line-height:1.2;margin:0 0 6px;letter-spacing:-.01em}
+h3{font-size:16px;margin:0 0 8px}
+p{margin:0 0 10px}
+.lead{color:var(--ink2);max-width:72ch}
+.tag{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent-text);background:var(--soft);border-radius:999px;padding:3px 10px;margin-bottom:12px}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:18px 0 0}
+.bar button,.bar a.jump{font:600 13px inherit;font-family:inherit;border:1px solid var(--line2);background:var(--card);color:var(--ink);border-radius:999px;padding:6px 14px;cursor:pointer;text-decoration:none}
+.bar button[aria-pressed="true"]{border-color:var(--accent);background:var(--soft);color:var(--accent-text)}
+.cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:26px 0}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 20px}
+.panel ul,.panel ol{margin:0;padding-left:1.15em}
+.panel li{margin:0 0 6px}
+.panel li:last-child{margin:0}
+section.variant{margin:48px 0 0;padding-top:8px}
+.vmeta{display:flex;flex-wrap:wrap;gap:8px 22px;color:var(--ink2);font-size:14px;margin:6px 0 18px}
+.vmeta b{color:var(--ink)}
+.rec{border-color:var(--accent)}
+.row{display:flex;flex-wrap:wrap;gap:22px;align-items:flex-start;margin:0 0 22px}
+.row>h3{flex:0 0 100%;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0}
+figure{margin:0;max-width:100%}
+figcaption{font-size:13px;color:var(--ink2);margin:8px 2px 0;max-width:390px}
+figure.ph figcaption{max-width:220px}
+.decide{border:2px solid var(--accent);background:var(--card);border-radius:16px;padding:18px 22px;max-width:900px}
+.decide h2{margin-bottom:10px}
+.decide li{margin:0 0 10px}
+table.cmp{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;font-size:14px}
+.cmpw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.cmp th,table.cmp td{padding:10px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top;min-width:150px}
+table.cmp th{font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+table.cmp tr:last-child td{border-bottom:0}
+.steps{margin:0;padding-left:1.2em;color:var(--ink2);font-size:14px}
+.steps li{margin:0 0 4px}
+
+/* ---------- frames: an invented host app with the widget drawn on top ---------- */
+.f{--h-bg:#fff;--h-ink:#1f2933;--h-muted:#6b7280;--h-line:#e5e7eb;--h-soft:#f3f4f6;--h-brand:#0f766e;
+   --w-bg:#fff;--w-soft:#f6f6f7;--w-ink:#1a1a1a;--w-ink2:#52525b;--w-muted:#71717a;--w-line:#e7e7ea;--w-line2:#d4d4d8;--w-acc:#7c3aed;--w-acc-soft:rgba(124,58,237,.1);--w-acc-text:#6d28d9;--w-shadow:0 18px 40px -16px rgba(26,26,26,.4);
+   position:relative;overflow:hidden;border:1px solid var(--line2);border-radius:12px;background:var(--h-bg);color:var(--h-ink);font:12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+[data-frames="dark"] .f{--h-bg:#111827;--h-ink:#e5e7eb;--h-muted:#9ca3af;--h-line:#1f2937;--h-soft:#1f2937;--h-brand:#2dd4bf;
+   --w-bg:#202022;--w-soft:#2a2a2d;--w-ink:#fff;--w-ink2:#a2a2a2;--w-muted:#8b8b90;--w-line:#2e2e31;--w-line2:#48484d;--w-acc-soft:rgba(124,58,237,.24);--w-acc-text:#c4b5fd;--w-shadow:0 18px 40px -16px rgba(0,0,0,.8)}
+.desk{width:390px;height:300px}
+.phone{width:220px;height:450px;border-radius:26px;border-width:6px;border-color:#2b2b2e}
+.h-top{display:flex;align-items:center;gap:12px;height:34px;padding:0 12px;border-bottom:1px solid var(--h-line);font-weight:700}
+.h-top .logo{color:var(--h-brand)}
+.h-top .nav{display:flex;gap:10px;margin-left:auto;font-weight:500;color:var(--h-muted)}
+.h-top .nav b{color:var(--h-ink)}
+.h-url{position:absolute;right:8px;top:40px;font:10px ui-monospace,Menlo,monospace;color:var(--h-muted);background:var(--h-soft);border-radius:6px;padding:1px 6px}
+.h-main{padding:12px 14px}
+.h-main h4{margin:0 0 8px;font-size:15px}
+.h-rowx{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--h-line);color:var(--h-muted)}
+.h-rowx b{color:var(--h-ink);font-weight:600}
+.h-tabs{position:absolute;left:0;right:0;bottom:0;height:44px;display:flex;justify-content:space-around;align-items:center;border-top:1px solid var(--h-line);background:var(--h-bg);color:var(--h-muted);font-size:10px;font-weight:600}
+.h-tabs b{color:var(--h-brand)}
+.phone .h-top{height:40px;padding-top:6px}
+.phone .h-url{top:46px}
+.phone .h-main h4{margin-top:16px}
+.dim{position:absolute;inset:0;background:rgba(0,0,0,.05)}
+
+/* widget pieces, at the widget's own proportions, slightly smaller */
+.w{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--w-ink)}
+.w-panel{position:absolute;right:12px;bottom:12px;width:250px;background:var(--w-bg);border:1px solid var(--w-line);border-radius:20px;box-shadow:var(--w-shadow);padding:12px;display:flex;flex-direction:column;gap:9px}
+.phone .w-panel{inset:0;width:auto;border-radius:0;border:0;padding:0;gap:0}
+.w-head{display:flex;align-items:center;gap:6px;font-weight:700;color:var(--w-ink2);font-size:12px}
+.phone .w-head{padding:12px 8px 8px 12px;border-bottom:1px solid var(--w-line)}
+.w-mark{width:16px;height:16px;border-radius:5px;background:var(--w-acc)}
+.w-hb{margin-left:auto;display:flex;gap:5px}
+.w-x{width:24px;height:24px;border-radius:999px;background:var(--w-soft);display:grid;place-items:center;color:var(--w-ink2);border:0;padding:0}
+.w-x svg{width:12px;height:12px}
+.w-x.new{outline:2px solid var(--w-acc);outline-offset:1px;color:var(--w-acc-text)}
+.w-body{display:flex;flex-direction:column;gap:8px}
+.phone .w-body{padding:12px;flex:1;min-height:0}
+.w-h{font-size:14px;font-weight:800;margin:0}
+.w-types{display:flex;gap:4px}
+.w-type{font-size:10px;font-weight:600;border:1px solid var(--w-line2);border-radius:999px;padding:2px 8px;color:var(--w-ink2)}
+.w-type.on{border-color:var(--w-acc);background:var(--w-acc-soft);color:var(--w-acc-text)}
+.w-comp{background:var(--w-soft);border:1.5px solid var(--w-line2);border-radius:14px;padding:9px;display:flex;flex-direction:column;gap:7px}
+.phone .w-comp{margin-top:auto}
+.w-text{font-size:11px;line-height:1.4;min-height:38px}
+.w-thumbs{display:flex;gap:8px}
+.w-thumb{position:relative;width:62px}
+.w-thumb i{display:block;height:36px;border:1px solid var(--w-line2);border-radius:8px;background:linear-gradient(var(--h-soft) 0 8px,var(--h-bg) 8px);}
+.w-thumb span{display:block;font:9px ui-monospace,Menlo,monospace;color:var(--w-muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.w-tools{display:flex;align-items:center;gap:5px}
+.w-pillb{height:24px;border:1px solid var(--w-line2);border-radius:999px;padding:0 8px;display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--w-ink2)}
+.w-pillb svg{width:11px;height:11px}
+.w-send{margin-left:auto;width:26px;height:26px;border-radius:999px;background:var(--w-acc);display:grid;place-items:center;color:#fff}
+.w-send svg{width:12px;height:12px}
+/* done card and session history */
+.desk.tall{height:400px}
+.w-done{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:800;margin:0}
+.w-check{width:28px;height:28px;flex:none;border-radius:999px;background:var(--w-acc);color:#fff;display:grid;place-items:center}
+.w-check svg{width:14px;height:14px}
+.w-card{background:var(--w-soft);border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:7px}
+.w-eye{font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--w-ink2)}
+.w-card p{margin:0;font-size:11.5px;line-height:1.4;font-weight:600}
+.w-card .m{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--w-ink2);font-variant-numeric:tabular-nums}
+.w-k{font-size:9.5px;font-weight:700;color:var(--w-acc-text);background:var(--w-acc-soft);border-radius:999px;padding:2px 8px}
+.w-btnrow{display:flex;gap:6px}
+.w-btn{flex:1;height:30px;border:1px solid var(--w-acc);border-radius:999px;padding:0 10px;font-size:10.5px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;gap:4px;background:var(--w-acc);color:#fff;white-space:nowrap}
+.w-btn.gh{background:transparent;border-color:var(--w-line2);color:var(--w-ink)}
+.w-btn svg{width:10px;height:10px}
+.desk.tall .w-panel{width:300px}
+.phone .w-btnrow{flex-direction:column-reverse;margin-top:auto}
+.phone .w-btn{flex:none;height:36px}
+.w-note{font-size:10px;color:var(--w-muted);text-align:center}
+.w-hist{display:flex;flex-direction:column}
+.w-hist h5{margin:0 0 2px;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--w-ink2)}
+.w-entry{display:grid;grid-template-columns:1fr auto;gap:3px 8px;padding:7px 0;border-top:1px solid var(--w-line)}
+.w-entry:first-of-type{border-top:0}
+.w-entry p{margin:0;font-size:11px;font-weight:600;line-height:1.3;grid-column:1/-1}
+.w-entry .m{display:flex;gap:6px;align-items:center;font-size:10px;color:var(--w-ink2);font-variant-numeric:tabular-nums}
+.w-entry .lk{align-self:center;font-size:10px;font-weight:700;color:var(--w-acc-text);display:inline-flex;align-items:center;gap:3px}
+.w-entry .lk svg{width:9px;height:9px}
+.w-entry .ref{align-self:center;font-size:10px;color:var(--w-ink2);font-variant-numeric:tabular-nums}
+.w-new{display:flex;flex-direction:column;gap:8px}
+.phone .w-new{margin-top:auto}
+.w-ph{color:var(--w-muted)}
+
+/* A: pill */
+.w-mini{position:absolute;right:12px;bottom:12px;display:flex;align-items:center;gap:6px;padding:5px 5px 5px 6px;background:var(--w-bg);border:1px solid var(--w-line2);border-radius:999px;box-shadow:var(--w-shadow)}
+.phone .w-mini{bottom:54px;right:8px}
+.w-av{width:22px;height:22px;border-radius:999px;background:var(--w-acc);display:grid;place-items:center;color:#fff;flex:none}
+.w-av svg{width:11px;height:11px}
+.w-mini .t{display:flex;flex-direction:column;line-height:1.15;padding-right:2px}
+.w-mini .t b{font-size:11px}
+.w-mini .t small{font-size:9.5px;color:var(--w-muted)}
+.w-ib{width:26px;height:26px;border-radius:999px;border:1px solid var(--w-line2);display:grid;place-items:center;color:var(--w-ink2);background:transparent;flex:none}
+.w-ib svg{width:12px;height:12px}
+.w-ib.hot{border-color:var(--w-acc);background:var(--w-acc-soft);color:var(--w-acc-text)}
+/* B: bubble */
+.w-bubble{position:absolute;right:14px;bottom:14px;width:44px;height:44px;border-radius:999px;background:var(--w-acc);display:grid;place-items:center;color:#fff;box-shadow:var(--w-shadow)}
+.phone .w-bubble{bottom:56px;right:10px}
+.w-bubble svg{width:18px;height:18px}
+.w-badge{position:absolute;top:-3px;right:-3px;min-width:17px;height:17px;border-radius:999px;background:var(--w-bg);color:var(--w-acc-text);border:2px solid var(--w-acc);font:700 9.5px/13px -apple-system,sans-serif;text-align:center;padding:0 3px}
+.w-tip{position:absolute;right:66px;bottom:24px;background:var(--w-ink);color:var(--w-bg);font-size:10px;font-weight:600;border-radius:8px;padding:4px 8px;white-space:nowrap}
+.phone .w-tip{display:none}
+/* C: edge tab */
+.w-edge{position:absolute;right:0;top:46%;transform:translateY(-50%);width:26px;padding:10px 0;border-radius:10px 0 0 10px;background:var(--w-acc);color:#fff;display:flex;flex-direction:column;align-items:center;gap:6px;box-shadow:var(--w-shadow)}
+.w-edge span{writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;font-weight:700;letter-spacing:.02em}
+.w-edge svg{width:11px;height:11px}
+.w-menu{position:absolute;right:32px;top:46%;transform:translateY(-50%);width:170px;background:var(--w-bg);border:1px solid var(--w-line);border-radius:14px;box-shadow:var(--w-shadow);padding:5px;display:flex;flex-direction:column}
+.phone .w-menu{width:160px}
+.w-menu div{display:flex;align-items:center;gap:7px;padding:7px 8px;border-radius:9px;font-size:11px;font-weight:600}
+.w-menu div svg{width:12px;height:12px;flex:none}
+.w-menu div.hot{background:var(--w-acc-soft);color:var(--w-acc-text)}
+.w-menu div.bad{color:#b42318}
+/* states */
+.w-flash{position:absolute;inset:0;border:3px solid var(--w-acc);border-radius:inherit;pointer-events:none}
+.w-toast{position:absolute;left:50%;transform:translateX(-50%);bottom:98px;background:var(--w-ink);color:var(--w-bg);font-size:10.5px;font-weight:600;border-radius:999px;padding:5px 11px;white-space:nowrap}
+.desk .w-toast{bottom:58px}
+.tap{position:absolute;width:26px;height:26px;border-radius:999px;border:2px solid #f59e0b;background:rgba(245,158,11,.18);pointer-events:none}
+.lost{position:absolute;left:10px;right:10px;bottom:62px;background:var(--w-bg);border:1px dashed var(--bad);color:var(--w-ink2);border-radius:12px;padding:8px 10px;font-size:10.5px}
+.desk .lost{left:auto;width:240px;right:12px;bottom:12px}
+@media (max-width:860px){.cols{grid-template-columns:1fr}.wrap{padding-block:24px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}h1{font-size:26px}}
+@media (max-width:640px){.desk{width:100%;max-width:390px}figcaption{max-width:none}}
+</style>
+</head>
+<body>
+<div class="wrap" id="top">
+  <span class="tag">Mock · not built · example data</span>
+  <h1>Minimize the panel and keep the report</h1>
+  <p class="lead">Issue #170. Sam is on <code>example.org</code> and starts a report on the orders page. To show the problem, Sam needs a second page. Today the panel is modal: the backdrop covers the page and on a phone the sheet fills the screen. Below are three ways to shrink the panel to something small, keep the draft while Sam moves on, and add a screenshot of the next page. A was chosen. Further down: the list of reports sent in this session.</p>
+  <div class="bar" role="group" aria-label="Frame theme">
+    <span style="color:var(--muted);font-size:13px">Frames:</span>
+    <button type="button" data-frame-theme="light" aria-pressed="true">Light</button>
+    <button type="button" data-frame-theme="dark" aria-pressed="false">Dark</button>
+    <span style="color:var(--muted);font-size:13px;margin-left:8px">Jump:</span>
+    <a class="jump" href="#a">A pill</a><a class="jump" href="#b">B bubble</a><a class="jump" href="#c">C edge tab</a><a class="jump" href="#history">Sent list</a><a class="jump" href="#decide">Decided</a>
+  </div>
+
+  <div class="cols">
+    <div class="panel">
+      <h3>What exists today</h3>
+      <ul>
+        <li>The panel sits on <code>.fk-backdrop</code> and locks page scroll. Below 600 px it is a full-screen sheet.</li>
+        <li>Close from the form already keeps the draft in memory, so a single-page app gets it back on the next open. A page load loses it. The widget writes nothing to browser storage.</li>
+        <li>Screenshots stay Blobs until Send. Manual attachments upload when picked.</li>
+        <li><code>feedbackkit:open</code> and <code>feedbackkit:close</code> (#169) mark start and end of a report. QUICKSTART already promises that minimizing will not fire <code>close</code>.</li>
+        <li>The widget is 23,436 bytes gzipped against a budget of 23,552. 116 bytes are left.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>What support widgets do</h3>
+      <ul>
+        <li><b>Intercom:</b> <code>hide</code> closes the panel and leaves the launcher. Only <code>shutdown</code> clears data. A cookie keeps conversations for a week.</li>
+        <li><b>Zendesk messaging:</b> <code>close</code> collapses the window, <code>hide</code> removes the launcher, <code>reset</code> clears state. It uses cookies plus local and session storage.</li>
+        <li><b>Help Scout Beacon:</b> <code>close</code> keeps the contact form. <code>reset</code> clears its fields and attachments.</li>
+        <li><b>Crisp:</b> a cookie on the domain restores the history, so a page view does not start a new conversation.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>The pattern taken over</h3>
+      <p>Minimizing and ending are two separate acts. Minimizing never loses anything. Ending (send, discard) is the only thing that clears the draft and fires <code>feedbackkit:close</code>.</p>
+      <p style="margin:0">Unlike a chat, there is no conversation on the server before Send. The draft lives in the tab, so <code>sessionStorage</code> is used instead of a cookie: it stays with the tab and is gone when the tab closes.</p>
+    </div>
+  </div>
+
+  <section class="variant" id="shared">
+    <h2>The same in every variant</h2>
+    <p class="lead">A minimize button sits left of close. Minimized, the backdrop and the scroll lock go away and the host page works as usual. The restored panel shows each screenshot with the path of the page it came from.</p>
+    <div class="row" id="shared-row"></div>
+  </section>
+
+  <div id="variants"></div>
+
+  <section class="variant" id="compare">
+    <h2>Side by side</h2>
+    <div class="cmpw"><table class="cmp">
+      <thead><tr><th></th><th>A Pill</th><th>B Bubble</th><th>C Edge tab</th></tr></thead>
+      <tbody>
+        <tr><td><b>Minimized looks like</b></td><td>The trigger button grown into a draft pill with two actions</td><td>A round launcher with a count badge, as in support chats</td><td>A narrow tab on the right edge, halfway down</td></tr>
+        <tr><td><b>Covers on a phone</b></td><td>About 150 × 36 px above the tab bar</td><td>44 × 44 px above the tab bar</td><td>26 px of the right edge, clear of top and bottom bars</td></tr>
+        <tr><td><b>Screenshot of the next page</b></td><td>1 tap, panel stays closed</td><td>3 taps: open, Screenshot, minimize</td><td>2 taps through a small menu</td></tr>
+        <tr><td><b>After a full page load</b></td><td>Draft back, minimized</td><td>Draft back, minimized</td><td>Gone (single-page apps keep it)</td></tr>
+        <tr><td><b>Kept in the tab</b></td><td><code>sessionStorage</code>: text, id, keys</td><td><code>sessionStorage</code> plus screenshot images in IndexedDB</td><td>Nothing, memory only</td></tr>
+        <tr><td><b>Uploads before Send</b></td><td>Screenshots on capture, like attachments today</td><td>Attachments only, as today</td><td>Attachments only, as today</td></tr>
+        <tr><td><b>Left behind if Sam walks away</b></td><td>Uploaded screenshots until a sweep removes them</td><td>Images in IndexedDB until the tab closes or the next send</td><td>Nothing new</td></tr>
+        <tr><td><b>Widget code</b></td><td>Pill, storage, restore</td><td>Bubble, storage, IndexedDB store, restore</td><td>Edge tab and menu</td></tr>
+      </tbody>
+    </table></div>
+    <p class="lead" style="margin-top:12px">Byte counts are not measured. All three need more than the 116 bytes that are left, so the budget question comes before the build.</p>
+  </section>
+
+  <section class="variant" id="recommendation">
+    <h2>Recommendation</h2>
+    <div class="panel rec" style="max-width:900px">
+      <p><b>Build A.</b> One tap on the pill takes a screenshot of the page Sam is on, so several pages fit in one report without opening the panel each time. The pill shows that a draft is waiting and how much is in it, and it sits where the trigger sits today, above the tab bar (<code>--fk-trigger-bottom</code>). Its storage follows the issue: text, id and upload keys in <code>sessionStorage</code>, screenshots uploaded on capture through the same call manual attachments use. The panel shows no type picker: the gateway picks the type (#172).</p>
+      <p style="margin:0">Fall back to C if the budget cannot grow by much. It covers single-page apps and phones but loses the draft on a full page load.</p>
+    </div>
+  </section>
+
+  <section class="variant" id="history">
+    <h2>Sent in this session</h2>
+    <p class="lead">After Send, Sam sees how the gateway understood the report, as today. New: every sent report goes into a list in the tab, so Sam can look back at what went out, with the ticket link when the project allows it (<code>issueLink</code>).</p>
+    <div class="row" id="hist-desk"></div>
+    <div class="row" id="hist-phone"></div>
+    <div class="cols" style="margin-top:4px">
+      <div class="panel"><h3>Kept per entry</h3><ul><li>The gateway's summary and the type it picked</li><li>The time it was sent</li><li>The report id</li><li>The ticket link only with <code>issueLink: true</code>. Otherwise a short reference taken from the report id.</li></ul></div>
+      <div class="panel"><h3>Not shown</h3><ul><li>No live status: GitHub owns it, and the widget asks nothing after Send.</li><li>A report still being delivered keeps the state it had at Send.</li><li>The full issue text, its fields and the console log stay out.</li></ul></div>
+      <div class="panel"><h3>Where it lives</h3><ul><li><code>sessionStorage</code>, next to the draft. It is gone when the tab closes, and a new tab starts empty.</li><li>Not <code>localStorage</code>: on a shared computer the next person would read the summaries.</li><li>The trigger shows no count, so the list never looks like unread messages.</li></ul></div>
+    </div>
+  </section>
+
+  <section class="variant" id="decide">
+    <div class="decide">
+      <h2>Decided</h2>
+      <ol>
+        <li><b>Variant:</b> A, the pill.</li>
+        <li><b>Escape and ×:</b> Escape minimizes. × with unsent text asks "Discard this report?"</li>
+        <li><b>Hidden content while minimized:</b> content a page hides on <code>feedbackkit:open</code> stays hidden until the report ends, as QUICKSTART promises, and there are no new events. The camera on the pill can capture at any time, so hidden content has to stay hidden while minimized.</li>
+        <li><b>Leftovers:</b> uploaded screenshots that never got a report are deleted after 24 hours. A draft lasts until the tab closes.</li>
+        <li><b>Bundle budget:</b> it goes up. The build PR measures by how much.</li>
+        <li><b>Sent list:</b> as shown above, per tab.</li>
+        <li><b>Type picker:</b> gone by default, the gateway picks the type (#172). New projects through a guided chat later (#173).</li>
+      </ol>
+    </div>
+  </section>
+
+  <p style="margin-top:40px;color:var(--muted);font-size:13px">All names, addresses and orders are invented. Co-created by Michel with NORA (AI Agent).</p>
+</div>
+
+<script>
+const I = {
+  min:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 12h12"/></svg>',
+  x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+  cam:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+  up:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></svg>',
+  img:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="m4 16 5-5 4 4 3-3 4 4"/></svg>',
+  send:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
+  chat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M5 5h14v10H10l-4 4v-4H5z"/></svg>',
+  trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>',
+  ok:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m6 12 4 4 8-9"/></svg>',
+  ext:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 5h5v5M19 5l-8 8M18 14v5H5V6h5"/></svg>',
+};
+const TEXT = 'The total shows $0.00 after I change the number of tickets.';
+
+function host(page, phone){
+  const list = page === '/orders'
+    ? '<h4>Orders</h4><div class="h-rowx"><b>#1042 Harbor tour</b><span>2 tickets</span></div><div class="h-rowx"><b>#1039 Night ferry</b><span>1 ticket</span></div><div class="h-rowx"><b>#1031 Lighthouse walk</b><span>4 tickets</span></div>'
+    : '<h4>Order #1042</h4><div class="h-rowx"><span>Harbor tour, adult</span><b>2 ×</b></div><div class="h-rowx"><span>Total</span><b>$0.00</b></div><div class="h-rowx"><span>Pick-up</span><b>Pier 3</b></div>';
+  const nav = phone ? '' : '<span class="nav"><b>Orders</b><span>Account</span></span>';
+  const tabs = phone ? '<div class="h-tabs"><span>Home</span><b>Orders</b><span>Account</span></div>' : '';
+  return `<div class="h-top"><span class="logo">Harbor Tickets</span>${nav}</div><span class="h-url">example.org${page}</span><div class="h-main">${list}</div>${tabs}`;
+}
+function thumbs(n){
+  const t = [['/orders'],['/orders/1042']].slice(0,n).map(([p])=>`<div class="w-thumb"><i></i><span>${p}</span></div>`).join('');
+  return n ? `<div class="w-thumbs">${t}</div>` : '';
+}
+function panel(shots, highlight){
+  return `<div class="w w-panel"><div class="w-head"><span class="w-mark"></span>Feedback<span class="w-hb"><span class="w-x${highlight?' new':''}" title="Minimize">${I.min}</span><span class="w-x" title="Close">${I.x}</span></span></div>
+  <div class="w-body"><p class="w-h">What happened?</p>
+  <div class="w-comp"><div class="w-text">${TEXT}</div>${thumbs(shots)}<div class="w-tools"><span class="w-pillb">${I.img}</span><span class="w-pillb">${I.cam}Screenshot</span><span class="w-send">${I.send}</span></div></div></div></div>`;
+}
+const pill = (n, hot, label) => `<div class="w w-mini"><span class="w-av">${I.chat}</span><span class="t"><b>${label||'Report draft'}</b><small>${n} screenshot${n===1?'':'s'}</small></span><span class="w-ib${hot?' hot':''}" title="Add screenshot of this page">${I.cam}</span><span class="w-ib" title="Open report">${I.up}</span></div>`;
+const bubble = (n, tip) => `<div class="w w-bubble">${I.chat}<span class="w-badge">${n}</span></div>${tip?'<span class="w w-tip">Continue your report</span>':''}`;
+const edge = (n) => `<div class="w w-edge">${I.chat}<span>Report · ${n}</span></div>`;
+const menu = () => `<div class="w w-menu"><div class="hot">${I.cam}Add screenshot of this page</div><div>${I.up}Open report</div><div class="bad">${I.trash}Discard report</div></div>`;
+const toast = (t) => `<span class="w w-toast">${t}</span>`;
+const tapAt = (x,y) => `<span class="tap" style="left:${x}px;top:${y}px"></span>`;
+
+function frame(kind, page, overlay, cap){
+  const phone = kind === 'phone';
+  const cls = phone ? 'phone' : kind === 'tall' ? 'desk tall' : 'desk';
+  return `<figure${phone?' class="ph"':''}><div class="f ${cls}">${host(page, phone)}${overlay}</div><figcaption>${cap}</figcaption></figure>`;
+}
+
+// Session list: what the gateway made of each report, with a link or a reference.
+const SENT = [
+  { s:'Total shows $0.00 after changing the ticket count', k:'Bug', t:'14:02', p:'/orders/1042', n:'#214', r:'7F3A' },
+  { s:'Filter past orders by date', k:'Idea', t:'14:09', p:'/orders', n:'#215', r:'2C91' },
+];
+const entry = (e, link) => `<div class="w-entry"><p>${e.s}</p><span class="m"><span class="w-k">${e.k}</span>${e.t}</span>${link?`<span class="lk">${e.n}${I.ext}</span>`:`<span class="ref">Ref. ${e.r}</span>`}</div>`;
+const head = () => `<div class="w-head"><span class="w-mark"></span>Feedback<span class="w-hb"><span class="w-x" title="Minimize">${I.min}</span><span class="w-x" title="Close">${I.x}</span></span></div>`;
+function histPanel(link){
+  return `<div class="w w-panel">${head()}<div class="w-body"><div class="w-hist"><h5>Sent in this session · 2</h5>${SENT.map(e=>entry(e,link)).join('')}</div>
+  <div class="w-new"><p class="w-h">What happened?</p><div class="w-comp"><div class="w-text w-ph">Describe it in your own words…</div><div class="w-tools"><span class="w-pillb">${I.img}</span><span class="w-pillb">${I.cam}Screenshot</span><span class="w-send">${I.send}</span></div></div></div></div></div>`;
+}
+function donePanel(link){
+  const e = SENT[0];
+  const btns = link
+    ? `<span class="w-btn gh">Report something else</span><span class="w-btn">View ticket ${I.ext}</span>`
+    : `<span class="w-btn gh">Report something else</span><span class="w-btn">Done</span>`;
+  return `<div class="w w-panel">${head()}<div class="w-body"><p class="w-done"><span class="w-check">${I.ok}</span>Thanks, got it.</p>
+  <div class="w-card"><span class="w-eye">How we understood it</span><p>${e.s} on order #1042.</p><span class="m"><span class="w-k">${e.k}</span>${link?'':`Ref. ${e.r}`}</span></div>
+  <span class="w-note">Kept in this tab's list</span><div class="w-btnrow">${btns}</div></div></div>`;
+}
+
+document.getElementById('shared-row').innerHTML =
+  '<h3>Desktop and phone, panel open</h3>' +
+  frame('desk','/orders','<div class="dim"></div>'+panel(1,true),'Desktop: the minimize button sits left of close. The first screenshot shows <code>/orders</code>.') +
+  frame('phone','/orders',panel(1,true),'Phone: the same button in the sheet header, 44 px tap target as close.') +
+  frame('desk','/orders/1042',panel(2,false),'Restored after Sam moved on: two screenshots, each labelled with its page. Send works as today.');
+
+const V = [
+  { id:'a', name:'A. Pill', tagline:'The trigger grows into a draft pill with a camera and an open button.',
+    meta:['<b>Minimized:</b> pill, where the trigger sits','<b>Next screenshot:</b> 1 tap','<b>After a page load:</b> draft back','<b>Storage:</b> sessionStorage, screenshots upload on capture'],
+    desk:[
+      ['/orders', pill(1), 'Minimized on <code>/orders</code>. No backdrop, the page scrolls and links work.'],
+      ['/orders/1042', pill(1,true)+tapAt(313,255)+'<span class="w-flash"></span>'+toast('Screenshot added · 2 of 4'), 'Sam opens order #1042 and taps the camera. The capture skips the widget, the page edge flashes once.'],
+      ['/orders/1042', pill(2), 'The pill counts two screenshots. The open button brings back the panel as shown above.'],
+    ],
+    phone:[
+      ['/orders', pill(1), 'Above the tab bar, using <code>--fk-trigger-bottom</code> and the safe area.'],
+      ['/orders/1042', pill(1,true)+tapAt(137,353)+'<span class="w-flash"></span>'+toast('Screenshot added · 2 of 4'), 'Same on the phone: one tap, the sheet stays down.'],
+      ['/orders/1042', pill(2), 'After a full page load the pill comes back by itself, minimized.'],
+    ],
+    survives:['Text and the report id','Manual attachments (keys)','Screenshots (keys; uploaded on capture)','Markup made later replaces the uploaded file'],
+    flow:['Tap the camera on the pill.','The widget captures the visible page (the widget itself is skipped, as today).','The screenshot uploads and its key goes into the draft.','The pill counts up. At 4 screenshots, or 5 attachments in total, the camera turns off.'],
+  },
+  { id:'b', name:'B. Bubble', tagline:'A round launcher with a badge, the shape people know from support chats.',
+    meta:['<b>Minimized:</b> bubble with count','<b>Next screenshot:</b> 3 taps','<b>After a page load:</b> draft back','<b>Storage:</b> sessionStorage plus IndexedDB for images'],
+    desk:[
+      ['/orders', bubble(1,true), 'Minimized: the bubble replaces the trigger and shows one attachment. Hover names it.'],
+      ['/orders/1042', panel(1,false)+tapAt(205,240), 'On order #1042 Sam opens the bubble and taps Screenshot in the panel, as today.'],
+      ['/orders/1042', bubble(2), 'Minimized again, the badge shows 2.'],
+    ],
+    phone:[
+      ['/orders', bubble(1), 'A 44 px bubble above the tab bar.'],
+      ['/orders/1042', panel(1,false)+tapAt(80,392), 'Tap opens the full sheet. Screenshot captures the page behind it.'],
+      ['/orders/1042', bubble(2), 'Back to the bubble. The images wait in IndexedDB until Send.'],
+    ],
+    survives:['Text and the report id','Manual attachments (keys)','Screenshots as images in IndexedDB, upload on Send as today','No early upload of screenshots'],
+    flow:['Tap the bubble, the panel opens.','Tap Screenshot. The capture skips the widget, so the panel is not in the shot.','Tap minimize to go on.'],
+  },
+  { id:'c', name:'C. Edge tab', tagline:'A narrow tab on the right edge that opens a small menu.',
+    meta:['<b>Minimized:</b> tab on the right edge','<b>Next screenshot:</b> 2 taps','<b>After a page load:</b> draft lost','<b>Storage:</b> none, memory only'],
+    desk:[
+      ['/orders', edge(1), 'Minimized: halfway down the right edge, away from page actions that sit at the bottom.'],
+      ['/orders/1042', edge(1)+menu()+tapAt(217,93), 'A tap opens the menu. "Add screenshot of this page" captures without opening the panel.'],
+      ['/orders/1042', '<div class="w lost"><b>Draft not restored.</b> This site loaded a new page, and C keeps nothing across page loads. A single-page app keeps the draft.</div>', 'The weak spot: on a site with full page loads, the draft is gone.'],
+    ],
+    phone:[
+      ['/orders', edge(1), 'A 26 px tab, clear of the top bar and the tab bar.'],
+      ['/orders/1042', edge(1)+menu()+tapAt(60,157), 'The menu opens beside the tab.'],
+      ['/orders/1042', edge(2)+toast('Screenshot added · 2 of 4'), 'In a single-page app the draft and both screenshots stay in memory.'],
+    ],
+    survives:['Single-page app: everything, as close does today','Full page load: nothing','No browser storage, no early upload'],
+    flow:['Tap the edge tab, a menu opens.','Tap "Add screenshot of this page". The menu closes before the capture.','The tab counts up.'],
+  },
+];
+
+document.getElementById('variants').innerHTML = V.map(v => `
+<section class="variant" id="${v.id}">
+  <h2>${v.name}</h2>
+  <p class="lead">${v.tagline}</p>
+  <div class="vmeta">${v.meta.map(m=>`<span>${m}</span>`).join('')}</div>
+  <div class="row"><h3>Desktop</h3>${v.desk.map(([p,o,c])=>frame('desk',p,o,c)).join('')}</div>
+  <div class="row"><h3>Phone</h3>${v.phone.map(([p,o,c])=>frame('phone',p,o,c)).join('')}</div>
+  <div class="cols" style="margin-top:4px">
+    <div class="panel"><h3>Survives navigation</h3><ul>${v.survives.map(s=>`<li>${s}</li>`).join('')}</ul></div>
+    <div class="panel"><h3>Screenshot after navigating</h3><ol class="steps">${v.flow.map(s=>`<li>${s}</li>`).join('')}</ol></div>
+    <div class="panel"><h3>Events</h3><ul><li>Minimize and restore fire nothing.</li><li><code>feedbackkit:close</code> fires on send, discard or Done.</li>${v.id==='c'?'<li>A page load ends the report without a <code>close</code>, because the page is gone.</li>':'<li>After a page load the restored draft fires <code>feedbackkit:open</code> once, because the new page has not heard it yet.</li>'}</ul></div>
+  </div>
+</section>`).join('');
+
+document.getElementById('hist-desk').innerHTML =
+  '<h3>Desktop, project with <code>issueLink: true</code></h3>' +
+  frame('tall','/orders/1042',donePanel(true),'After Send, as today: how the gateway understood it, the type it picked and the ticket link. New: one quiet line that it went into the list.') +
+  frame('tall','/orders',histPanel(true),'The next time Sam opens the panel, both reports from this tab sit above the form, each with its ticket.');
+document.getElementById('hist-phone').innerHTML =
+  '<h3>Phone, project with <code>issueLink: false</code></h3>' +
+  frame('phone','/orders/1042',donePanel(false),'No ticket link: the project keeps its tracker private. The card shows a short reference instead, and the buttons sit at the bottom, in thumb reach.') +
+  frame('phone','/orders',histPanel(false),'The list sits at the top, the new report at the bottom next to the keyboard. Each entry shows the reference instead of a link.');
+
+// Frame theme switch (the page itself follows the system).
+document.querySelectorAll('[data-frame-theme]').forEach(b => b.addEventListener('click', () => {
+  document.body.dataset.frames = b.dataset.frameTheme;
+  document.querySelectorAll('[data-frame-theme]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+}));
+</script>
+</body>
+</html>
