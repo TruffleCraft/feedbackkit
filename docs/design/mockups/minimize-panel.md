@@ -1,6 +1,6 @@
 # Minimize the panel and keep the report (#170)
 
-Status: mock, not built. Open [minimize-panel.html](minimize-panel.html) in a browser. It shows three ways to minimize the panel, each on desktop and on a phone, with light and dark frames. One PNG per variant and theme sits in [minimize-panel/](minimize-panel/). All data is invented: Sam reports a wrong total on the made-up ticket shop at `example.org`.
+Status: mock, not built, variant A chosen. Open [minimize-panel.html](minimize-panel.html) in a browser. It shows three ways to minimize the panel and the list of reports sent in this session, each on desktop and on a phone, with light and dark frames. One PNG per variant and theme sits in [minimize-panel/](minimize-panel/). All data is invented: Sam reports a wrong total on the made-up ticket shop at `example.org`.
 
 ## What exists today
 
@@ -27,6 +27,7 @@ The pattern taken over: minimizing and ending are separate acts. Minimizing neve
 - The minimized control respects `--fk-trigger-bottom` and the safe area, so it stays clear of a host's tab bar. It also shows with `data-trigger="none"`, because otherwise Sam has no way back. `window.FeedbackKit.open()` restores a minimized report.
 - The restored panel labels each screenshot with the path of the page it came from (origin and path only, as `pageUrl`). The report's `pageUrl` stays the page where Sam presses Send.
 - The cap stays at 4 screenshots and 5 attachments in total.
+- The panel has no type picker. The gateway picks the type, as it does today with a model and `askType: false`; #172 drops the picker for projects without a model too.
 
 ## Variants
 
@@ -35,7 +36,7 @@ The pattern taken over: minimizing and ending are separate acts. Minimizing neve
 | Minimized | The trigger grows into a pill: "Report draft · 2 screenshots", a camera and an open button | Round launcher with a count badge | Narrow tab on the right edge, halfway down, opens a menu |
 | Screenshot of the next page | 1 tap on the camera, the panel stays closed | 3 taps: open, Screenshot, minimize | 2 taps through the menu |
 | After a full page load | Draft back, minimized | Draft back, minimized | Gone (a single-page app keeps it in memory) |
-| Kept in the tab | `sessionStorage`: text, type, report id, upload keys | `sessionStorage`, plus screenshot images in IndexedDB | Nothing |
+| Kept in the tab | `sessionStorage`: text, report id, upload keys | `sessionStorage` (text, report id, upload keys), plus screenshot images in IndexedDB | Nothing |
 | Uploads before Send | Screenshots upload on capture, like attachments today; markup made later replaces the file | Attachments only, as today | Attachments only, as today |
 | Left behind if Sam walks away | Uploaded screenshots without a report | Images in IndexedDB until the tab closes or the next Send | Nothing new |
 
@@ -47,16 +48,28 @@ Make or buy: no library. The widget is plain DOM in a shadow root, the storage i
 
 ## Recommendation
 
-Build A. One tap on the pill captures the page Sam is on, so a report can cover several pages without opening the panel each time (TruffleCraft/nora#486). The pill shows that a draft waits and what it holds, and it sits where the trigger already sits, above the tab bar on a phone (TruffleCraft/nora#511). The storage follows the issue: text, type, id and keys in `sessionStorage`, screenshots uploaded on capture.
+Build A. One tap on the pill captures the page Sam is on, so a report can cover several pages without opening the panel each time (TruffleCraft/nora#486). The pill shows that a draft waits and what it holds, and it sits where the trigger already sits, above the tab bar on a phone (TruffleCraft/nora#511). The storage follows the issue: text, id and keys in `sessionStorage`, screenshots uploaded on capture.
 
 If the budget cannot grow much, C covers single-page apps and phones but loses the draft on a full page load.
 
-## To decide
+## Sent in this session
 
-- [ ] **Variant:** A, B or C, or a mix (for example A's pill with C's memory-only storage).
-- [ ] **Escape and close:** Escape minimizes (proposed) or closes. Close with unsent text asks "Discard this report?" (proposed) or keeps today's silent keep in memory.
-- [ ] **Hidden content while minimized:** keep what QUICKSTART promises (content hidden on `feedbackkit:open` stays hidden until the report ends), or add `feedbackkit:minimize` and `feedbackkit:restore` so a page can show its content between captures.
-- [ ] **Leftovers:** remove uploaded screenshots that never got a report after 24 hours, or leave them to retention. Does a draft also expire after 30 minutes without activity, or only when the tab closes?
-- [ ] **Bundle budget:** raise the widget budget from 23 kB, or free bytes elsewhere first.
+After Send the widget already shows how the gateway understood the report: its summary and the type it picked. New: each sent report also goes into a list in the tab, shown above the form the next time the panel opens.
+
+- An entry holds the gateway's summary, the type, time, page path and report id. The ticket link is kept only when the project sets `issueLink: true` (the default). Otherwise the entry and the done card show a short reference taken from the report id.
+- No live status. GitHub owns the state of an issue, and the widget asks nothing after Send. A report still being delivered keeps the state it had at Send.
+- The full issue text, its fields and the console log are not shown.
+- The list lives in `sessionStorage` next to the draft and is gone when the tab closes. `localStorage` would keep it past the session, and on a shared computer the next person would read the summaries.
+- The trigger shows no count, so the list never looks like unread messages.
+
+## Decided (2026-11-18)
+
+- **Variant:** A, the pill.
+- **Escape and close:** Escape minimizes. Close with unsent text asks "Discard this report?"
+- **Hidden content while minimized:** content a page hides on `feedbackkit:open` stays hidden until the report ends, as QUICKSTART promises, and there are no new events. The camera on the pill can capture at any time, so hidden content has to stay hidden while minimized.
+- **Leftovers:** uploaded screenshots that never got a report are deleted after 24 hours. A draft lasts until the tab closes.
+- **Bundle budget:** it goes up. The build PR measures by how much.
+- **Sent list:** as above, per tab.
+- **Type picker:** gone by default, the gateway picks the type (#172). Setting up new projects through a guided chat follows later (#173).
 
 Co-created by Michel with NORA (AI Agent)

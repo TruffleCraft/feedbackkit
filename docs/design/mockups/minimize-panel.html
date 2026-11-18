@@ -101,6 +101,30 @@ table.cmp tr:last-child td{border-bottom:0}
 .w-pillb svg{width:11px;height:11px}
 .w-send{margin-left:auto;width:26px;height:26px;border-radius:999px;background:var(--w-acc);display:grid;place-items:center;color:#fff}
 .w-send svg{width:12px;height:12px}
+/* done card and session history */
+.desk.tall{height:400px}
+.w-done{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:800;margin:0}
+.w-done svg{width:16px;height:16px;color:#16a34a}
+.w-card{background:var(--w-soft);border-radius:14px;padding:9px;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.w-eye{font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--w-muted)}
+.w-card p{margin:0;font-size:11px;line-height:1.4}
+.w-k{font-size:9.5px;font-weight:700;color:var(--w-acc-text);background:var(--w-acc-soft);border-radius:999px;padding:1px 7px}
+.w-btnrow{display:flex;gap:5px;flex-wrap:wrap}
+.w-btn{height:26px;border:1px solid var(--w-line2);border-radius:999px;padding:0 10px;font-size:10.5px;font-weight:600;display:inline-flex;align-items:center;gap:4px;color:var(--w-ink)}
+.w-btn.pri{background:var(--w-acc);border-color:var(--w-acc);color:#fff}
+.w-btn svg{width:10px;height:10px}
+.w-note{font-size:10px;color:var(--w-muted);display:flex;align-items:center;gap:4px}
+.w-note svg{width:10px;height:10px}
+.w-hist{display:flex;flex-direction:column;gap:4px}
+.w-hist h5{margin:0;font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--w-muted)}
+.w-entry{border:1px solid var(--w-line);border-radius:10px;padding:5px 8px;display:flex;flex-direction:column;gap:3px}
+.w-entry p{margin:0;font-size:10.5px;font-weight:600;line-height:1.3}
+.w-entry .m{display:flex;gap:6px;align-items:center;font-size:9.5px;color:var(--w-muted)}
+.w-entry .lk{flex:none;margin-left:auto;font-weight:700;color:var(--w-acc-text);display:inline-flex;align-items:center;gap:2px}
+.w-entry .lk svg{width:9px;height:9px}
+.w-entry .ref{flex:none;white-space:nowrap;margin-left:auto;font:600 9.5px ui-monospace,Menlo,monospace;color:var(--w-ink2)}
+.w-ph{color:var(--w-muted)}
+.w-entry .tp{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* A: pill */
 .w-mini{position:absolute;right:12px;bottom:12px;display:flex;align-items:center;gap:6px;padding:5px 5px 5px 6px;background:var(--w-bg);border:1px solid var(--w-line2);border-radius:999px;box-shadow:var(--w-shadow)}
@@ -145,13 +169,13 @@ table.cmp tr:last-child td{border-bottom:0}
 <div class="wrap" id="top">
   <span class="tag">Mock · not built · example data</span>
   <h1>Minimize the panel and keep the report</h1>
-  <p class="lead">Issue #170. Sam is on <code>example.org</code> and starts a report on the orders page. To show the problem, Sam needs a second page. Today the panel is modal: the backdrop covers the page and on a phone the sheet fills the screen. Below are three ways to shrink the panel to something small, keep the draft while Sam moves on, and add a screenshot of the next page. Pick one, or mix parts of them.</p>
+  <p class="lead">Issue #170. Sam is on <code>example.org</code> and starts a report on the orders page. To show the problem, Sam needs a second page. Today the panel is modal: the backdrop covers the page and on a phone the sheet fills the screen. Below are three ways to shrink the panel to something small, keep the draft while Sam moves on, and add a screenshot of the next page. A was chosen. Further down: the list of reports sent in this session.</p>
   <div class="bar" role="group" aria-label="Frame theme">
     <span style="color:var(--muted);font-size:13px">Frames:</span>
     <button type="button" data-frame-theme="light" aria-pressed="true">Light</button>
     <button type="button" data-frame-theme="dark" aria-pressed="false">Dark</button>
     <span style="color:var(--muted);font-size:13px;margin-left:8px">Jump:</span>
-    <a class="jump" href="#a">A pill</a><a class="jump" href="#b">B bubble</a><a class="jump" href="#c">C edge tab</a><a class="jump" href="#decide">To decide</a>
+    <a class="jump" href="#a">A pill</a><a class="jump" href="#b">B bubble</a><a class="jump" href="#c">C edge tab</a><a class="jump" href="#history">Sent list</a><a class="jump" href="#decide">Decided</a>
   </div>
 
   <div class="cols">
@@ -198,7 +222,7 @@ table.cmp tr:last-child td{border-bottom:0}
         <tr><td><b>Covers on a phone</b></td><td>About 150 × 36 px above the tab bar</td><td>44 × 44 px above the tab bar</td><td>26 px of the right edge, clear of top and bottom bars</td></tr>
         <tr><td><b>Screenshot of the next page</b></td><td>1 tap, panel stays closed</td><td>3 taps: open, Screenshot, minimize</td><td>2 taps through a small menu</td></tr>
         <tr><td><b>After a full page load</b></td><td>Draft back, minimized</td><td>Draft back, minimized</td><td>Gone (single-page apps keep it)</td></tr>
-        <tr><td><b>Kept in the tab</b></td><td><code>sessionStorage</code>: text, type, id, keys</td><td><code>sessionStorage</code> plus screenshot images in IndexedDB</td><td>Nothing, memory only</td></tr>
+        <tr><td><b>Kept in the tab</b></td><td><code>sessionStorage</code>: text, id, keys</td><td><code>sessionStorage</code> plus screenshot images in IndexedDB</td><td>Nothing, memory only</td></tr>
         <tr><td><b>Uploads before Send</b></td><td>Screenshots on capture, like attachments today</td><td>Attachments only, as today</td><td>Attachments only, as today</td></tr>
         <tr><td><b>Left behind if Sam walks away</b></td><td>Uploaded screenshots until a sweep removes them</td><td>Images in IndexedDB until the tab closes or the next send</td><td>Nothing new</td></tr>
         <tr><td><b>Widget code</b></td><td>Pill, storage, restore</td><td>Bubble, storage, IndexedDB store, restore</td><td>Edge tab and menu</td></tr>
@@ -210,20 +234,34 @@ table.cmp tr:last-child td{border-bottom:0}
   <section class="variant" id="recommendation">
     <h2>Recommendation</h2>
     <div class="panel rec" style="max-width:900px">
-      <p><b>Build A.</b> One tap on the pill takes a screenshot of the page Sam is on, so several pages fit in one report without opening the panel each time. The pill shows that a draft is waiting and how much is in it, and it sits where the trigger sits today, above the tab bar (<code>--fk-trigger-bottom</code>). Its storage follows the issue: text, type, id and upload keys in <code>sessionStorage</code>, screenshots uploaded on capture through the same call manual attachments use.</p>
+      <p><b>Build A.</b> One tap on the pill takes a screenshot of the page Sam is on, so several pages fit in one report without opening the panel each time. The pill shows that a draft is waiting and how much is in it, and it sits where the trigger sits today, above the tab bar (<code>--fk-trigger-bottom</code>). Its storage follows the issue: text, id and upload keys in <code>sessionStorage</code>, screenshots uploaded on capture through the same call manual attachments use. The panel shows no type picker: the gateway picks the type (#172).</p>
       <p style="margin:0">Fall back to C if the budget cannot grow by much. It covers single-page apps and phones but loses the draft on a full page load.</p>
+    </div>
+  </section>
+
+  <section class="variant" id="history">
+    <h2>Sent in this session</h2>
+    <p class="lead">After Send, Sam sees how the gateway understood the report, as today. New: every sent report goes into a list in the tab, so Sam can look back at what went out, with the ticket link when the project allows it (<code>issueLink</code>).</p>
+    <div class="row" id="hist-desk"></div>
+    <div class="row" id="hist-phone"></div>
+    <div class="cols" style="margin-top:4px">
+      <div class="panel"><h3>Kept per entry</h3><ul><li>The gateway's summary and the type it picked</li><li>Time and page path</li><li>The report id</li><li>The ticket link only with <code>issueLink: true</code>. Otherwise a short reference taken from the report id.</li></ul></div>
+      <div class="panel"><h3>Not shown</h3><ul><li>No live status: GitHub owns it, and the widget asks nothing after Send.</li><li>A report still being delivered keeps the state it had at Send.</li><li>The full issue text, its fields and the console log stay out.</li></ul></div>
+      <div class="panel"><h3>Where it lives</h3><ul><li><code>sessionStorage</code>, next to the draft. It is gone when the tab closes, and a new tab starts empty.</li><li>Not <code>localStorage</code>: on a shared computer the next person would read the summaries.</li><li>The trigger shows no count, so the list never looks like unread messages.</li></ul></div>
     </div>
   </section>
 
   <section class="variant" id="decide">
     <div class="decide">
-      <h2>To decide</h2>
+      <h2>Decided</h2>
       <ol>
-        <li><b>Variant:</b> A, B or C, or a mix (for example A's pill with C's storage).</li>
-        <li><b>Escape and ×:</b> Escape minimizes (proposed) or closes. × with unsent text asks "Discard this report?" (proposed) or keeps today's silent keep in memory.</li>
-        <li><b>Hidden content while minimized:</b> a page that hides content on <code>feedbackkit:open</code> stays hidden until the report ends, as QUICKSTART promises today. Keep that, or add <code>feedbackkit:minimize</code> and <code>feedbackkit:restore</code> so the page can show its content between captures?</li>
-        <li><b>Leftovers:</b> remove uploaded screenshots that never got a report after 24 hours, or leave them to the project's retention? Does a draft also expire after 30 minutes without activity, or only when the tab closes?</li>
-        <li><b>Bundle budget:</b> raise the widget budget from 23 kB, or find bytes elsewhere first?</li>
+        <li><b>Variant:</b> A, the pill.</li>
+        <li><b>Escape and ×:</b> Escape minimizes. × with unsent text asks "Discard this report?"</li>
+        <li><b>Hidden content while minimized:</b> content a page hides on <code>feedbackkit:open</code> stays hidden until the report ends, as QUICKSTART promises, and there are no new events. The camera on the pill can capture at any time, so hidden content has to stay hidden while minimized.</li>
+        <li><b>Leftovers:</b> uploaded screenshots that never got a report are deleted after 24 hours. A draft lasts until the tab closes.</li>
+        <li><b>Bundle budget:</b> it goes up. The build PR measures by how much.</li>
+        <li><b>Sent list:</b> as shown above, per tab.</li>
+        <li><b>Type picker:</b> gone by default, the gateway picks the type (#172). New projects through a guided chat later (#173).</li>
       </ol>
     </div>
   </section>
@@ -241,6 +279,8 @@ const I = {
   send:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
   chat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M5 5h14v10H10l-4 4v-4H5z"/></svg>',
   trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>',
+  ext:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 5h5v5M19 5l-8 8M18 14v5H5V6h5"/></svg>',
 };
 const TEXT = 'The total shows $0.00 after I change the number of tickets.';
 
@@ -258,7 +298,7 @@ function thumbs(n){
 }
 function panel(shots, highlight){
   return `<div class="w w-panel"><div class="w-head"><span class="w-mark"></span>Feedback<span class="w-hb"><span class="w-x${highlight?' new':''}" title="Minimize">${I.min}</span><span class="w-x" title="Close">${I.x}</span></span></div>
-  <div class="w-body"><p class="w-h">What happened?</p><div class="w-types"><span class="w-type on">Bug</span><span class="w-type">Idea</span></div>
+  <div class="w-body"><p class="w-h">What happened?</p>
   <div class="w-comp"><div class="w-text">${TEXT}</div>${thumbs(shots)}<div class="w-tools"><span class="w-pillb">${I.img}</span><span class="w-pillb">${I.cam}Screenshot</span><span class="w-send">${I.send}</span></div></div></div></div>`;
 }
 const pill = (n, hot, label) => `<div class="w w-mini"><span class="w-av">${I.chat}</span><span class="t"><b>${label||'Report draft'}</b><small>${n} screenshot${n===1?'':'s'}</small></span><span class="w-ib${hot?' hot':''}" title="Add screenshot of this page">${I.cam}</span><span class="w-ib" title="Open report">${I.up}</span></div>`;
@@ -270,7 +310,29 @@ const tapAt = (x,y) => `<span class="tap" style="left:${x}px;top:${y}px"></span>
 
 function frame(kind, page, overlay, cap){
   const phone = kind === 'phone';
-  return `<figure${phone?' class="ph"':''}><div class="f ${phone?'phone':'desk'}">${host(page, phone)}${overlay}</div><figcaption>${cap}</figcaption></figure>`;
+  const cls = phone ? 'phone' : kind === 'tall' ? 'desk tall' : 'desk';
+  return `<figure${phone?' class="ph"':''}><div class="f ${cls}">${host(page, phone)}${overlay}</div><figcaption>${cap}</figcaption></figure>`;
+}
+
+// Session list: what the gateway made of each report, with a link or a reference.
+const SENT = [
+  { s:'Total shows $0.00 after changing the ticket count', k:'Bug', t:'14:02', p:'/orders/1042', n:'#214', r:'7F3A' },
+  { s:'Filter past orders by date', k:'Idea', t:'14:09', p:'/orders', n:'#215', r:'2C91' },
+];
+const entry = (e, link) => `<div class="w-entry"><p>${e.s}</p><span class="m"><span class="w-k">${e.k}</span><span class="tp">${e.t} · ${e.p}</span>${link?`<span class="lk">${e.n}${I.ext}</span>`:`<span class="ref">Ref. ${e.r}</span>`}</span></div>`;
+const head = () => `<div class="w-head"><span class="w-mark"></span>Feedback<span class="w-hb"><span class="w-x" title="Minimize">${I.min}</span><span class="w-x" title="Close">${I.x}</span></span></div>`;
+function histPanel(link){
+  return `<div class="w w-panel">${head()}<div class="w-body"><div class="w-hist"><h5>Sent in this session · 2</h5>${SENT.map(e=>entry(e,link)).join('')}</div>
+  <p class="w-h">What happened?</p><div class="w-comp"><div class="w-text w-ph">Describe it in your own words…</div><div class="w-tools"><span class="w-pillb">${I.img}</span><span class="w-pillb">${I.cam}Screenshot</span><span class="w-send">${I.send}</span></div></div></div></div>`;
+}
+function donePanel(link){
+  const e = SENT[0];
+  const btns = link
+    ? `<span class="w-btn">Report something else</span><span class="w-btn pri">View ticket ${I.ext}</span>`
+    : `<span class="w-btn">Report something else</span><span class="w-btn pri">Done</span>`;
+  return `<div class="w w-panel">${head()}<div class="w-body"><p class="w-done">${I.check}Thanks, got it.</p>
+  <div class="w-card"><span class="w-eye">How we understood it</span><p>${e.s} on order #1042.</p><span class="w-k">${e.k}</span></div>
+  <div class="w-btnrow">${btns}</div><span class="w-note">${I.check}${link?'Added to this session\'s list':`Added to this session's list · Ref. ${e.r}`}</span></div></div>`;
 }
 
 // Shared: the panel with its new minimize button.
@@ -293,7 +355,7 @@ const V = [
       ['/orders/1042', pill(1,true)+tapAt(137,353)+'<span class="w-flash"></span>'+toast('Screenshot added · 2 of 4'), 'Same on the phone: one tap, the sheet stays down.'],
       ['/orders/1042', pill(2), 'After a full page load the pill comes back by itself, minimized.'],
     ],
-    survives:['Text, type and the report id','Manual attachments (keys)','Screenshots (keys; uploaded on capture)','Markup made later replaces the uploaded file'],
+    survives:['Text and the report id','Manual attachments (keys)','Screenshots (keys; uploaded on capture)','Markup made later replaces the uploaded file'],
     flow:['Tap the camera on the pill.','The widget captures the visible page (the widget itself is skipped, as today).','The screenshot uploads and its key goes into the draft.','The pill counts up. At 4 screenshots, or 5 attachments in total, the camera turns off.'],
   },
   { id:'b', name:'B. Bubble', tagline:'A round launcher with a badge, the shape people know from support chats.',
@@ -308,7 +370,7 @@ const V = [
       ['/orders/1042', panel(1,false)+tapAt(80,392), 'Tap opens the full sheet. Screenshot captures the page behind it.'],
       ['/orders/1042', bubble(2), 'Back to the bubble. The images wait in IndexedDB until Send.'],
     ],
-    survives:['Text, type and the report id','Manual attachments (keys)','Screenshots as images in IndexedDB, upload on Send as today','No early upload of screenshots'],
+    survives:['Text and the report id','Manual attachments (keys)','Screenshots as images in IndexedDB, upload on Send as today','No early upload of screenshots'],
     flow:['Tap the bubble, the panel opens.','Tap Screenshot. The capture skips the widget, so the panel is not in the shot.','Tap minimize to go on.'],
   },
   { id:'c', name:'C. Edge tab', tagline:'A narrow tab on the right edge that opens a small menu.',
@@ -341,6 +403,15 @@ document.getElementById('variants').innerHTML = V.map(v => `
     <div class="panel"><h3>Events</h3><ul><li>Minimize and restore fire nothing.</li><li><code>feedbackkit:close</code> fires on send, discard or Done.</li>${v.id==='c'?'<li>A page load ends the report without a <code>close</code>, because the page is gone.</li>':'<li>After a page load the restored draft fires <code>feedbackkit:open</code> once, because the new page has not heard it yet.</li>'}</ul></div>
   </div>
 </section>`).join('');
+
+document.getElementById('hist-desk').innerHTML =
+  '<h3>Desktop, project with <code>issueLink: true</code></h3>' +
+  frame('tall','/orders/1042',donePanel(true),'After Send, as today: how the gateway understood it, the type it picked, the ticket link. New: the note that it went into the list.') +
+  frame('tall','/orders',histPanel(true),'The next time Sam opens the panel, both reports from this tab sit above the form, each with its ticket.');
+document.getElementById('hist-phone').innerHTML =
+  '<h3>Phone, project with <code>issueLink: false</code></h3>' +
+  frame('phone','/orders/1042',donePanel(false),'No ticket link: the project keeps its tracker private. Sam gets a short reference instead.') +
+  frame('phone','/orders',histPanel(false),'The list shows the same references, taken from the report id.');
 
 // Frame theme switch (the page itself follows the system).
 document.querySelectorAll('[data-frame-theme]').forEach(b => b.addEventListener('click', () => {
