@@ -105,3 +105,17 @@ test('the unpacked release runs with Node alone and reports its own release and 
     for (const d of [out, dest, data]) rmSync(d, { recursive: true, force: true });
   }
 });
+
+test('smoke-bundle: the release check starts the unpacked tarball and checks its version and channel', async () => {
+  const out = temporary();
+  try {
+    const built = await buildBundle({ root, outDir: out, release: '3.1.4-dev.2', commit: 'abc', epoch: 1_800_000_000 });
+    const run = spawn(process.execPath, [join(root, 'scripts/smoke-bundle.mjs'), join(out, built.name), '3.1.4-dev.2', 'dev'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    run.stdout.on('data', (d) => (output += d));
+    run.stderr.on('data', (d) => (output += d));
+    const [code] = await once(run, 'exit');
+    assert.equal(code, 0, output);
+    assert.match(output, /serves dev 3\.1\.4-dev\.2/);
+  } finally { rmSync(out, { recursive: true, force: true }); }
+});
