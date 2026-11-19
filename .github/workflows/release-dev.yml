@@ -1,8 +1,8 @@
 name: Release (dev channel)
 
-# Every merge to main becomes a dev build (ADR-013, docs/RELEASES.md):
-# version vX.Y.Z-dev.N from the tags, uploaded as a new Worker version behind the
-# "dev" preview alias (production stays on stable), plus a GitHub prerelease.
+# Every merge to main becomes a dev build (ADR-013, docs/RELEASES.md): version
+# vX.Y.Z-dev.N from the tags, a GitHub prerelease with widget.js and the signed
+# server tarball. Nothing is deployed: hosts take the build with feedbackkit-update.
 on:
   push:
     branches: [main]
@@ -23,16 +23,11 @@ permissions:
 
 jobs:
   dev:
-    # Upstream only: forks deploy their own instance with Workers Builds.
+    # Upstream only: forks publish no releases.
     if: github.repository == 'TruffleCraft/feedbackkit'
     runs-on: ubuntu-latest
     environment: dev
     env:
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-      FK_D1_ID: ${{ vars.FK_D1_ID }}
-      FK_R2_BUCKET: ${{ vars.FK_R2_BUCKET }}
-      FK_OAUTH_KV_ID: ${{ vars.FK_OAUTH_KV_ID }} # optional: binds OAUTH_KV, turns on /mcp (ADR-015)
       BUMP: ${{ inputs.bump || 'none' }}
       GH_TOKEN: ${{ github.token }}
       FK_RELEASE_SIGNING_KEY: ${{ secrets.FK_RELEASE_SIGNING_KEY }} # the dev key (docs/RELEASES.md, Release keys)
@@ -58,27 +53,10 @@ jobs:
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
 
       - name: Build
-        run: pnpm build:widget && pnpm materialize
+        run: pnpm build:widget
         env:
           FK_RELEASE: ${{ steps.v.outputs.version }}
           FK_CHANNEL: dev
-
-      # Production and the dev alias share one D1. Migrations are expand/contract
-      # (backward-compatible for one release), so stable keeps working on them.
-      - name: Apply D1 migrations
-        run: pnpm exec wrangler d1 migrations apply feedbackkit --remote
-
-      - name: Upload dev version
-        env:
-          TAG: ${{ steps.v.outputs.tag }}
-        run: pnpm exec wrangler versions upload --preview-alias dev --tag "$TAG" --message "dev ${TAG} (${GITHUB_SHA::7})"
-
-      - name: Smoke check
-        if: vars.FK_DEV_URL != ''
-        env:
-          DEV_URL: ${{ vars.FK_DEV_URL }}
-          VERSION: ${{ steps.v.outputs.version }}
-        run: node scripts/smoke-check.mjs "$DEV_URL" "$VERSION" dev
 
       - name: Prerelease
         env:
@@ -86,7 +64,9 @@ jobs:
         run: gh release create "$TAG" dist/widget.js --prerelease --target "$GITHUB_SHA" --title "$TAG" --generate-notes
 
       # The standalone server as a signed tarball. Without a signing key nothing is
-      # published: an unsigned tarball is never attached to a release.
+      # published: an unsigned tarball is never attached to a release. Before it is
+      # attached, the unpacked tarball starts with Node alone and must answer /diag
+      # with this version and channel (scripts/smoke-bundle.mjs).
       - name: Build, sign and attach the server tarball
         if: env.FK_RELEASE_SIGNING_KEY != ''
         env:
@@ -95,6 +75,7 @@ jobs:
         run: |
           pnpm build:server
           node scripts/build-bundle.mjs
+          node scripts/smoke-bundle.mjs dist-bundle/feedbackkit-v*.tar.gz "$FK_RELEASE" dev
           sh scripts/sign-release.sh dist-bundle/SHA256SUMS
           gh release upload "$TAG" dist-bundle/feedbackkit-v*.tar.gz dist-bundle/SHA256SUMS dist-bundle/SHA256SUMS.sig
       - name: No signing key

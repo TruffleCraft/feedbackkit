@@ -4,10 +4,12 @@ FeedbackKit ships on two channels (ADR-013). Every merge is a **dev** build; a t
 build is **promoted** to **stable** by hand. Versions come from git tags, never from a bump
 commit.
 
-| Channel | Version | Built when | Served at | Who uses it |
+| Channel | Version | Built when | Published as | Who uses it |
 |---|---|---|---|---|
-| **stable** | `vX.Y.Z` | `Promote to stable` workflow, by hand | the gateway's production URL (and custom domain) | live sites, self-hosters (`stable` branch) |
-| **dev** | `vX.Y.Z-dev.N` | every merge to `main` | `dev-<worker>.<subdomain>.workers.dev` (Worker preview alias) | preview/staging environments of the embedding apps |
+| **stable** | `vX.Y.Z` | `Promote to stable` workflow, by hand | the latest GitHub release (`widget.js`, signed server tarball) and the `stable` branch | live sites, standalone hosts on the stable channel, Cloudflare self-hosters |
+| **dev** | `vX.Y.Z-dev.N` | every merge to `main` | a GitHub prerelease (`widget.js`, signed server tarball) | staging hosts on the dev channel |
+
+The workflows deploy nothing. A standalone host takes a release with `feedbackkit-update` ([Updating](#updating)), a Cloudflare fork with Workers Builds ([below](#cloudflare-self-hosting-updates)).
 
 - A dev build after a stable release takes the next patch by itself (`v0.1.0` → `v0.1.1-dev.1`).
   A new minor or major line starts once via the `Release (dev channel)` workflow's `bump`
@@ -18,55 +20,53 @@ commit.
 
 ## How an embedding app picks a channel
 
-The channel is the gateway URL in the snippet. Production points at the stable gateway, the
-app's preview environment at the dev alias, for example:
+The channel is the gateway URL in the snippet. Production points at a gateway on the stable
+channel, the app's preview environment at a staging gateway that follows dev
+(`feedbackkit-update --auto on --channel dev`), for example:
 
 ```html
 <!-- production -->
 <script src="https://<gateway>/widget.js" data-project="fk_pub_…"></script>
 <!-- preview / staging -->
-<script src="https://dev-<worker>.<subdomain>.workers.dev/widget.js" data-project="fk_pub_…"></script>
+<script src="https://<staging-gateway>/widget.js" data-project="fk_pub_…"></script>
 ```
 
-Both channels read the same projects (one D1), so a project needs no second import; its
-`auth.origins` must list the preview hosts too. Within a channel the widget is evergreen: it
+Two gateways keep their own projects, so the staging gateway needs the project imported too
+(`feedbackkit-admin import`). Within a channel the widget is evergreen: it
 is served with `Cache-Control: max-age=0, must-revalidate`, so every page load after a release
 gets it. `?v=` in a snippet does not pin a version.
 
 ## Releasing (maintainers)
 
-1. Merge to `main`. `Release (dev channel)` builds `vX.Y.Z-dev.N`, applies D1 migrations,
-   uploads the Worker version behind the `dev` alias, smoke-checks it and publishes a
-   prerelease with `widget.js` attached.
-2. Test on the dev alias (or an app's preview environment).
+1. Merge to `main`. `Release (dev channel)` builds `vX.Y.Z-dev.N`, starts the unpacked server
+   tarball and checks its `/diag` (`scripts/smoke-bundle.mjs`), then publishes a prerelease
+   with `widget.js` and the signed tarball.
+2. Test it on a staging host on the dev channel.
 3. Run **Promote to stable** with that dev tag. It rebuilds the same commit as `vX.Y.Z`,
-   deploys production, smoke-checks it, publishes the release as latest (notes since the
-   previous stable) and fast-forwards the `stable` branch.
+   compares the tarball with the tested one, checks it the same way, publishes the release as
+   latest (notes since the previous stable) and fast-forwards the `stable` branch.
 
-Required setup: secret `CLOUDFLARE_API_TOKEN` (Workers Scripts edit, D1 edit, R2 read,
-account settings read, user details and memberships read); variables `CLOUDFLARE_ACCOUNT_ID`,
-`FK_D1_ID`, `FK_R2_BUCKET`, optional `FK_GATEWAY_URL`, `FK_DEV_URL` (smoke checks) and
-`FK_CUSTOM_DOMAIN`. Environments `dev` and `production`; add required reviewers to
-`production` to gate promotion.
+Required setup: environments `dev` and `production`, each with the secret
+`FK_RELEASE_SIGNING_KEY` ([Release keys](#release-keys)); add required reviewers to
+`production` to gate promotion. The workflows need no Cloudflare account.
 
-**Delivery capability** (#109): after the smoke check, the promote workflow writes the
-release's `DELIVERY_CAPABILITY` (`src/shared/contract.ts`) to `meta.delivery_capability`.
+**Delivery capability** (#109): every gateway records its release's `DELIVERY_CAPABILITY`
+(`src/shared/contract.ts`) in `meta.delivery_capability`: the standalone server at start, a
+Cloudflare deployment in `pnpm deploy` (`scripts/record-capability.mjs`).
 Config writers accept new delivery shapes only up to that level, because stable reads the
 same configs. Level 3 covers archived types (`templates[].archived`). Level 4 means the data knows accounts (schema 5): once the first owner exists `ADMIN_TOKEN` grants nothing, and an older release would honor it again, so the standalone server refuses to start below 4. No config shape needs 4. A rollback with `wrangler rollback` does not lower the value: before rolling
 back past a release that raised it, check that no stored config needs the higher level
 (`noIssue: true` next to `delivery` keeps older releases from opening issues).
 
-**Migrations** run before the dev upload and touch the database production also uses. They
-must stay expand/contract: a migration may only add, and stable must keep working on the new
-schema for one release.
+**Migrations** must stay expand/contract: a migration may only add, and the previous release
+must keep working on the new schema, so that a rollback of the code does not need a rollback
+of the data.
 
 ## Rolling back
 
-Production: `pnpm exec wrangler rollback` (previous deployment) or
-`pnpm exec wrangler versions deploy <version-id>@100%` for a specific one; the GitHub release
-stays, the next promotion moves on. Dev: re-run `Release (dev channel)` on an older commit, or
-wait for the next merge. D1 migrations are not rolled back; expand/contract keeps the previous
-code working on the newer schema.
+A Cloudflare deployment: `pnpm exec wrangler rollback` (previous deployment) or
+`pnpm exec wrangler versions deploy <version-id>@100%` for a specific one. D1 migrations are not
+rolled back; expand/contract keeps the previous code working on the newer schema.
 
 The standalone server installed from a release tarball goes back with `feedbackkit-update --rollback`
 (see [Updating](#updating)). A checkout install has no rollback command: restore the backup taken before
@@ -78,7 +78,7 @@ The standalone server ships as a tarball, so an operator installs a finished rel
 
 - **Contents:** a single-file `server.mjs` without `node_modules`, the widget and admin assets, the migrations, the systemd unit, `feedbackkit-update`, `feedbackkit-admin` (the host commands for users), `feedbackkit-migrate.mjs` (moves a gateway from Cloudflare, see [SELF_HOSTING.md](SELF_HOSTING.md#move-from-cloudflare)), the public release keys and `bundle.json` (release, channel, schema version, delivery capability, file list). It is about 360 kB. `/diag` shows the release and channel from `bundle.json`.
 - **Build:** `pnpm build:widget && pnpm build:server && pnpm build:bundle` writes `dist-bundle/`. Two builds of one release are byte-identical (`test/server-bundle.test.mjs`).
-- **What was tested is what ships:** promoting a dev build rebuilds the same commit under the stable version and compares the two tarballs. They must be equal except `bundle.json` and the widget with its version stamp (`scripts/compare-bundles.mjs`), or the promotion stops before anything is deployed.
+- **What was tested is what ships:** promoting a dev build rebuilds the same commit under the stable version and compares the two tarballs. They must be equal except `bundle.json` and the widget with its version stamp (`scripts/compare-bundles.mjs`), or the promotion stops before anything is published.
 - **Target:** Node.js 24 or newer and the standard tools curl, tar, sha256sum and ssh-keygen. One tarball serves every Linux target.
 
 ### Release keys
